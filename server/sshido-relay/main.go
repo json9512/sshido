@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -17,44 +17,68 @@ import (
 	"github.com/sideshow/apns2"
 	"github.com/sideshow/apns2/payload"
 	"github.com/sideshow/apns2/token"
-	_ "modernc.org/sqlite"
 )
 
 type config struct {
-	addr       string
-	dbPath     string
-	keyPath    string
-	keyID      string
-	teamID     string
-	bundleID   string
-	production bool
-	publicURL  string
+	addr              string
+	storage           string // "sqlite" | "firestore"
+	dbPath            string
+	firestoreProject  string
+	firestoreColl     string
+	keyPath           string
+	keyID             string
+	teamID            string
+	bundleID          string
+	production        bool
+	publicURL         string
 }
 
 type server struct {
 	cfg    config
-	db     *sql.DB
+	store  Store
 	apns   *apns2.Client
 	bundle string
 }
 
+func env(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+func envBool(k string, def bool) bool {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
+}
+
 func main() {
 	cfg := config{}
-	flag.StringVar(&cfg.addr, "addr", "0.0.0.0:8787", "listen address")
-	flag.StringVar(&cfg.dbPath, "db", "sshido-relay.db", "sqlite path")
-	flag.StringVar(&cfg.keyPath, "key", "", "APNs .p8 file path")
-	flag.StringVar(&cfg.keyID, "key-id", "", "APNs Key ID")
-	flag.StringVar(&cfg.teamID, "team-id", "", "Apple Team ID")
-	flag.StringVar(&cfg.bundleID, "bundle-id", "com.sshido.app", "iOS bundle id")
-	flag.BoolVar(&cfg.production, "production", false, "use production APNs")
-	flag.StringVar(&cfg.publicURL, "public-url", "http://127.0.0.1:8787", "public base URL returned to clients")
+	flag.StringVar(&cfg.addr, "addr", env("ADDR", "0.0.0.0:8787"), "listen address")
+	flag.StringVar(&cfg.storage, "storage", env("STORAGE", "sqlite"), "storage backend: sqlite | firestore")
+	flag.StringVar(&cfg.dbPath, "db", env("DB_PATH", "sshido-relay.db"), "sqlite path (sqlite backend only)")
+	flag.StringVar(&cfg.firestoreProject, "firestore-project", env("GOOGLE_CLOUD_PROJECT", ""), "GCP project id (firestore backend)")
+	flag.StringVar(&cfg.firestoreColl, "firestore-collection", env("FIRESTORE_COLLECTION", "subscribers"), "firestore collection name")
+	flag.StringVar(&cfg.keyPath, "key", env("APNS_KEY_PATH", ""), "APNs .p8 file path")
+	flag.StringVar(&cfg.keyID, "key-id", env("APNS_KEY_ID", ""), "APNs Key ID")
+	flag.StringVar(&cfg.teamID, "team-id", env("APNS_TEAM_ID", ""), "Apple Team ID")
+	flag.StringVar(&cfg.bundleID, "bundle-id", env("APNS_BUNDLE_ID", "com.sshido.app"), "iOS bundle id")
+	flag.BoolVar(&cfg.production, "production", envBool("APNS_PRODUCTION", false), "use production APNs")
+	flag.StringVar(&cfg.publicURL, "public-url", env("PUBLIC_URL", "http://127.0.0.1:8787"), "public base URL returned to clients")
 	flag.Parse()
+
+	if p := os.Getenv("PORT"); p != "" {
+		cfg.addr = "0.0.0.0:" + p
+	}
 
 	s, err := newServer(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.store.Close()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
@@ -62,29 +86,31 @@ func main() {
 	mux.HandleFunc("/n/", s.notify)
 	mux.HandleFunc("/", s.root)
 
-	log.Printf("sshido push server on %s (apns=%v)", cfg.addr, s.apns != nil)
+	log.Printf("sshido push server on %s (storage=%s apns=%v)", cfg.addr, cfg.storage, s.apns != nil)
 	log.Fatal(http.ListenAndServe(cfg.addr, mux))
 }
 
 func newServer(cfg config) (*server, error) {
-	db, err := sql.Open("sqlite", cfg.dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("open db: %w", err)
-	}
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS subscribers (
-			id           TEXT PRIMARY KEY,
-			device_token TEXT NOT NULL,
-			created_at   INTEGER NOT NULL,
-			updated_at   INTEGER NOT NULL,
-			notify_count INTEGER NOT NULL DEFAULT 0
-		);
-		CREATE INDEX IF NOT EXISTS idx_subscribers_device ON subscribers(device_token);
-	`); err != nil {
-		return nil, fmt.Errorf("schema: %w", err)
+	ctx := context.Background()
+	var store Store
+	switch strings.ToLower(cfg.storage) {
+	case "firestore":
+		fs, err := newFirestoreStore(ctx, cfg.firestoreProject, cfg.firestoreColl)
+		if err != nil {
+			return nil, err
+		}
+		store = fs
+	case "sqlite", "":
+		ss, err := newSQLiteStore(cfg.dbPath)
+		if err != nil {
+			return nil, err
+		}
+		store = ss
+	default:
+		return nil, fmt.Errorf("unknown storage %q", cfg.storage)
 	}
 
-	s := &server{cfg: cfg, db: db, bundle: cfg.bundleID}
+	s := &server{cfg: cfg, store: store, bundle: cfg.bundleID}
 
 	if cfg.keyPath != "" && cfg.keyID != "" && cfg.teamID != "" {
 		raw, err := os.ReadFile(cfg.keyPath)
@@ -114,9 +140,9 @@ func (s *server) root(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintln(w, "sshido push server")
 }
 
-func (s *server) health(w http.ResponseWriter, _ *http.Request) {
-	if err := s.db.Ping(); err != nil {
-		http.Error(w, "db down", 503)
+func (s *server) health(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.HealthCheck(r.Context()); err != nil {
+		http.Error(w, "store down: "+err.Error(), 503)
 		return
 	}
 	w.Write([]byte("ok"))
@@ -140,36 +166,23 @@ func (s *server) subscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad body", 400)
 		return
 	}
-	now := time.Now().Unix()
-	var id string
-	row := s.db.QueryRow(`SELECT id FROM subscribers WHERE device_token = ?`, req.DeviceToken)
-	switch err := row.Scan(&id); {
-	case errors.Is(err, sql.ErrNoRows):
-		id = randomID()
-		if _, err := s.db.Exec(
-			`INSERT INTO subscribers(id,device_token,created_at,updated_at) VALUES(?,?,?,?)`,
-			id, req.DeviceToken, now, now,
-		); err != nil {
-			http.Error(w, "db insert failed", 500)
-			return
-		}
-	case err != nil:
-		http.Error(w, "db error", 500)
+	sub, err := s.store.UpsertByDeviceToken(r.Context(), req.DeviceToken, randomID, time.Now().Unix())
+	if err != nil {
+		log.Printf("subscribe err: %v", err)
+		http.Error(w, "store error", 500)
 		return
-	default:
-		_, _ = s.db.Exec(`UPDATE subscribers SET updated_at = ? WHERE id = ?`, now, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(subscribeResp{
-		ID:        id,
-		NotifyURL: strings.TrimRight(s.cfg.publicURL, "/") + "/n/" + id,
+		ID:        sub.ID,
+		NotifyURL: strings.TrimRight(s.cfg.publicURL, "/") + "/n/" + sub.ID,
 	})
 }
 
 type notifyReq struct {
 	Title      string `json:"title"`
 	Body       string `json:"body"`
-	Priority   string `json:"priority"` // "high" | "normal"
+	Priority   string `json:"priority"`
 	Topic      string `json:"topic"`
 	Sound      string `json:"sound"`
 	SessionRef string `json:"sessionRef"`
@@ -186,13 +199,13 @@ func (s *server) notify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing id", 400)
 		return
 	}
-	var deviceToken string
-	if err := s.db.QueryRow(`SELECT device_token FROM subscribers WHERE id = ?`, id).Scan(&deviceToken); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "unknown subscriber", 404)
-			return
-		}
-		http.Error(w, "db error", 500)
+	sub, err := s.store.LookupByID(r.Context(), id)
+	if errors.Is(err, ErrNotFound) {
+		http.Error(w, "unknown subscriber", 404)
+		return
+	}
+	if err != nil {
+		http.Error(w, "store error", 500)
 		return
 	}
 	var req notifyReq
@@ -219,7 +232,7 @@ func (s *server) notify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	n := &apns2.Notification{
-		DeviceToken: deviceToken,
+		DeviceToken: sub.DeviceToken,
 		Topic:       firstNonEmpty(req.Topic, s.bundle),
 		Payload:     pl,
 	}
@@ -230,9 +243,8 @@ func (s *server) notify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.apns == nil {
-		log.Printf("[notify-stub] id=%s title=%q body=%q prio=%s",
-			id, req.Title, req.Body, req.Priority)
-		_, _ = s.db.Exec(`UPDATE subscribers SET notify_count = notify_count + 1 WHERE id = ?`, id)
+		log.Printf("[notify-stub] id=%s title=%q body=%q prio=%s", id, req.Title, req.Body, req.Priority)
+		_ = s.store.IncrementNotifyCount(r.Context(), id)
 		w.WriteHeader(202)
 		w.Write([]byte("queued (no APNs configured)"))
 		return
@@ -245,13 +257,13 @@ func (s *server) notify(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("apns push id=%s status=%d reason=%q apnsID=%s topic=%s prio=%s tokenPrefix=%s env=%s session=%q host=%q",
 		id, res.StatusCode, res.Reason, res.ApnsID, n.Topic, req.Priority,
-		deviceToken[:min(8, len(deviceToken))], s.apnsHostLabel(),
+		sub.DeviceToken[:min(8, len(sub.DeviceToken))], s.apnsHostLabel(),
 		req.SessionRef, req.HostRef)
 	if !res.Sent() {
 		http.Error(w, fmt.Sprintf("apns %d %s", res.StatusCode, res.Reason), 502)
 		return
 	}
-	_, _ = s.db.Exec(`UPDATE subscribers SET notify_count = notify_count + 1 WHERE id = ?`, id)
+	_ = s.store.IncrementNotifyCount(r.Context(), id)
 	w.WriteHeader(204)
 }
 
@@ -262,7 +274,12 @@ func (s *server) apnsHostLabel() string {
 	return "development"
 }
 
-func min(a, b int) int { if a < b { return a }; return b }
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 func randomID() string {
 	b := make([]byte, 16)

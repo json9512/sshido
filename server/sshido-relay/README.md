@@ -12,6 +12,15 @@ attention.
 └────────────────┘
 ```
 
+## Deployment paths
+
+Two supported modes, picked via `-storage` / `STORAGE` env var:
+
+| Mode | Best for | Store | Hosting |
+|---|---|---|---|
+| `sqlite` (default) | Local self-host on your own dev box / home server | Local SQLite file | systemd / launchd / `docker run` |
+| `firestore` | Public hosted relay for App Store users | GCP Firestore | Cloud Run (serverless, free tier) |
+
 ## Quick start
 
 ```sh
@@ -83,6 +92,33 @@ example in `../claude-settings.json`).
   URL.
 - The `.p8` never leaves your server. Only the sshido app's device token
   is stored in the local SQLite.
+
+## Cloud Run (hosted relay)
+
+For running the relay as a free-tier hosted service on GCP (Firestore-backed):
+
+```sh
+# one-time
+gcloud auth login
+gcloud config set project YOUR_GCP_PROJECT
+gcloud services enable run.googleapis.com firestore.googleapis.com \
+  secretmanager.googleapis.com artifactregistry.googleapis.com
+gcloud firestore databases create --location=us-central1
+gcloud artifacts repositories create sshido \
+  --repository-format=docker --location=us-central1
+gcloud secrets create sshido-apns-key --data-file=$HOME/AuthKey_XXXXXXXXXX.p8
+
+# deploy
+cd server/sshido-relay
+GCP_PROJECT=YOUR_GCP_PROJECT \
+  APNS_KEY_ID=XXXXXXXXXX \
+  APNS_TEAM_ID=XXXXXXXXXX \
+  APNS_PRODUCTION=true \
+  ./deploy-cloud-run.sh
+```
+
+Redeploy with the same script after code changes. Cloud Run auto-scales to
+zero when idle — no cost unless requests arrive.
 
 ## Building for Linux (if your dev box is remote)
 
