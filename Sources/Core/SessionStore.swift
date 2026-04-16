@@ -88,7 +88,7 @@ public actor SessionStore {
         let bootstrap: String?
         if host.useTmux {
             let name = shellEscape(tmuxName(host: host, session: sessionID))
-            bootstrap = "unset TMUX TMUX_PANE; exec /opt/homebrew/bin/tmux new -A -s \(name)"
+            bootstrap = "if command -v tmux >/dev/null 2>&1; then unset TMUX TMUX_PANE; exec tmux new -A -s \(name); fi"
         } else {
             bootstrap = nil
         }

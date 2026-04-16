@@ -113,6 +113,15 @@ struct AddHostView: View {
         forceCompactAgent = h.forceCompactAgent
     }
 
+    private func normalizedHostname(_ s: String) -> String {
+        var h = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        for scheme in ["http://", "https://", "ssh://"] {
+            if h.lowercased().hasPrefix(scheme) { h.removeFirst(scheme.count) }
+        }
+        if let slash = h.firstIndex(of: "/") { h = String(h[..<slash]) }
+        return h
+    }
+
     private var isValid: Bool {
         guard !name.isEmpty, !hostname.isEmpty, !username.isEmpty, Int(port) != nil else { return false }
         switch authMethod {
@@ -125,10 +134,11 @@ struct AddHostView: View {
 
     private func save() async {
         let hostID = existing?.id ?? UUID()
+        let cleanedHost = normalizedHostname(hostname)
         let host = RemoteHost(
             id: hostID,
             name: name,
-            hostname: hostname,
+            hostname: cleanedHost,
             port: Int(port) ?? 22,
             username: username,
             identityID: authMethod == .key ? selectedIdentityID : nil,

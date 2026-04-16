@@ -24,6 +24,32 @@ public struct FAQView: View {
                     a: "Check: (a) device token shows in the Push notifications section; (b) the Notify URL answers 204 when curled with a test payload; (c) iOS Settings → sshido → Notifications is on; (d) the hook script in ~/.claude/hooks/notify.sh is executable and references the correct Notify URL."
                 )
             }
+            Section("Server requirements") {
+                FAQItem(
+                    q: "What needs to be installed on my server?",
+                    a: """
+                    Minimum (everything else is optional):
+                    • OpenSSH server — macOS: System Settings → General → Sharing → Remote Login on. Linux: `sudo apt install openssh-server` (Debian/Ubuntu) / `sudo dnf install openssh-server` (Fedora).
+
+                    Recommended:
+                    • tmux — gives you session persistence. Without tmux, your shell dies when the app closes or the network drops. macOS: `brew install tmux`. Linux: `sudo apt install tmux` / `sudo dnf install tmux`. If tmux isn't found, sshido just uses the plain login shell (no persistence, but it still works).
+
+                    Required for push notifications:
+                    • curl — to POST to the relay from the Claude Code hook. Nearly always preinstalled.
+
+                    Optional agent integration:
+                    • Claude Code / Codex CLI / any other agent you want to chat with. sshido is renderer-agnostic — any TUI that works in a regular terminal works in sshido.
+                    """
+                )
+                FAQItem(
+                    q: "Does my shell need configuration?",
+                    a: """
+                    No. sshido sends an env var (TERM=xterm-256color) and a one-line bootstrap that runs tmux if it exists. Your normal login shell + rc files are sourced as usual.
+
+                    One caveat on macOS: Claude Code stores its OAuth token in the macOS login Keychain. SSH sessions can't access it unless the keychain is unlocked in the SSH security context. Add the keychain-unlock snippet from the "Auth → Claude Code re-logs me in each session" FAQ item if that bites you.
+                    """
+                )
+            }
             Section("Connectivity") {
                 FAQItem(
                     q: "Connecting from a different network (e.g. LTE)",
