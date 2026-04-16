@@ -8,8 +8,15 @@ public protocol SSHChannel: AnyObject, Sendable {
     func disconnect() async
     func send(_ bytes: [UInt8]) async throws
     func resize(cols: Int, rows: Int) async throws
+    func uploadFile(data: Data, remotePath: String) async throws
     var output: AsyncStream<Data> { get }
     var isConnected: Bool { get async }
+}
+
+public extension SSHChannel {
+    func uploadFile(data: Data, remotePath: String) async throws {
+        throw SSHError.transport("uploadFile not supported on this channel")
+    }
 }
 
 public enum SSHError: Error, CustomStringConvertible, Sendable {

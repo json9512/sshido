@@ -61,7 +61,7 @@ public struct TerminalAppearance: Codable, Hashable, Sendable {
     public var theme: TerminalTheme
     public var fontSize: Int
 
-    public init(theme: TerminalTheme = .pureBlack, fontSize: Int = 13) {
+    public init(theme: TerminalTheme = .pureBlack, fontSize: Int = 12) {
         self.theme = theme
         self.fontSize = fontSize
     }

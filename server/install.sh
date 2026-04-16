@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # Usage:
 #   bash install.sh                              # interactive
-#   SSHIDO_NOTIFY_URL=https://push.sshido.app/n/<id> bash install.sh
+#   SSHIDO_NOTIFY_URL=https://push.sshido.com/n/<id> bash install.sh
 #
 # Installs:
 #   - tmux, mosh (if missing)

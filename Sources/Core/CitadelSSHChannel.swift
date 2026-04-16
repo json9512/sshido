@@ -188,6 +188,32 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         try await w.changeSize(cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
     }
 
+    public func uploadFile(data: Data, remotePath: String) async throws {
+        guard let client else { throw SSHError.notConnected }
+        let sftp: SFTPClient
+        do {
+            sftp = try await client.openSFTP()
+        } catch {
+            throw SSHError.transport("sftp open: \(error)")
+        }
+        let dirPath = (remotePath as NSString).deletingLastPathComponent
+        if !dirPath.isEmpty, dirPath != "/" {
+            _ = try? await sftp.createDirectory(atPath: dirPath)
+        }
+        do {
+            try await sftp.withFile(
+                filePath: remotePath,
+                flags: [.write, .create, .truncate]
+            ) { file in
+                try await file.write(ByteBuffer(bytes: Array(data)))
+            }
+        } catch {
+            try? await sftp.close()
+            throw SSHError.transport("sftp write: \(error)")
+        }
+        try? await sftp.close()
+    }
+
     private func emit(_ s: String) { continuation.yield(Data(s.utf8)) }
     private func emit(_ d: Data)   { continuation.yield(d) }
 

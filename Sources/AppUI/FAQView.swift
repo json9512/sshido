@@ -1,45 +1,27 @@
 #if canImport(UIKit)
 import SwiftUI
+import UIKit
 
 public struct FAQView: View {
     public init() {}
+
+    @State private var toast: String?
 
     public var body: some View {
         List {
             Section("Push notifications") {
                 FAQItem(
-                    q: "How do I set up push alerts?",
-                    a: """
-                    sshido needs a small relay binary running on your dev server. Source + README live at github.com/json9512/sshido under server/sshido-relay/. Build and run it:
-
-                    git clone https://github.com/json9512/sshido.git
-                    cd sshido/server/sshido-relay
-                    go build -o sshido-relay .
-                    ./sshido-relay -addr 0.0.0.0:8787 \\
-                      -public-url http://<your-host>:8787 \\
-                      -bundle-id com.sshido.app \\
-                      -key ~/AuthKey_XXXXXXXXXX.p8 \\
-                      -key-id XXXXXXXXXX \\
-                      -team-id XXXXXXXXXX
-
-                    Get the .p8 / key-id / team-id from Apple Developer → Certificates, Keys → Keys → + → "Apple Push Notifications service (APNs)".
-
-                    Then in the app: Settings → Push server → paste the relay URL → Save & subscribe. Copy the Notify URL the relay returns and put it in ~/.claude/hooks/notify.sh on your dev server. Done.
-                    """
-                )
-                FAQItem(
-                    q: "Tell your agent to set it up for you",
-                    a: """
-                    Because you probably have Claude Code running on the very server that needs the relay, ask it:
-
-                    "Clone github.com/json9512/sshido, cd server/sshido-relay, read the README, and set up the relay as a systemd user unit. I have an APNs key at ~/AuthKey_XXXX.p8 with key-id XXXX and team-id XXXX. Make it reachable at <your-host>:8787."
-
-                    The README under server/sshido-relay/ has everything an agent needs — flags, systemd template, Claude Code hook example, and a Linux cross-compile snippet.
-                    """
+                    q: "Copy-paste prompt: let your agent register the hook",
+                    a: SettingsView.agentSetupPrompt(notifyURL: "<NOTIFY_URL — get from Settings → Push notifications>"),
+                    copyable: true,
+                    onCopy: { copied in
+                        UIPasteboard.general.string = copied
+                        showToast("Prompt copied — replace <NOTIFY_URL> before pasting")
+                    }
                 )
                 FAQItem(
                     q: "I'm not getting notifications",
-                    a: "Check: (a) APNs device token shows in the Device section; (b) the relay is reachable (curl the Notify URL with a test payload); (c) notifications are allowed for sshido in iOS Settings; (d) the hook script in ~/.claude/hooks/ is executable and references the Notify URL; (e) if you installed sshido from TestFlight/App Store, run the relay with -production."
+                    a: "Check: (a) device token shows in the Push notifications section; (b) the Notify URL answers 204 when curled with a test payload; (c) iOS Settings → sshido → Notifications is on; (d) the hook script in ~/.claude/hooks/notify.sh is executable and references the correct Notify URL."
                 )
             }
             Section("Connectivity") {
@@ -71,20 +53,53 @@ public struct FAQView: View {
         }
         .navigationTitle("Help")
         .navigationBarTitleDisplayMode(.inline)
+        .overlay(alignment: .top) {
+            if let toast {
+                Text(toast)
+                    .font(.callout)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(.thinMaterial, in: Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: toast)
+    }
+
+    private func showToast(_ s: String) {
+        toast = s
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if toast == s { toast = nil }
+        }
     }
 }
 
 private struct FAQItem: View {
     let q: String
     let a: String
+    var copyable: Bool = false
+    var onCopy: ((String) -> Void)? = nil
     @State private var expanded = false
 
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
-            Text(a)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 8) {
+                if copyable {
+                    Button {
+                        onCopy?(a)
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                            .font(.footnote)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                Text(a)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .padding(.top, 4)
         } label: {
             Text(q).font(.callout).bold()
         }

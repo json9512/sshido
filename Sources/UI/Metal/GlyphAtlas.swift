@@ -72,7 +72,8 @@ public final class GlyphAtlas {
 
     public func region(for codepoint: UInt32) -> CGRect {
         if let r = entries[codepoint] { return r }
-        let glyphCellW = metrics.cellWidth * scale
+        let widthCells: CGFloat = isWideCodepoint(codepoint) ? 2 : 1
+        let glyphCellW = metrics.cellWidth * scale * widthCells
         let glyphCellH = metrics.cellHeight * scale
         if cursorX + glyphCellW > CGFloat(width) {
             cursorX = 0
@@ -100,6 +101,14 @@ public final class GlyphAtlas {
         )
     }
 
+    private func fontFor(codepoint: UInt32) -> CTFont {
+        if codepoint < 0x80 { return font }
+        let str = Unicode.Scalar(codepoint).map { String($0) } ?? ""
+        let cfStr = str as CFString
+        let range = CFRange(location: 0, length: CFStringGetLength(cfStr))
+        return CTFontCreateForString(font, cfStr, range)
+    }
+
     private func rasterise(codepoint: UInt32, atX x: CGFloat, atY y: CGFloat,
                            cellW: CGFloat, cellH: CGFloat) {
         guard let scalar = Unicode.Scalar(codepoint) else { return }
@@ -114,7 +123,7 @@ public final class GlyphAtlas {
         ctx.scaleBy(x: scale, y: scale)
         ctx.setFillColor(gray: 1, alpha: 1)
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: font as Any,
+            .font: fontFor(codepoint: codepoint) as Any,
             .foregroundColor: UIColor.white
         ]
         let astr = NSAttributedString(string: str, attributes: attrs)

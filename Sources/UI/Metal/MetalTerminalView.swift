@@ -144,8 +144,13 @@ public final class MetalTerminalView: UIView, UIKeyInput, UITextInputTraits {
     private func emitScroll(lines: Int) {
         guard let bridge else { return }
         if bridge.terminal.isCurrentBufferAlternate {
-            let bytes: [UInt8] = lines > 0 ? [0x1b, 0x5b, 0x41] : [0x1b, 0x5b, 0x42]
-            for _ in 0..<min(abs(lines), 8) { bridge.sendBytes(bytes) }
+            let button = lines > 0 ? 64 : 65
+            let col = max(1, bridge.terminal.cols / 2)
+            let row = max(1, bridge.terminal.rows / 2)
+            let seq = "\u{1b}[<\(button);\(col);\(row)M"
+            let bytes = Array(seq.utf8)
+            let reps = min(max(abs(lines) / 2, 1), 6)
+            for _ in 0..<reps { bridge.sendBytes(bytes) }
         } else {
             let buf = bridge.terminal.buffer
             let new = max(0, buf.yDisp - lines)

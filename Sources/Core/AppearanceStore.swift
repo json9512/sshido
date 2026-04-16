@@ -3,6 +3,10 @@ import Foundation
 import sshidoModels
 #endif
 
+public extension Notification.Name {
+    static let sshidoAppearanceChanged = Notification.Name("sshido.appearanceChanged")
+}
+
 public actor AppearanceStore {
     public static let shared = AppearanceStore()
 
@@ -25,6 +29,7 @@ public actor AppearanceStore {
     public func set(_ new: TerminalAppearance) throws {
         self.appearance = new
         try persist()
+        NotificationCenter.default.post(name: .sshidoAppearanceChanged, object: nil)
     }
 
     private func persist() throws {

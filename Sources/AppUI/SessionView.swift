@@ -1,5 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 #if canImport(sshidoModels)
 import sshidoModels
 #endif
@@ -17,12 +19,15 @@ public struct SessionView: View {
     @State private var bridge: TerminalBridge?
     @State private var error: String?
     @State private var toast: String?
+    @State private var liveTitle: String
     @StateObject private var voice: VoiceInputController = {
         let v = VoiceInputController()
         v.language = VoicePreferences.shared.language
         return v
     }()
     @StateObject private var hotkeys = HotkeyState()
+    @State private var photoItem: PhotosPickerItem?
+    @State private var uploading = false
 
     private var profile: AgentProfile {
         AgentProfile.builtins.first { $0.id == host.agentProfileID } ?? .claudeCode
@@ -31,6 +36,7 @@ public struct SessionView: View {
     public init(session: Session, host: RemoteHost) {
         self.session = session
         self.host = host
+        self._liveTitle = State(initialValue: session.title)
     }
 
     @Environment(\.scenePhase) private var scenePhase
@@ -40,7 +46,13 @@ public struct SessionView: View {
         VStack(spacing: 0) {
             if let ch = channel {
                 TerminalView(channel: ch) { b in
-                    Task { @MainActor in self.bridge = b }
+                    Task { @MainActor in
+                        self.bridge = b
+                        b.onTitleChange = { newTitle in
+                            self.liveTitle = newTitle
+                            Task { await SessionStore.shared.renameSession(id: session.id, title: newTitle) }
+                        }
+                    }
                 }
                     .ignoresSafeArea(.keyboard)
                 if voice.state != .idle || !voice.transcript.isEmpty {
@@ -57,23 +69,30 @@ public struct SessionView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ProgressView("Opening \(session.title)…")
+                ProgressView("Opening \(liveTitle)…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .task { await load() }
         .onChange(of: scenePhase) { _, new in
-            if new == .active { Task { await reconnectIfDropped() } }
+            if new == .active {
+                Task { await reconnectIfDropped() }
+                bridge?.requestServerRedraw()
+            }
         }
         .onChange(of: net.status) { _, new in
             if new == .online { Task { await reconnectIfDropped() } }
         }
-        .navigationTitle(session.title)
+        .onChange(of: photoItem) { _, new in
+            guard let new else { return }
+            Task { await uploadImage(new) }
+        }
+        .navigationTitle(liveTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
-                    Text(session.title).font(.headline)
+                    Text(liveTitle).font(.headline).lineLimit(1).truncationMode(.middle)
                     ConnectStatusPill(phase: connectPhase)
                 }
             }
@@ -96,6 +115,14 @@ public struct SessionView: View {
                 Button { Task { await pasteIntoTerminal() } } label: {
                     Image(systemName: "doc.on.doc")
                 }
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    if uploading {
+                        ProgressView().scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "photo")
+                    }
+                }
+                .disabled(uploading)
                 Button { Task { await toggleVoice() } } label: {
                     Image(systemName: voice.isRecording ? "mic.fill" : "mic")
                 }
@@ -195,6 +222,43 @@ public struct SessionView: View {
         }
         UIPasteboard.general.string = trimmed
         flashToast("Copied \(trimmed.count) chars")
+    }
+
+    private func uploadImage(_ item: PhotosPickerItem) async {
+        guard let ch = channel else { return }
+        uploading = true
+        defer {
+            uploading = false
+            photoItem = nil
+        }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                flashToast("Couldn't read image")
+                return
+            }
+            let ext: String
+            if let type = item.supportedContentTypes.first,
+               let e = type.preferredFilenameExtension {
+                ext = e
+            } else {
+                ext = "jpg"
+            }
+            let name = "sshido-\(UUID().uuidString.prefix(8)).\(ext)"
+            let remotePath = "~/.sshido/uploads/\(name)"
+            let expanded = remotePath.replacingOccurrences(of: "~", with: "/home/\(host.username)")
+            flashToast("Uploading \(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))…")
+            do {
+                try await ch.uploadFile(data: data, remotePath: expanded)
+            } catch {
+                let altHome = "/Users/\(host.username)/.sshido/uploads/\(name)"
+                try await ch.uploadFile(data: data, remotePath: altHome)
+            }
+            let pasted = "~/.sshido/uploads/\(name) "
+            try await ch.send(Array(pasted.utf8))
+            flashToast("Uploaded — path pasted")
+        } catch {
+            flashToast("Upload failed: \(error)")
+        }
     }
 
     private func pasteIntoTerminal() async {

@@ -10,5 +10,7 @@ public protocol TerminalBridge: AnyObject {
     func focus()
     func applyAppearance() async
     func copyFromTerminal(_ kind: CopyKind) async -> String
+    func requestServerRedraw()
+    var onTitleChange: ((String) -> Void)? { get set }
 }
 #endif

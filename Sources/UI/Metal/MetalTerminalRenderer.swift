@@ -15,10 +15,25 @@ public protocol TerminalGridSource: AnyObject {
     var defaultBackground: SIMD4<Float> { get }
     var defaultForeground: SIMD4<Float> { get }
     func isSelected(col: Int, row: Int) -> Bool
+    func widthAt(col: Int, row: Int) -> Int
 }
 
 public extension TerminalGridSource {
     func isSelected(col: Int, row: Int) -> Bool { false }
+    func widthAt(col: Int, row: Int) -> Int { 1 }
+}
+
+func isWideCodepoint(_ cp: UInt32) -> Bool {
+    switch cp {
+    case 0x1100...0x115F,
+         0x2E80...0x303E, 0x3041...0x33FF, 0x3400...0x4DBF,
+         0x4E00...0x9FFF, 0xA000...0xA4CF, 0xAC00...0xD7A3,
+         0xF900...0xFAFF, 0xFE30...0xFE4F, 0xFF00...0xFF60,
+         0xFFE0...0xFFE6, 0x1F300...0x1F64F, 0x1F900...0x1F9FF,
+         0x20000...0x2FFFD, 0x30000...0x3FFFD:
+        return true
+    default: return false
+    }
 }
 
 private struct CellInstanceGPU {
@@ -118,8 +133,10 @@ public final class MetalTerminalRenderer {
 
         let ptr = instanceBuffer.contents().bindMemory(to: CellInstanceGPU.self, capacity: count)
         let cursor = source.cursorCell()
+        let blankUV = atlas.uvRect(for: 0x20)
         for r in 0..<rows {
-            for c in 0..<cols {
+            var c = 0
+            while c < cols {
                 let cell = source.charAt(col: c, row: r)
                 let isCursor = (cursor?.col == c && cursor?.row == r)
                 let isSelected = source.isSelected(col: c, row: r)
@@ -129,17 +146,35 @@ public final class MetalTerminalRenderer {
                     bg = SIMD4<Float>(0.2, 0.45, 0.85, 1)
                     fg = SIMD4<Float>(1, 1, 1, 1)
                 }
-                let uv = atlas.uvRect(for: cell.codepoint == 0 ? 0x20 : cell.codepoint)
+                let cp = cell.codepoint == 0 ? 0x20 : cell.codepoint
+                var width = source.widthAt(col: c, row: r)
+                if isCursor { width = 1 }
+                let uv = atlas.uvRect(for: cp)
                 let i = r * cols + c
                 ptr[i] = CellInstanceGPU(
                     origin: SIMD2<Float>(Float(c) * Float(cellW),
                                          Float(r) * Float(cellH)),
-                    size: SIMD2<Float>(Float(cellW), Float(cellH)),
+                    size: SIMD2<Float>(Float(cellW) * Float(width), Float(cellH)),
                     fg: fg,
                     bg: bg,
                     atlasOrigin: SIMD2<Float>(Float(uv.minX), Float(uv.minY)),
                     atlasSize: SIMD2<Float>(Float(uv.width), Float(uv.height))
                 )
+                if width == 2 && c + 1 < cols {
+                    let j = r * cols + c + 1
+                    ptr[j] = CellInstanceGPU(
+                        origin: SIMD2<Float>(Float(c + 1) * Float(cellW),
+                                             Float(r) * Float(cellH)),
+                        size: SIMD2<Float>(0, 0),
+                        fg: fg,
+                        bg: bg,
+                        atlasOrigin: SIMD2<Float>(Float(blankUV.minX), Float(blankUV.minY)),
+                        atlasSize: SIMD2<Float>(Float(blankUV.width), Float(blankUV.height))
+                    )
+                    c += 2
+                } else {
+                    c += 1
+                }
             }
         }
 

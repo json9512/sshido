@@ -63,6 +63,13 @@ public actor SessionStore {
         sessions[id]
     }
 
+    public func renameSession(id: UUID, title: String) {
+        guard var s = sessions[id], s.title != title else { return }
+        s.title = title
+        sessions[id] = s
+        try? persist()
+    }
+
     public func close(sessionID: UUID) async {
         if let ch = channels.removeValue(forKey: sessionID) {
             await ch.disconnect()
@@ -85,10 +92,7 @@ public actor SessionStore {
         } else {
             bootstrap = nil
         }
-        var env: [String: String] = ["TERM": "xterm-256color"]
-        if host.forceCompactAgent {
-            env["NO_COLOR"] = "1"
-        }
+        let env: [String: String] = ["TERM": "xterm-256color"]
         return CitadelSSHChannel(
             host: host.hostname,
             port: host.port,

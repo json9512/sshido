@@ -71,27 +71,11 @@ public struct SettingsView: View {
                     .disabled(working || serverURLInput.isEmpty)
                     if let subscription {
                         Divider()
-                        HStack {
-                            Text("Notify URL").font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                        Text(subscription.notifyURL)
-                            .font(.footnote.monospaced())
-                            .textSelection(.enabled)
-                            .lineLimit(3).truncationMode(.middle)
                         Button {
-                            UIPasteboard.general.string = subscription.notifyURL
-                            flashToast("Notify URL copied")
+                            UIPasteboard.general.string = Self.agentSetupPrompt(notifyURL: subscription.notifyURL)
+                            flashToast("Agent setup prompt copied")
                         } label: {
-                            Label("Copy Notify URL", systemImage: "doc.on.doc")
-                        }
-                        if let deviceToken {
-                            Button {
-                                UIPasteboard.general.string = deviceToken
-                                flashToast("Device token copied")
-                            } label: {
-                                Label("Copy device token", systemImage: "iphone")
-                            }
+                            Label("Copy agent setup prompt", systemImage: "doc.on.doc")
                         }
                         HStack {
                             Text("Subscribed \(subscription.subscribedAt.formatted(date: .abbreviated, time: .shortened))")
@@ -123,7 +107,7 @@ public struct SettingsView: View {
                 } header: {
                     Text("Push notifications")
                 } footer: {
-                    Text("Enter your sshido-relay URL, subscribe, then paste the Notify URL into ~/.claude/hooks/notify.sh on your dev server. See Help → Push notifications for the full walkthrough.")
+                    Text("Subscribe, then tap \"Copy agent setup prompt\" and paste it into Claude Code on your dev server. The agent installs the hook for you.")
                 }
                 Section {
                     let existingLabels = Set(shortcuts.map { $0.label })
@@ -206,7 +190,7 @@ public struct SettingsView: View {
                         }
                     }
                     Stepper("Font size: \(appearance.fontSize) pt",
-                            value: $appearance.fontSize, in: 9...22)
+                            value: $appearance.fontSize, in: 8...22)
                 }
                 if let error {
                     Section { Text(error).foregroundStyle(.red) }
@@ -232,6 +216,34 @@ public struct SettingsView: View {
             }
             .animation(.easeInOut(duration: 0.15), value: info)
         }
+    }
+
+    static func agentSetupPrompt(notifyURL: String) -> String {
+        """
+        Set up sshido push notifications on this machine.
+
+        My Notify URL is: \(notifyURL)
+
+        Do the following, idempotently:
+
+        1. mkdir -p ~/.claude/hooks ~/.sshido
+        2. Write ~/.sshido/notify.url containing exactly the Notify URL above (no trailing newline chars beyond one), chmod 600.
+        3. Write ~/.claude/hooks/notify.sh (chmod +x):
+           - reads URL from $SSHIDO_NOTIFY_URL or ~/.sshido/notify.url
+           - takes args: EVENT TITLE BODY
+           - POSTs JSON {title, body, priority, sessionRef, hostRef} to the URL
+           - priority="high" for AskUserQuestion / Error / Notification, else "normal"
+           - sessionRef from `tmux display-message -p '#S'` when inside tmux
+           - hostRef from `hostname -s`
+        4. Merge these hooks into ~/.claude/settings.json (preserve existing keys):
+           - AskUserQuestion → ~/.claude/hooks/notify.sh AskUserQuestion "Claude needs input" "$CLAUDE_HOOK_BODY"
+           - Stop            → ~/.claude/hooks/notify.sh Stop "Task complete" "$CLAUDE_HOOK_BODY"
+           - Error           → ~/.claude/hooks/notify.sh Error "Claude error" "$CLAUDE_HOOK_BODY"
+        5. Verify with: curl -fsS -X POST -H 'content-type: application/json' -d '{"title":"test","body":"hello from agent","priority":"high"}' "$(cat ~/.sshido/notify.url)" — expect HTTP 204.
+        6. Print a one-line summary.
+
+        Reference: github.com/json9512/sshido under server/hooks/notify.sh and server/claude-settings.json.
+        """
     }
 
     private func flashToast(_ s: String) {

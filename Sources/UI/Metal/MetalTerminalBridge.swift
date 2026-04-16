@@ -22,10 +22,14 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     private var ready = false
     private var lastReportedSize: (cols: Int, rows: Int) = (0, 0)
     private let delegateRelay = TerminalDelegateRelay()
+    private var appearanceObserver: NSObjectProtocol?
+    private var lastTitle: String = ""
+
+    public var onTitleChange: ((String) -> Void)?
 
     public init(channel: SSHChannel) {
         self.channel = channel
-        guard let r = MetalTerminalRenderer(fontSize: 16) else {
+        guard let r = MetalTerminalRenderer(fontSize: 12) else {
             fatalError("Metal device unavailable")
         }
         self.renderer = r
@@ -40,11 +44,22 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         ready = true
         renderer.start()
         startReader()
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: .sshidoAppearanceChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.applyAppearance() }
+        }
+        Task { [weak self] in
+            await self?.applyAppearance()
+        }
         Task { try? await channel.connect() }
     }
 
     deinit {
         readerTask?.cancel()
+        if let appearanceObserver {
+            NotificationCenter.default.removeObserver(appearanceObserver)
+        }
     }
 
     public var cols: Int { terminal.cols }
@@ -62,6 +77,12 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
             return (cp, bg, fg)
         }
         return (cp, fg, bg)
+    }
+
+    public func widthAt(col: Int, row: Int) -> Int {
+        guard let cd = terminal.getCharData(col: col, row: row) else { return 1 }
+        let raw = UInt32(bitPattern: Int32(cd.unicodeScalarCode))
+        return isWideCodepoint(raw) ? 2 : 1
     }
 
     public func cursorCell() -> (col: Int, row: Int)? {
@@ -93,7 +114,23 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         _ = view.becomeFirstResponder()
     }
 
-    public func applyAppearance() async {}
+    public func applyAppearance() async {
+        let appearance = await AppearanceStore.shared.appearance
+        renderer.updateFontSize(CGFloat(appearance.fontSize))
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        renderer.setNeedsRender()
+    }
+
+    fileprivate func receiveTitleFromTerminal(_ raw: String) {
+        let cleaned = raw
+            .replacingOccurrences(of: "\u{0007}", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, cleaned != lastTitle else { return }
+        let display = cleaned.count > 80 ? String(cleaned.prefix(80)) : cleaned
+        lastTitle = display
+        onTitleChange?(display)
+    }
 
     public func copyFromTerminal(_ kind: CopyKind) async -> String {
         switch kind {
@@ -176,11 +213,16 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
               (cols, rows) != lastReportedSize else { return }
         lastReportedSize = (cols, rows)
         terminal.resize(cols: cols, rows: rows)
+        terminal.feed(byteArray: Array("\u{1b}[2J\u{1b}[H".utf8))
         Task { try? await channel.resize(cols: cols, rows: rows) }
         if let citadel = channel as? CitadelSSHChannel {
             citadel.setInitialSize(cols: cols, rows: rows)
         }
         renderer.setNeedsRender()
+    }
+
+    public func requestServerRedraw() {
+        Task { try? await channel.send(Array("\u{0c}".utf8)) }
     }
 
     public func invalidateReportedSize() {
@@ -251,5 +293,11 @@ private final class TerminalDelegateRelay: TerminalDelegate {
     }
     func windowCommand(source: SwiftTerm.Terminal, command: SwiftTerm.Terminal.WindowManipulationCommand) -> [UInt8]? { nil }
     func iTermContent(source: SwiftTerm.Terminal, content: ArraySlice<UInt8>) {}
+    func setTerminalTitle(source: SwiftTerm.Terminal, title: String) {
+        Task { @MainActor in self.owner?.receiveTitleFromTerminal(title) }
+    }
+    func setTerminalIconTitle(source: SwiftTerm.Terminal, title: String) {
+        Task { @MainActor in self.owner?.receiveTitleFromTerminal(title) }
+    }
 }
 #endif
