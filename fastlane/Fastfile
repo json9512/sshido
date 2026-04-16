@@ -1,0 +1,33 @@
+default_platform(:ios)
+
+WORKSPACE_PROJECT = "XcodeProject/sshido.xcodeproj"
+SCHEME = "sshido"
+IPA_PATH = "build/ipa/sshido.ipa"
+
+platform :ios do
+  desc "Bump build number"
+  lane :bump do
+    sh("cd .. && make bump")
+  end
+
+  desc "Archive Release + export IPA (reuses scripts/archive.sh)"
+  lane :archive do
+    sh("cd .. && make archive")
+  end
+
+  desc "Bump + archive + upload to TestFlight"
+  lane :beta do
+    sh("cd .. && make bump")
+    sh("cd .. && make archive")
+    upload_to_testflight(
+      ipa: "../#{IPA_PATH}",
+      skip_waiting_for_build_processing: true,
+      apple_id: ENV["SSHIDO_APPLE_ID_ITC"]  # App Store Connect App ID (numeric) — optional
+    )
+  end
+
+  desc "Install to tethered device (Debug)"
+  lane :device do
+    sh("cd .. && make run")
+  end
+end

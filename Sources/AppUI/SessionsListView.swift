@@ -1,0 +1,97 @@
+#if canImport(UIKit)
+import SwiftUI
+#if canImport(sshidoModels)
+import sshidoModels
+#endif
+#if canImport(sshidoCore)
+import sshidoCore
+#endif
+
+struct SessionsListView: View {
+    let host: RemoteHost
+    @State private var sessions: [Session] = []
+    @State private var error: String?
+    @State private var pendingSession: Session?
+
+    var body: some View {
+        List {
+            Section {
+                Button {
+                    Task { await openNew() }
+                } label: {
+                    Label("New session", systemImage: "plus.circle.fill")
+                }
+            }
+            if !sessions.isEmpty {
+                Section("Open sessions") {
+                    ForEach(sessions) { session in
+                        NavigationLink(value: session) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "terminal.fill")
+                                    .font(.title3).foregroundStyle(.tint)
+                                    .frame(width: 24)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(session.title)
+                                        .font(.headline)
+                                        .dynamicTypeSize(.xSmall ... .accessibility2)
+                                    Text(session.createdAt.formatted(.relative(presentation: .named)))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                Task {
+                                    await SessionStore.shared.close(sessionID: session.id)
+                                    await reload()
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                        }
+                    }
+                }
+            }
+            if let error {
+                Section { Text(error).foregroundStyle(.red).font(.callout) }
+            }
+        }
+        .navigationTitle(host.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: Session.self) { session in
+            SessionView(session: session, host: host)
+        }
+        .navigationDestination(item: $pendingSession) { session in
+            SessionView(session: session, host: host)
+        }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        sessions = await SessionStore.shared.sessions(for: host.id)
+    }
+
+    private func openNew() async {
+        do {
+            let auth: SSHAuth
+            switch host.authMethod {
+            case .password:
+                let pw = try KeychainKeyStore().loadPassword(hostID: host.id)
+                auth = .password(pw)
+            case .key:
+                guard let identityID = host.identityID else {
+                    error = "host has no key attached (authMethod=.key)"
+                    return
+                }
+                let pem = try await IdentityStore.shared.loadPEM(for: identityID)
+                auth = .privateKeyPEM(pem, passphrase: nil)
+            }
+            let session = await SessionStore.shared.openSession(for: host, auth: auth)
+            await reload()
+            pendingSession = session
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+}
+#endif

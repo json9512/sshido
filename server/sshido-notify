@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Generic notify CLI for any agent / cron / script.
+#   sshido-notify "Title" "Body"
+#   sshido-notify -p high "Title" "Body"
+#   sshido-notify -s <session-ref> "Title" "Body"
+#   echo body | sshido-notify "Title"
+set -euo pipefail
+
+priority="normal"
+session_ref=""
+host_ref="$(hostname -s 2>/dev/null || echo '')"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -p|--priority) priority="$2"; shift 2 ;;
+        -s|--session)  session_ref="$2"; shift 2 ;;
+        -H|--host)     host_ref="$2"; shift 2 ;;
+        -h|--help)
+            cat <<'EOF'
+sshido-notify [--priority high|normal] [--session REF] [--host REF] <title> [body]
+Reads ~/.sshido/notify.url or $SSHIDO_NOTIFY_URL.
+If --session is omitted, picks up $TMUX's tmux session name automatically.
+EOF
+            exit 0 ;;
+        *) break ;;
+    esac
+done
+
+title="${1:?title required}"
+body="${2:-}"
+if [[ -z "$body" && ! -t 0 ]]; then
+    body="$(cat)"
+fi
+
+if [[ -z "$session_ref" && -n "${TMUX:-}" ]] && command -v tmux >/dev/null; then
+    session_ref="$(tmux display-message -p '#S' 2>/dev/null || echo '')"
+fi
+
+NOTIFY_URL="${SSHIDO_NOTIFY_URL:-}"
+if [[ -z "$NOTIFY_URL" && -f "$HOME/.sshido/notify.url" ]]; then
+    NOTIFY_URL="$(tr -d '[:space:]' < "$HOME/.sshido/notify.url")"
+fi
+if [[ -z "$NOTIFY_URL" ]]; then
+    echo "sshido-notify: no NOTIFY_URL configured" >&2
+    exit 1
+fi
+
+json_encode() { python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'; }
+
+payload="$(printf '{"title":%s,"body":%s,"priority":"%s","sessionRef":%s,"hostRef":%s}' \
+    "$(printf '%s' "$title"       | json_encode)" \
+    "$(printf '%s' "$body"        | json_encode)" \
+    "$priority" \
+    "$(printf '%s' "$session_ref" | json_encode)" \
+    "$(printf '%s' "$host_ref"    | json_encode)")"
+
+curl -fsS -m 5 -H 'Content-Type: application/json' -d "$payload" "$NOTIFY_URL"

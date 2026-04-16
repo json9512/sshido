@@ -1,0 +1,7 @@
+// Base signing config — committed, team-agnostic.
+// Override values in Signing.local.xcconfig (gitignored).
+#include? "Signing.local.xcconfig"
+
+BUNDLE_ID              = com.sshido.app
+DEVELOPMENT_TEAM       =
+CODE_SIGN_STYLE        = Automatic

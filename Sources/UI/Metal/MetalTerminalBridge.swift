@@ -1,0 +1,255 @@
+#if canImport(UIKit)
+import Foundation
+import UIKit
+import simd
+import SwiftTerm
+#if canImport(sshidoCore)
+import sshidoCore
+#endif
+#if canImport(sshidoModels)
+import sshidoModels
+#endif
+
+@MainActor
+public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSource {
+    public let renderer: MetalTerminalRenderer
+    public let view: MetalTerminalView
+    public var terminal: SwiftTerm.Terminal!
+
+    private let channel: SSHChannel
+    private var readerTask: Task<Void, Never>?
+    private var pendingFeeds: [Data] = []
+    private var ready = false
+    private var lastReportedSize: (cols: Int, rows: Int) = (0, 0)
+    private let delegateRelay = TerminalDelegateRelay()
+
+    public init(channel: SSHChannel) {
+        self.channel = channel
+        guard let r = MetalTerminalRenderer(fontSize: 16) else {
+            fatalError("Metal device unavailable")
+        }
+        self.renderer = r
+        let v = MetalTerminalView(renderer: r)
+        self.view = v
+        let opts = TerminalOptions(cols: 80, rows: 24, scrollback: 5000)
+        super.init()
+        self.terminal = SwiftTerm.Terminal(delegate: delegateRelay, options: opts)
+        self.delegateRelay.owner = self
+        renderer.source = self
+        v.bridge = self
+        ready = true
+        renderer.start()
+        startReader()
+        Task { try? await channel.connect() }
+    }
+
+    deinit {
+        readerTask?.cancel()
+    }
+
+    public var cols: Int { terminal.cols }
+    public var rows: Int { terminal.rows }
+
+    public func charAt(col: Int, row: Int) -> (codepoint: UInt32, fg: SIMD4<Float>, bg: SIMD4<Float>) {
+        guard let cd = terminal.getCharData(col: col, row: row) else {
+            return (0x20, defaultForeground, defaultBackground)
+        }
+        let raw = UInt32(bitPattern: Int32(cd.unicodeScalarCode))
+        let cp: UInt32 = (raw == 0 || raw > 0x10FFFF) ? 0x20 : raw
+        let fg = colorToVec(cd.attribute.fg, fallback: defaultForeground)
+        let bg = colorToVec(cd.attribute.bg, fallback: defaultBackground)
+        if cd.attribute.style.contains(.inverse) {
+            return (cp, bg, fg)
+        }
+        return (cp, fg, bg)
+    }
+
+    public func cursorCell() -> (col: Int, row: Int)? {
+        let loc = terminal.getCursorLocation()
+        return (loc.x, loc.y)
+    }
+
+    public var defaultBackground: SIMD4<Float> { SIMD4(0, 0, 0, 1) }
+    public var defaultForeground: SIMD4<Float> { SIMD4(0.88, 0.88, 0.88, 1) }
+
+    public func isSelected(col: Int, row: Int) -> Bool {
+        view.isCellSelected(col: col, row: row)
+    }
+
+    public func feed(_ data: Data) {
+        if !ready {
+            pendingFeeds.append(data)
+            return
+        }
+        terminal.feed(byteArray: Array(data))
+        renderer.setNeedsRender()
+    }
+
+    public func refit() {
+        renderer.setNeedsRender()
+    }
+
+    public func focus() {
+        _ = view.becomeFirstResponder()
+    }
+
+    public func applyAppearance() async {}
+
+    public func copyFromTerminal(_ kind: CopyKind) async -> String {
+        switch kind {
+        case .selection:
+            return view.selectedText() ?? ""
+        case .viewport:
+            var lines: [String] = []
+            for r in 0..<terminal.rows {
+                if let line = terminal.getLine(row: r) {
+                    var s = ""
+                    for c in 0..<terminal.cols {
+                        let cd = line[c]
+                        if let scalar = Unicode.Scalar(cd.unicodeScalarCode) {
+                            s.append(Character(scalar))
+                        }
+                    }
+                    lines.append(s.trimmingCharacters(in: .whitespaces))
+                }
+            }
+            return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        case .lastURL:
+            return findLastURL()
+        }
+    }
+
+    private func findLastURL() -> String {
+        let urlChars: Set<Character> = Set(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%"
+        )
+        var rowTexts: [String] = []
+        for r in 0..<terminal.rows {
+            guard let line = terminal.getLine(row: r) else { continue }
+            var s = ""
+            for c in 0..<terminal.cols {
+                let cd = line[c]
+                if cd.unicodeScalarCode > 0 {
+                    s.append(cd.getCharacter())
+                } else {
+                    s.append(" ")
+                }
+            }
+            rowTexts.append(s)
+        }
+        var bestStart: (row: Int, col: Int)?
+        for (ri, row) in rowTexts.enumerated() {
+            if let r = row.range(of: "https://") ?? row.range(of: "http://") {
+                bestStart = (ri, row.distance(from: row.startIndex, to: r.lowerBound))
+            }
+        }
+        guard let bs = bestStart else { return "" }
+        var url = ""
+        let firstRow = rowTexts[bs.row]
+        let startIdx = firstRow.index(firstRow.startIndex, offsetBy: bs.col)
+        for ch in firstRow[startIdx...] {
+            if urlChars.contains(ch) { url.append(ch) } else { return url }
+        }
+        for ri in (bs.row + 1)..<rowTexts.count {
+            let line = rowTexts[ri].trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { return url }
+            var added = false
+            for ch in line {
+                if urlChars.contains(ch) {
+                    url.append(ch)
+                    added = true
+                } else {
+                    return url
+                }
+            }
+            if !added { return url }
+        }
+        return url
+    }
+
+    public func sendBytes(_ bytes: [UInt8]) {
+        Task { try? await channel.send(bytes) }
+    }
+
+    public func resizeIfChanged(cols: Int, rows: Int) {
+        guard cols > 0, rows > 0,
+              (cols, rows) != lastReportedSize else { return }
+        lastReportedSize = (cols, rows)
+        terminal.resize(cols: cols, rows: rows)
+        Task { try? await channel.resize(cols: cols, rows: rows) }
+        if let citadel = channel as? CitadelSSHChannel {
+            citadel.setInitialSize(cols: cols, rows: rows)
+        }
+        renderer.setNeedsRender()
+    }
+
+    public func invalidateReportedSize() {
+        lastReportedSize = (0, 0)
+    }
+
+    private func startReader() {
+        readerTask?.cancel()
+        readerTask = Task { [weak self] in
+            guard let self else { return }
+            for await chunk in channel.output {
+                await MainActor.run { self.feed(chunk) }
+            }
+        }
+    }
+
+    private func colorToVec(_ c: Attribute.Color, fallback: SIMD4<Float>) -> SIMD4<Float> {
+        switch c {
+        case .defaultColor, .defaultInvertedColor:
+            return fallback
+        case .ansi256(let code):
+            return ansi256(code)
+        case .trueColor(let r, let g, let b):
+            return SIMD4(Float(r) / 255, Float(g) / 255, Float(b) / 255, 1)
+        }
+    }
+
+    private func ansi256(_ code: UInt8) -> SIMD4<Float> {
+        if code < 16 { return basicColor(code) }
+        if code >= 16 && code <= 231 {
+            let n = Int(code) - 16
+            let r = n / 36
+            let g = (n % 36) / 6
+            let b = n % 6
+            let scale: (Int) -> Float = { i in i == 0 ? 0 : Float(40 * i + 55) / 255 }
+            return SIMD4(scale(r), scale(g), scale(b), 1)
+        }
+        let v = Float(8 + 10 * (Int(code) - 232)) / 255
+        return SIMD4(v, v, v, 1)
+    }
+
+    private func basicColor(_ c: UInt8) -> SIMD4<Float> {
+        let table: [SIMD4<Float>] = [
+            SIMD4(0,0,0,1),         SIMD4(0.8,0.18,0.18,1), SIMD4(0.05,0.74,0.47,1), SIMD4(0.9,0.8,0.06,1),
+            SIMD4(0.14,0.45,0.78,1),SIMD4(0.74,0.25,0.74,1),SIMD4(0.07,0.66,0.8,1),  SIMD4(0.9,0.9,0.9,1),
+            SIMD4(0.4,0.4,0.4,1),   SIMD4(0.94,0.3,0.3,1),  SIMD4(0.14,0.82,0.55,1), SIMD4(0.96,0.96,0.26,1),
+            SIMD4(0.23,0.56,0.92,1),SIMD4(0.84,0.44,0.84,1),SIMD4(0.16,0.72,0.86,1), SIMD4(1,1,1,1)
+        ]
+        return table[Int(c) % table.count]
+    }
+}
+
+private extension CharData {
+    var unicodeScalarCode: Int { self.getCharacter().unicodeScalars.first.map { Int($0.value) } ?? 0x20 }
+}
+
+private final class TerminalDelegateRelay: TerminalDelegate {
+    weak var owner: MetalTerminalBridge?
+    func send(source: SwiftTerm.Terminal, data: ArraySlice<UInt8>) {
+        let bytes = Array(data)
+        Task { @MainActor in self.owner?.sendBytes(bytes) }
+    }
+    func showCursor(source: SwiftTerm.Terminal) {
+        Task { @MainActor in self.owner?.renderer.setNeedsRender() }
+    }
+    func hideCursor(source: SwiftTerm.Terminal) {
+        Task { @MainActor in self.owner?.renderer.setNeedsRender() }
+    }
+    func windowCommand(source: SwiftTerm.Terminal, command: SwiftTerm.Terminal.WindowManipulationCommand) -> [UInt8]? { nil }
+    func iTermContent(source: SwiftTerm.Terminal, content: ArraySlice<UInt8>) {}
+}
+#endif

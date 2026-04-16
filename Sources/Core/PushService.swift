@@ -1,0 +1,110 @@
+import Foundation
+#if canImport(sshidoModels)
+import sshidoModels
+#endif
+
+public actor PushService {
+    public static let shared = PushService()
+
+    private let stateURL: URL
+    private let settingsURL: URL
+    public private(set) var deviceToken: String?
+    public private(set) var subscription: PushSubscription?
+    public private(set) var settings: PushSettings
+
+    public init() {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("sshido", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        self.stateURL = dir.appendingPathComponent("push-subscription.json")
+        self.settingsURL = dir.appendingPathComponent("push-settings.json")
+        if let data = try? Data(contentsOf: stateURL),
+           let s = try? JSONDecoder().decode(PushSubscription.self, from: data) {
+            self.subscription = s
+        }
+        if let data = try? Data(contentsOf: settingsURL),
+           let s = try? JSONDecoder().decode(PushSettings.self, from: data) {
+            self.settings = s
+        } else {
+            self.settings = .default
+        }
+    }
+
+    public func update(deviceToken: String) async {
+        let isNew = deviceToken != self.deviceToken
+        self.deviceToken = deviceToken
+        if isNew {
+            try? await syncSubscription()
+        }
+    }
+
+    public func setServerURL(_ url: String) async throws {
+        var trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmed.hasSuffix("/") { trimmed.removeLast() }
+        guard URL(string: trimmed) != nil else { throw PushError.invalidServerURL }
+        self.settings = PushSettings(serverURL: trimmed)
+        try persistSettings()
+        self.subscription = nil
+        try? FileManager.default.removeItem(at: stateURL)
+        try await syncSubscription()
+    }
+
+    public func resubscribe() async throws {
+        try await syncSubscription()
+    }
+
+    public func clearSubscription() throws {
+        self.subscription = nil
+        try? FileManager.default.removeItem(at: stateURL)
+    }
+
+    private func syncSubscription() async throws {
+        guard let token = deviceToken else { throw PushError.noDeviceToken }
+        guard let endpoint = URL(string: settings.serverURL + "/subscribe") else {
+            throw PushError.invalidServerURL
+        }
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 10
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["deviceToken": token])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PushError.serverRejected
+        }
+        struct R: Decodable { let id: String; let notifyURL: String }
+        let decoded = try JSONDecoder().decode(R.self, from: data)
+        let sub = PushSubscription(
+            serverURL: settings.serverURL,
+            subscriberID: decoded.id,
+            notifyURL: decoded.notifyURL
+        )
+        self.subscription = sub
+        try persistSubscription()
+    }
+
+    private func persistSubscription() throws {
+        guard let subscription else { return }
+        let data = try JSONEncoder().encode(subscription)
+        try data.write(to: stateURL, options: .atomic)
+    }
+
+    private func persistSettings() throws {
+        let data = try JSONEncoder().encode(settings)
+        try data.write(to: settingsURL, options: .atomic)
+    }
+}
+
+public enum PushError: Error, LocalizedError {
+    case invalidServerURL
+    case serverRejected
+    case noDeviceToken
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidServerURL: return "Invalid push server URL"
+        case .serverRejected:   return "Push server refused subscribe"
+        case .noDeviceToken:    return "No device APNs token yet — enable notifications in iOS Settings → sshido, then force-quit + reopen."
+        }
+    }
+}

@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "AskUserQuestion": [
+      { "type": "command", "command": "~/.claude/hooks/notify.sh AskUserQuestion 'Claude needs input' \"$CLAUDE_HOOK_BODY\"" }
+    ],
+    "Stop": [
+      { "type": "command", "command": "~/.claude/hooks/notify.sh Stop 'Task complete' \"$CLAUDE_HOOK_BODY\"" }
+    ],
+    "Error": [
+      { "type": "command", "command": "~/.claude/hooks/notify.sh Error 'Claude error' \"$CLAUDE_HOOK_BODY\"" }
+    ]
+  }
+}
