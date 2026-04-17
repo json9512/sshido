@@ -47,6 +47,16 @@ public actor SessionStore {
         channels[sessionID]
     }
 
+    public func connectedSessionIDs(for hostID: UUID) async -> Set<UUID> {
+        var out: Set<UUID> = []
+        for s in sessions(for: hostID) {
+            if let ch = channels[s.id], await ch.isConnected {
+                out.insert(s.id)
+            }
+        }
+        return out
+    }
+
     public func connectedHostIDs() async -> Set<UUID> {
         let channelSnapshot = channels
         let sessionSnapshot = sessions

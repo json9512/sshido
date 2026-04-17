@@ -30,7 +30,10 @@ public struct SessionView: View {
     @State private var uploading = false
     @State private var showStuckRecovery = false
     @State private var stuckTimer: Task<Void, Never>?
+    @State private var showDisconnectAlert = false
+    @State private var disconnectWatcher: Task<Void, Never>?
     @StateObject private var oauthFlow = OAuthAuthorizeFlow()
+    @EnvironmentObject private var router: AppRouter
     @Environment(\.dismiss) private var dismiss
 
     private var profile: AgentProfile {
@@ -109,12 +112,9 @@ public struct SessionView: View {
         .task { await load() }
         .onChange(of: scenePhase) { _, new in
             if new == .active {
-                Task { await reconnectIfDropped() }
                 bridge?.requestServerRedraw()
+                startDisconnectWatcher()
             }
-        }
-        .onChange(of: net.status) { _, new in
-            if new == .online { Task { await reconnectIfDropped() } }
         }
         .onChange(of: photoItem) { _, new in
             guard let new else { return }
@@ -169,6 +169,21 @@ public struct SessionView: View {
             }
         }
         .toast($toast)
+        .alert("Connection Lost", isPresented: $showDisconnectAlert) {
+            Button("OK") {
+                BridgeStore.shared.remove(sessionID: session.id)
+                disconnectWatcher?.cancel()
+                if !router.path.isEmpty {
+                    router.path.removeLast()
+                }
+            }
+        } message: {
+            if host.useTmux {
+                Text("The network connection was closed by iOS. Tap the session again to reconnect — your tmux session is still running on the server.")
+            } else {
+                Text("The network connection was closed by iOS.")
+            }
+        }
         .onReceive(oauthFlow.$toast.compactMap { $0 }) { msg in
             toast = msg
             oauthFlow.toast = nil
@@ -242,6 +257,7 @@ public struct SessionView: View {
             let ch = await SessionStore.shared.ensureChannel(for: session, host: host, auth: auth)
             NSLog("[sshido] SessionView.load got channel")
             channel = ch
+            startDisconnectWatcher()
         } catch {
             let msg = String(describing: error)
             NSLog("[sshido] SessionView.load catch: \(msg)")
@@ -249,10 +265,18 @@ public struct SessionView: View {
         }
     }
 
-    private func reconnectIfDropped() async {
-        guard let ch = channel, await !ch.isConnected else { return }
-        await MainActor.run { channel = nil }
-        await load()
+    private func startDisconnectWatcher() {
+        disconnectWatcher?.cancel()
+        guard let ch = channel else { return }
+        disconnectWatcher = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if await !ch.isConnected {
+                    await MainActor.run { showDisconnectAlert = true }
+                    return
+                }
+            }
+        }
     }
 
     private var connectPhase: ConnectStatusPill.Phase {
