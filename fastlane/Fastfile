@@ -19,10 +19,16 @@ platform :ios do
   lane :beta do
     sh("cd .. && make bump")
     sh("cd .. && make archive")
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_filepath: ENV["ASC_KEY_PATH"],
+      in_house: false
+    )
     upload_to_testflight(
+      api_key: api_key,
       ipa: IPA_PATH,
-      skip_waiting_for_build_processing: true,
-      apple_id: ENV["SSHIDO_APPLE_ID_ITC"]  # App Store Connect App ID (numeric) — optional
+      skip_waiting_for_build_processing: true
     )
   end
 
