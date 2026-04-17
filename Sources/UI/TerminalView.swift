@@ -7,10 +7,12 @@ import sshidoCore
 
 public struct TerminalView: UIViewRepresentable {
     let channel: SSHChannel
+    let sessionID: UUID
     let onBridgeReady: ((TerminalBridge) -> Void)?
 
-    public init(channel: SSHChannel, onBridgeReady: ((TerminalBridge) -> Void)? = nil) {
+    public init(channel: SSHChannel, sessionID: UUID, onBridgeReady: ((TerminalBridge) -> Void)? = nil) {
         self.channel = channel
+        self.sessionID = sessionID
         self.onBridgeReady = onBridgeReady
     }
 
@@ -28,14 +30,20 @@ public struct TerminalView: UIViewRepresentable {
     }
 
     public func makeCoordinator() -> Coordinator {
-        Coordinator(channel: channel)
+        Coordinator(channel: channel, sessionID: sessionID)
     }
 
     @MainActor
     public final class Coordinator {
         let bridge: MetalTerminalBridge
-        init(channel: SSHChannel) {
-            self.bridge = MetalTerminalBridge(channel: channel)
+        init(channel: SSHChannel, sessionID: UUID) {
+            if let cached = BridgeStore.shared.bridge(for: sessionID) {
+                self.bridge = cached
+            } else {
+                let fresh = MetalTerminalBridge(channel: channel)
+                BridgeStore.shared.adopt(fresh, for: sessionID)
+                self.bridge = fresh
+            }
         }
     }
 }

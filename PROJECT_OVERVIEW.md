@@ -22,3 +22,14 @@ The project follows a modular Swift-based architecture designed for iOS/iPadOS:
 *   **Connectivity Engine:** Supports SSH (via SwiftSH/Citadel) and Moshi for resilient mobile connections.
 *   **Push Notification System:** Integrated via a dedicated relay server to provide real-time alerts from coding agents.
 *   **Voice Input:** On-device voice dictation capabilities (planned with WhisperKit) for hands-free interaction.
+
+## Navigation Rules (iOS 26 / SwiftUI)
+All app navigation flows through `AppRouter` (`Sources/Core/AppRouter.swift`). These rules prevent a class of bug where iOS 26 renders a "broken view" placeholder (yellow triangle) when internal `NavigationStack` state diverges from `$path`:
+
+1. **Never mix navigation APIs in a stack bound to `$path`.** Do not write `NavigationLink { SomeView() } label: { ... }` inside a `NavigationStack(path:)`. Use `NavigationLink(value: AppRouter.Destination.x)` or `router.push(.x)`. The one exception: self-contained modal `NavigationStack`s with no `path:` binding (e.g. `SettingsView` inside its sheet) may use legacy `NavigationLink { View() }`.
+2. **Exactly one `.navigationDestination(for: AppRouter.Destination.self)`** per `NavigationStack`. The enum carries all drill-down cases.
+3. **Sheets are driven by `router.sheet`**, not by local `@State` flags inside children of the `NavigationStack`.
+4. **Never mutate App-root `@State` in response to a global notification while views are pushed.** Bind notification observers to the leaf view that consumes the value.
+5. **No continuous polling that writes to navigation-adjacent `@State`.** Scope periodic refresh to the leaf view.
+
+Regression gate: `rg 'NavigationLink\s*\{' Sources/AppUI/HostListView.swift Sources/AppUI/SessionsListView.swift Sources/AppUI/SessionView.swift` must return zero hits.

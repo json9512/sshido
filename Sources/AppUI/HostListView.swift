@@ -7,14 +7,45 @@ import sshidoModels
 import sshidoCore
 #endif
 
+private struct PulsingDot: View {
+    let active: Bool
+    @State private var pulse = false
+    var body: some View {
+        let color: Color = active ? .green : .secondary
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.5), lineWidth: 6)
+                .frame(width: 10, height: 10)
+                .scaleEffect(active && pulse ? 2.2 : 1)
+                .opacity(active && pulse ? 0 : 0.5)
+            Circle()
+                .fill(color)
+                .frame(width: 10, height: 10)
+        }
+        .frame(width: 24, height: 24)
+        .onAppear {
+            guard active else { return }
+            withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                pulse = true
+            }
+        }
+        .onChange(of: active) { _, new in
+            pulse = false
+            guard new else { return }
+            withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                pulse = true
+            }
+        }
+    }
+}
+
 public struct HostListView: View {
     @State private var hosts: [RemoteHost] = []
-    @State private var path = NavigationPath()
-    @State private var showAdd = false
-    @State private var editing: RemoteHost?
-    @State private var selectedHost: RemoteHost?
-    @StateObject private var router = DeepLinkRouter.shared
+    @State private var connectedHosts: Set<UUID> = []
+    @EnvironmentObject private var router: AppRouter
+    @StateObject private var deepLinks = DeepLinkRouter.shared
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     public init() {}
 
@@ -24,31 +55,57 @@ public struct HostListView: View {
                 NavigationSplitView {
                     sidebar
                 } detail: {
-                    if let host = selectedHost {
-                        SessionsListView(host: host)
-                    } else {
-                        ContentUnavailableView("Select a server", systemImage: "server.rack")
+                    NavigationStack(path: $router.detailPath) {
+                        detailRoot
+                            .navigationDestination(for: AppRouter.Destination.self, destination: destination)
                     }
                 }
             } else {
-                NavigationStack(path: $path) {
+                NavigationStack(path: $router.path) {
                     sidebar
-                        .navigationDestination(for: RemoteHost.self) { host in
-                            SessionsListView(host: host)
-                        }
-                        .navigationDestination(for: Session.self) { session in
-                            if let host = hosts.first(where: { $0.id == session.hostID }) {
-                                SessionView(session: session, host: host)
-                            } else {
-                                Text("Host not found").foregroundStyle(.secondary)
-                            }
-                        }
+                        .navigationDestination(for: AppRouter.Destination.self, destination: destination)
                 }
             }
         }
         .task { await reload() }
-        .onChange(of: router.pendingSessionRef) { _, _ in
+        .onChange(of: scenePhase) { _, new in
+            if new == .active { Task { await refreshConnections() } }
+        }
+        .onChange(of: deepLinks.pendingSessionRef) { _, _ in
             Task { await handleDeepLink() }
+        }
+        .sheet(item: $router.sheet) { sheet in
+            switch sheet {
+            case .settings:
+                NavigationStack { SettingsView() }
+            case .addHost:
+                AddHostView { _ in Task { await reload() } }
+            case .editHost(let host):
+                AddHostView(existing: host) { _ in Task { await reload() } }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func destination(_ dest: AppRouter.Destination) -> some View {
+        switch dest {
+        case .host(let host):
+            SessionsListView(host: host)
+        case .session(let session):
+            if let host = hosts.first(where: { $0.id == session.hostID }) {
+                SessionView(session: session, host: host)
+            } else {
+                ContentUnavailableView("Host missing", systemImage: "server.rack")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var detailRoot: some View {
+        if let host = router.selectedHost {
+            SessionsListView(host: host)
+        } else {
+            ContentUnavailableView("Select a server", systemImage: "server.rack")
         }
     }
 
@@ -67,13 +124,16 @@ public struct HostListView: View {
                             .padding(.horizontal, 24)
                     }
                 }, actions: {
-                    Button { showAdd = true } label: {
+                    Button { router.sheet = .addHost } label: {
                         Label("Add server", systemImage: "plus")
                     }
                     .buttonStyle(.borderedProminent)
                 })
             } else if sizeClass == .regular {
-                List(selection: $selectedHost) {
+                List(selection: Binding(
+                    get: { router.selectedHost },
+                    set: { router.selectedHost = $0; router.detailPath.removeAll() }
+                )) {
                     ForEach(hosts) { host in
                         hostRow(host).tag(host)
                     }
@@ -88,7 +148,7 @@ public struct HostListView: View {
                 List {
                     ForEach(hosts) { host in
                         Button {
-                            path.append(host)
+                            router.push(.host(host))
                         } label: {
                             hostRow(host)
                         }
@@ -103,7 +163,7 @@ public struct HostListView: View {
                                 }
                             } label: { Image(systemName: "trash") }
                             Button {
-                                editing = host
+                                router.sheet = .editHost(host)
                             } label: { Image(systemName: "pencil") }
                             .tint(.blue)
                         }
@@ -115,22 +175,17 @@ public struct HostListView: View {
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }
+                Button { router.sheet = .settings } label: { Image(systemName: "gearshape") }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showAdd = true } label: { Image(systemName: "plus") }
+                Button { router.sheet = .addHost } label: { Image(systemName: "plus") }
             }
-        }
-        .sheet(isPresented: $showAdd) {
-            AddHostView { _ in Task { await reload() } }
-        }
-        .sheet(item: $editing) { host in
-            AddHostView(existing: host) { _ in Task { await reload() } }
         }
     }
 
     @ViewBuilder
     private func hostRow(_ host: RemoteHost) -> some View {
+        let connected = connectedHosts.contains(host.id)
         HStack(spacing: 12) {
             Image(systemName: "server.rack")
                 .font(.title3)
@@ -146,26 +201,33 @@ public struct HostListView: View {
                 }
                 Text("\(host.username)@\(host.hostname):\(host.port)")
                     .font(.caption.monospaced()).foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            PulsingDot(active: connected)
+                .padding(.trailing, 4)
+                .accessibilityLabel(connected ? "Connected" : "Not connected")
         }
         .padding(.vertical, 2)
     }
 
     private func reload() async {
         hosts = await HostStore.shared.all()
+        await refreshConnections()
         await handleDeepLink()
     }
 
+    private func refreshConnections() async {
+        connectedHosts = await SessionStore.shared.connectedHostIDs()
+    }
+
     private func handleDeepLink() async {
-        guard router.pendingSessionRef != nil else { return }
+        guard deepLinks.pendingSessionRef != nil else { return }
         let allSessions = await SessionStore.shared.allSessions()
-        if let (host, session) = router.resolve(sessions: allSessions, hosts: hosts) {
-            _ = router.consume()
-            await MainActor.run {
-                path = NavigationPath()
-                path.append(host)
-                path.append(session)
-            }
+        if let (host, session) = deepLinks.resolve(sessions: allSessions, hosts: hosts) {
+            _ = deepLinks.consume()
+            router.openSession(session, host: host)
         }
     }
 }

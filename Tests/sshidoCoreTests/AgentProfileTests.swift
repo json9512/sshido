@@ -8,13 +8,7 @@ final class AgentProfileTests: XCTestCase {
         XCTAssertEqual(Set(ids).count, ids.count)
     }
 
-    func testClaudeCodePlanModeSendsShiftTab() {
-        let plan = AgentProfile.claudeCode.buttons.first { $0.label == "Plan" }
-        XCTAssertEqual(plan?.bytes, [0x1b, 0x5b, 0x5a])
-        XCTAssertTrue(plan?.isToggle ?? false)
-    }
-
-    func testRemoteHostCodable() throws {
+func testRemoteHostCodable() throws {
         let host = RemoteHost(name: "test", hostname: "example.com", username: "root")
         let data = try JSONEncoder().encode(host)
         let decoded = try JSONDecoder().decode(RemoteHost.self, from: data)

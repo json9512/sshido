@@ -53,7 +53,7 @@ struct AddIdentityView: View {
                     Section {
                         Button {
                             UIPasteboard.general.string = installCommand
-                            flashToast("Install command copied")
+                            toast = "Install command copied"
                         } label: {
                             Label("Copy install command", systemImage: "doc.on.doc")
                         }
@@ -67,7 +67,7 @@ struct AddIdentityView: View {
                     }
                 }
                 if let error {
-                    Section { Text(error).foregroundStyle(.red) }
+                    Section { InlineErrorText(error) }
                 }
             }
             .navigationTitle(installCommand == nil ? "Add key" : "Install on server")
@@ -82,18 +82,16 @@ struct AddIdentityView: View {
                             .disabled(label.isEmpty || pem.isEmpty)
                     }
                 }
-            }
-            .overlay(alignment: .top) {
-                if let toast {
-                    Text(toast)
-                        .font(.callout)
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(.thinMaterial, in: Capsule())
-                        .padding(.top, 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil)
+                    }
                 }
             }
-            .animation(.easeInOut(duration: 0.15), value: toast)
+            .toast($toast)
         }
     }
 
@@ -124,12 +122,5 @@ struct AddIdentityView: View {
         }
     }
 
-    private func flashToast(_ s: String) {
-        toast = s
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if toast == s { toast = nil }
-        }
-    }
 }
 #endif

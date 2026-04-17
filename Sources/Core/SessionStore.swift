@@ -47,6 +47,18 @@ public actor SessionStore {
         channels[sessionID]
     }
 
+    public func connectedHostIDs() async -> Set<UUID> {
+        let channelSnapshot = channels
+        let sessionSnapshot = sessions
+        var out: Set<UUID> = []
+        for (sid, ch) in channelSnapshot {
+            if await ch.isConnected, let s = sessionSnapshot[sid] {
+                out.insert(s.hostID)
+            }
+        }
+        return out
+    }
+
     public func ensureChannel(for session: Session, host: RemoteHost, auth: SSHAuth) async -> SSHChannel {
         if let existing = channels[session.id], await existing.isConnected {
             return existing

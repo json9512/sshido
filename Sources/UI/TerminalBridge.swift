@@ -11,6 +11,7 @@ public protocol TerminalBridge: AnyObject {
     func applyAppearance() async
     func copyFromTerminal(_ kind: CopyKind) async -> String
     func requestServerRedraw()
+    var isApplicationCursor: Bool { get }
     var onTitleChange: ((String) -> Void)? { get set }
 }
 #endif

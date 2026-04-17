@@ -20,6 +20,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     private var readerTask: Task<Void, Never>?
     private var pendingFeeds: [Data] = []
     private var ready = false
+    private var hasStartedConnect = false
     private var lastReportedSize: (cols: Int, rows: Int) = (0, 0)
     private let delegateRelay = TerminalDelegateRelay()
     private var appearanceObserver: NSObjectProtocol?
@@ -52,7 +53,6 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         Task { [weak self] in
             await self?.applyAppearance()
         }
-        Task { try? await channel.connect() }
     }
 
     deinit {
@@ -64,6 +64,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
 
     public var cols: Int { terminal.cols }
     public var rows: Int { terminal.rows }
+    public var isApplicationCursor: Bool { terminal.applicationCursor }
 
     public func charAt(col: Int, row: Int) -> (codepoint: UInt32, fg: SIMD4<Float>, bg: SIMD4<Float>) {
         guard let cd = terminal.getCharData(col: col, row: row) else {
@@ -117,6 +118,15 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     public func applyAppearance() async {
         let appearance = await AppearanceStore.shared.appearance
         renderer.updateFontSize(CGFloat(appearance.fontSize))
+        view.returnKeyType = {
+            switch appearance.returnKeyStyle {
+            case .defaultReturn: return .default
+            case .send:          return .send
+            case .done:          return .done
+            case .go:            return .go
+            case .newline:       return .default
+            }
+        }()
         view.setNeedsLayout()
         view.layoutIfNeeded()
         renderer.setNeedsRender()
@@ -137,71 +147,58 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         case .selection:
             return view.selectedText() ?? ""
         case .viewport:
-            var lines: [String] = []
-            for r in 0..<terminal.rows {
-                if let line = terminal.getLine(row: r) {
-                    var s = ""
-                    for c in 0..<terminal.cols {
-                        let cd = line[c]
-                        if let scalar = Unicode.Scalar(cd.unicodeScalarCode) {
-                            s.append(Character(scalar))
-                        }
-                    }
-                    lines.append(s.trimmingCharacters(in: .whitespaces))
-                }
-            }
-            return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            return buildViewportDump()
         case .lastURL:
             return findLastURL()
         }
     }
 
-    private func findLastURL() -> String {
-        let urlChars: Set<Character> = Set(
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%"
-        )
-        var rowTexts: [String] = []
+    private func buildViewportDump() -> String {
+        var lines: [String] = []
         for r in 0..<terminal.rows {
-            guard let line = terminal.getLine(row: r) else { continue }
+            if let line = terminal.getLine(row: r) {
+                var s = ""
+                for c in 0..<terminal.cols {
+                    let cd = line[c]
+                    if let scalar = Unicode.Scalar(cd.unicodeScalarCode) {
+                        s.append(Character(scalar))
+                    }
+                }
+                lines.append(s.trimmingCharacters(in: .whitespaces))
+            }
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func findLastURL() -> String {
+        let yDisp = terminal.buffer.yDisp
+        let scanStart = max(0, yDisp - 50)
+        let scanEnd = yDisp + max(terminal.rows, 50)
+        var flat = ""
+        for r in scanStart..<scanEnd {
+            guard let line = terminal.getScrollInvariantLine(row: r) else { continue }
             var s = ""
             for c in 0..<terminal.cols {
                 let cd = line[c]
-                if cd.unicodeScalarCode > 0 {
-                    s.append(cd.getCharacter())
-                } else {
-                    s.append(" ")
+                let code = cd.getCharacter()
+                if code != "\0" {
+                    s.append(code)
                 }
             }
-            rowTexts.append(s)
-        }
-        var bestStart: (row: Int, col: Int)?
-        for (ri, row) in rowTexts.enumerated() {
-            if let r = row.range(of: "https://") ?? row.range(of: "http://") {
-                bestStart = (ri, row.distance(from: row.startIndex, to: r.lowerBound))
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                flat.append(" ")
+            } else {
+                flat.append(trimmed)
             }
         }
-        guard let bs = bestStart else { return "" }
-        var url = ""
-        let firstRow = rowTexts[bs.row]
-        let startIdx = firstRow.index(firstRow.startIndex, offsetBy: bs.col)
-        for ch in firstRow[startIdx...] {
-            if urlChars.contains(ch) { url.append(ch) } else { return url }
-        }
-        for ri in (bs.row + 1)..<rowTexts.count {
-            let line = rowTexts[ri].trimmingCharacters(in: .whitespaces)
-            if line.isEmpty { return url }
-            var added = false
-            for ch in line {
-                if urlChars.contains(ch) {
-                    url.append(ch)
-                    added = true
-                } else {
-                    return url
-                }
-            }
-            if !added { return url }
-        }
-        return url
+        let pattern = #"https?://[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return "" }
+        let range = NSRange(flat.startIndex..., in: flat)
+        let matches = regex.matches(in: flat, range: range)
+        guard let last = matches.last,
+              let r = Range(last.range, in: flat) else { return "" }
+        return String(flat[r])
     }
 
     public func sendBytes(_ bytes: [UInt8]) {
@@ -213,10 +210,14 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
               (cols, rows) != lastReportedSize else { return }
         lastReportedSize = (cols, rows)
         terminal.resize(cols: cols, rows: rows)
-        terminal.feed(byteArray: Array("\u{1b}[2J\u{1b}[H".utf8))
-        Task { try? await channel.resize(cols: cols, rows: rows) }
         if let citadel = channel as? CitadelSSHChannel {
             citadel.setInitialSize(cols: cols, rows: rows)
+        }
+        if !hasStartedConnect {
+            hasStartedConnect = true
+            Task { try? await channel.connect() }
+        } else {
+            Task { try? await channel.resize(cols: cols, rows: rows) }
         }
         renderer.setNeedsRender()
     }
@@ -291,7 +292,24 @@ private final class TerminalDelegateRelay: TerminalDelegate {
     func hideCursor(source: SwiftTerm.Terminal) {
         Task { @MainActor in self.owner?.renderer.setNeedsRender() }
     }
-    func windowCommand(source: SwiftTerm.Terminal, command: SwiftTerm.Terminal.WindowManipulationCommand) -> [UInt8]? { nil }
+    func windowCommand(source: SwiftTerm.Terminal, command: SwiftTerm.Terminal.WindowManipulationCommand) -> [UInt8]? {
+        switch command {
+        case .reportTextAreaPixelDimension,
+             .reportTerminalWindowPixelDimension,
+             .reportSizeOfScreenInPixels,
+             .reportCellSizeInPixels,
+             .reportTextAreaCharacters,
+             .reportScreenSizeCharacters,
+             .reportIconLabel,
+             .reportWindowTitle,
+             .reportTerminalState,
+             .reportTerminalPosition,
+             .reportTextAreaPosition:
+            return []
+        default:
+            return nil
+        }
+    }
     func iTermContent(source: SwiftTerm.Terminal, content: ArraySlice<UInt8>) {}
     func setTerminalTitle(source: SwiftTerm.Terminal, title: String) {
         Task { @MainActor in self.owner?.receiveTitleFromTerminal(title) }

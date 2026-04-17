@@ -1,7 +1,5 @@
 app_identifier("com.sshido.app")
 team_id(ENV["FASTLANE_TEAM_ID"] || "")
 # Override locally: echo 'apple_id("you@example.com")' > fastlane/Appfile.local
-begin
-  load File.expand_path("Appfile.local", __dir__)
-rescue LoadError
-end
+local_appfile = File.expand_path("Appfile.local", __dir__)
+instance_eval(File.read(local_appfile)) if File.exist?(local_appfile)

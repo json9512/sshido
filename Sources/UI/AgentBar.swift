@@ -41,44 +41,45 @@ public final class HotkeyState: ObservableObject {
 
 public struct AgentBar: View {
     let channel: SSHChannel
+    let bridge: TerminalBridge?
+    let onFocusTerminal: () -> Void
     @ObservedObject var hotkeys: HotkeyState
-    @State private var customs: [CustomShortcut] = []
+    @State private var items: [BarItem] = []
+    @State private var keyboardVisible = true
 
-    public init(channel: SSHChannel, hotkeys: HotkeyState) {
+    public init(channel: SSHChannel,
+                bridge: TerminalBridge? = nil,
+                hotkeys: HotkeyState,
+                onFocusTerminal: @escaping () -> Void) {
         self.channel = channel
+        self.bridge = bridge
         self.hotkeys = hotkeys
+        self.onFocusTerminal = onFocusTerminal
     }
 
     public var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 Button {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil, from: nil, for: nil
-                    )
+                    if keyboardVisible {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    } else {
+                        onFocusTerminal()
+                    }
                 } label: {
-                    Image(systemName: "keyboard.chevron.compact.down")
+                    Image(systemName: keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
                         .font(.system(size: 15))
                         .padding(.horizontal, 10).padding(.vertical, 8)
                         .background(Color.secondary.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
-                ForEach(HotkeyButton.defaults) { btn in
-                    button(for: btn)
-                }
-                if !customs.isEmpty {
-                    Divider().frame(height: 24)
-                    ForEach(customs) { sc in
-                        Button {
-                            send(bytes: sc.bytes)
-                        } label: {
-                            Text(sc.label)
-                                .font(.system(size: 13, weight: .medium, design: .monospaced))
-                                .padding(.horizontal, 10).padding(.vertical, 8)
-                                .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
+                ForEach(items) { item in
+                    switch item {
+                    case .builtin(let btn): button(for: btn)
+                    case .custom(let sc):   customButton(sc)
                     }
                 }
             }
@@ -86,7 +87,34 @@ public struct AgentBar: View {
             .padding(.vertical, 6)
         }
         .background(.ultraThinMaterial)
-        .task { customs = await CustomShortcutStore.shared.shortcuts }
+        .task { await reload() }
+        .onReceive(NotificationCenter.default.publisher(for: .hotkeyLayoutChanged)) { _ in
+            Task { await reload() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardVisible = false
+        }
+    }
+
+    private func reload() async {
+        let customs = await CustomShortcutStore.shared.shortcuts
+        items = await HotkeyLayoutStore.shared.ordered(builtins: HotkeyButton.defaults, customs: customs)
+    }
+
+    @ViewBuilder
+    private func customButton(_ sc: CustomShortcut) -> some View {
+        Button {
+            send(bytes: sc.bytes)
+        } label: {
+            Text(sc.label)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -122,8 +150,23 @@ public struct AgentBar: View {
     }
 
     private func send(bytes: [UInt8]) {
-        let final = hotkeys.consumeAndApply(to: bytes)
+        let swapped = applicationCursorSwap(bytes)
+        let final = hotkeys.consumeAndApply(to: swapped)
         Task { try? await channel.send(final) }
+    }
+
+    private func applicationCursorSwap(_ bytes: [UInt8]) -> [UInt8] {
+        guard bridge?.isApplicationCursor == true,
+              bytes.count == 3,
+              bytes[0] == 0x1b,
+              bytes[1] == 0x5b
+        else { return bytes }
+        switch bytes[2] {
+        case 0x41, 0x42, 0x43, 0x44:
+            return [0x1b, 0x4f, bytes[2]]
+        default:
+            return bytes
+        }
     }
 }
 #endif

@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
+import UIKit
 #if canImport(sshidoModels)
 import sshidoModels
 #endif
@@ -21,11 +22,11 @@ struct AddHostView: View {
     @State private var passwordTouched = false
     @State private var identities: [Identity] = []
     @State private var selectedIdentityID: UUID?
-    @State private var tmuxSession = "sshido"
-    @State private var forceCompactAgent = true
     @State private var showAddIdentity = false
-    @State private var showAdvanced = false
+    @State private var showManageKeys = false
     @State private var error: String?
+    @State private var working = false
+    @State private var toast: String?
 
     init(existing: RemoteHost? = nil, onSaved: @escaping (RemoteHost) -> Void) {
         self.existing = existing
@@ -61,6 +62,9 @@ struct AddHostView: View {
                             }
                         }
                         Button("Add new key…") { showAddIdentity = true }
+                        if !identities.isEmpty {
+                            Button("Manage keys…") { showManageKeys = true }
+                        }
                     } else {
                         SecureField(existing != nil ? "Password (unchanged if blank)" : "Password",
                                     text: $password)
@@ -68,24 +72,27 @@ struct AddHostView: View {
                             .onChange(of: password) { _, _ in passwordTouched = true }
                     }
                 }
-                Section {
-                    DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
-                        TextField("tmux session", text: $tmuxSession)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        Toggle("Force compact agent UI", isOn: $forceCompactAgent)
-                    }
-                }
                 if let error {
-                    Section { Text(error).foregroundStyle(.red) }
+                    Section { InlineErrorText(error) }
                 }
             }
             .navigationTitle(existing == nil ? "Add server" : "Edit server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(working)
+                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { Task { await save() } }
-                        .disabled(!isValid)
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if working { ProgressView() } else { Text("Save") }
+                    }
+                    .disabled(!isValid || working)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { dismissKeyboard() }
                 }
             }
             .task {
@@ -98,6 +105,20 @@ struct AddHostView: View {
                     selectedIdentityID = added.id
                 }
             }
+            .sheet(isPresented: $showManageKeys) {
+                ManageKeysView()
+                    .onDisappear {
+                        Task {
+                            let fresh = await IdentityStore.shared.all()
+                            identities = fresh
+                            if let sel = selectedIdentityID,
+                               !fresh.contains(where: { $0.id == sel }) {
+                                selectedIdentityID = nil
+                            }
+                        }
+                    }
+            }
+            .toast($toast)
         }
     }
 
@@ -109,8 +130,6 @@ struct AddHostView: View {
         username = h.username
         authMethod = h.authMethod
         selectedIdentityID = h.identityID
-        tmuxSession = h.tmuxSession
-        forceCompactAgent = h.forceCompactAgent
     }
 
     private func normalizedHostname(_ s: String) -> String {
@@ -133,6 +152,10 @@ struct AddHostView: View {
     }
 
     private func save() async {
+        error = nil
+        working = true
+        defer { working = false }
+
         let hostID = existing?.id ?? UUID()
         let cleanedHost = normalizedHostname(hostname)
         let host = RemoteHost(
@@ -145,10 +168,42 @@ struct AddHostView: View {
             authMethod: authMethod,
             useMosh: false,
             useTmux: true,
-            tmuxSession: tmuxSession,
-            agentProfileID: nil,
-            forceCompactAgent: forceCompactAgent
+            tmuxSession: existing?.tmuxSession ?? "sshido",
+            agentProfileID: nil
         )
+
+        let auth: SSHAuth
+        do {
+            auth = try await resolveAuth(for: host)
+        } catch {
+            self.error = "Auth setup failed: \(error)"
+            return
+        }
+
+        toast = "Testing connection…"
+
+        let probe = CitadelSSHChannel(
+            host: host.hostname,
+            port: host.port,
+            user: host.username,
+            auth: auth,
+            cols: 80, rows: 24,
+            bootstrapCommand: nil,
+            environment: [:]
+        )
+        do {
+            try await probe.connect()
+            await probe.disconnect()
+        } catch let e as SSHError {
+            self.error = friendly(e)
+            toast = nil
+            return
+        } catch {
+            self.error = String(describing: error)
+            toast = nil
+            return
+        }
+
         do {
             if authMethod == .password, passwordTouched, !password.isEmpty {
                 try KeychainKeyStore().storePassword(password, hostID: host.id)
@@ -157,11 +212,52 @@ struct AddHostView: View {
                 KeychainKeyStore().deletePassword(hostID: host.id)
             }
             try await HostStore.shared.upsert(host)
+            toast = "Connected ✓"
+            try? await Task.sleep(nanoseconds: 700_000_000)
             onSaved(host)
             dismiss()
         } catch {
-            self.error = String(describing: error)
+            self.error = "Save failed: \(error)"
         }
+    }
+
+    private func resolveAuth(for host: RemoteHost) async throws -> SSHAuth {
+        switch authMethod {
+        case .password:
+            if passwordTouched, !password.isEmpty {
+                return .password(password)
+            }
+            let existing = try KeychainKeyStore().loadPassword(hostID: host.id)
+            return .password(existing)
+        case .key:
+            guard let identityID = selectedIdentityID else {
+                throw SSHError.invalidKey("no key selected")
+            }
+            let pem = try await IdentityStore.shared.loadPEM(for: identityID)
+            return .privateKeyPEM(pem, passphrase: nil)
+        }
+    }
+
+    private func friendly(_ e: SSHError) -> String {
+        switch e {
+        case .authFailed(let m):
+            return "Authentication failed — \(m)"
+        case .transport(let m):
+            if m.contains("timed out") { return "Couldn't reach \(hostname):\(port) — host unreachable or blocked" }
+            if m.contains("NIOConnectionError") || m.contains("refused") {
+                return "Connection refused at \(hostname):\(port) — is SSH running on that port?"
+            }
+            return "Transport error: \(m)"
+        case .invalidKey(let m):
+            return "Key problem: \(m)"
+        case .notConnected:
+            return "Not connected"
+        }
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 #endif

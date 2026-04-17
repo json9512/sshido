@@ -20,7 +20,7 @@ platform :ios do
     sh("cd .. && make bump")
     sh("cd .. && make archive")
     upload_to_testflight(
-      ipa: "../#{IPA_PATH}",
+      ipa: IPA_PATH,
       skip_waiting_for_build_processing: true,
       apple_id: ENV["SSHIDO_APPLE_ID_ITC"]  # App Store Connect App ID (numeric) — optional
     )

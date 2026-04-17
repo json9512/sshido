@@ -18,7 +18,11 @@ public final class MetalTerminalView: UIView, UIKeyInput, UITextInputTraits {
     public var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
     public var spellCheckingType: UITextSpellCheckingType = .no
     public var keyboardAppearance: UIKeyboardAppearance = .dark
-    public var returnKeyType: UIReturnKeyType = .default
+    public var returnKeyType: UIReturnKeyType = .default {
+        didSet {
+            if isFirstResponder { reloadInputViews() }
+        }
+    }
 
     private var pinchBaseFontSize: CGFloat = 16
     private var keyboardOverlap: CGFloat = 0

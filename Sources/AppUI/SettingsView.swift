@@ -17,33 +17,70 @@ public struct SettingsView: View {
     @State private var deviceToken: String?
     @State private var serverURLInput = ""
     @State private var error: String?
-    @State private var info: String?
+    @State private var toast: String?
     @State private var working = false
     @State private var appearance: TerminalAppearance = .default
     @State private var shortcuts: [CustomShortcut] = []
-    @State private var newLabel = ""
-    @State private var newText = ""
+    @State private var barItems: [BarItem] = []
     @State private var voiceLanguage: VoiceLanguage = VoicePreferences.shared.language
+    @State private var quickAddExpanded = false
+    @State private var building: [CustomShortcut] = []
+    @State private var shortcutsEditMode: EditMode = .inactive
 
     static let commonShortcuts: [CustomShortcut] = [
+        .init(label: "Esc",      bytes: [0x1b]),
+        .init(label: "Tab",      bytes: [0x09]),
         .init(label: "⇧Tab",     bytes: [0x1b, 0x5b, 0x5a]),
-        .init(label: "⌥Enter",   bytes: [0x1b, 0x0d]),
-        .init(label: "⌘Enter",   bytes: [0x1b, 0x0d]),
+        .init(label: "Enter",    bytes: [0x0d]),
+        .init(label: "Space",    bytes: [0x20]),
+        .init(label: "Bksp",     bytes: [0x7f]),
+        .init(label: "Del",      bytes: [0x1b, 0x5b, 0x33, 0x7e]),
+        .init(label: "←",        bytes: [0x1b, 0x5b, 0x44]),
+        .init(label: "↓",        bytes: [0x1b, 0x5b, 0x42]),
+        .init(label: "↑",        bytes: [0x1b, 0x5b, 0x41]),
+        .init(label: "→",        bytes: [0x1b, 0x5b, 0x43]),
+        .init(label: "⌃←",       bytes: [0x1b, 0x5b, 0x31, 0x3b, 0x35, 0x44]),
+        .init(label: "⌃→",       bytes: [0x1b, 0x5b, 0x31, 0x3b, 0x35, 0x43]),
         .init(label: "Home",     bytes: [0x1b, 0x5b, 0x48]),
         .init(label: "End",      bytes: [0x1b, 0x5b, 0x46]),
         .init(label: "PgUp",     bytes: [0x1b, 0x5b, 0x35, 0x7e]),
         .init(label: "PgDn",     bytes: [0x1b, 0x5b, 0x36, 0x7e]),
-        .init(label: "⌃←",       bytes: [0x1b, 0x5b, 0x31, 0x3b, 0x35, 0x44]),
-        .init(label: "⌃→",       bytes: [0x1b, 0x5b, 0x31, 0x3b, 0x35, 0x43]),
         .init(label: "⌃A",       bytes: [0x01]),
+        .init(label: "⌃B",       bytes: [0x02]),
+        .init(label: "⌃C",       bytes: [0x03]),
+        .init(label: "⌃D",       bytes: [0x04]),
         .init(label: "⌃E",       bytes: [0x05]),
-        .init(label: "⌃R",       bytes: [0x12]),
-        .init(label: "⌃W",       bytes: [0x17]),
+        .init(label: "⌃F",       bytes: [0x06]),
+        .init(label: "⌃G",       bytes: [0x07]),
+        .init(label: "⌃H",       bytes: [0x08]),
+        .init(label: "⌃J",       bytes: [0x0a]),
+        .init(label: "⌃K",       bytes: [0x0b]),
         .init(label: "⌃L",       bytes: [0x0c]),
+        .init(label: "⌃N",       bytes: [0x0e]),
+        .init(label: "⌃O",       bytes: [0x0f]),
+        .init(label: "⌃P",       bytes: [0x10]),
+        .init(label: "⌃Q",       bytes: [0x11]),
+        .init(label: "⌃R",       bytes: [0x12]),
+        .init(label: "⌃S",       bytes: [0x13]),
+        .init(label: "⌃T",       bytes: [0x14]),
+        .init(label: "⌃U",       bytes: [0x15]),
+        .init(label: "⌃V",       bytes: [0x16]),
+        .init(label: "⌃W",       bytes: [0x17]),
+        .init(label: "⌃X",       bytes: [0x18]),
+        .init(label: "⌃Y",       bytes: [0x19]),
+        .init(label: "⌃Z",       bytes: [0x1a]),
         .init(label: "F1",       bytes: [0x1b, 0x4f, 0x50]),
         .init(label: "F2",       bytes: [0x1b, 0x4f, 0x51]),
         .init(label: "F3",       bytes: [0x1b, 0x4f, 0x52]),
-        .init(label: "F4",       bytes: [0x1b, 0x4f, 0x53])
+        .init(label: "F4",       bytes: [0x1b, 0x4f, 0x53]),
+        .init(label: "F5",       bytes: [0x1b, 0x5b, 0x31, 0x35, 0x7e]),
+        .init(label: "F6",       bytes: [0x1b, 0x5b, 0x31, 0x37, 0x7e]),
+        .init(label: "F7",       bytes: [0x1b, 0x5b, 0x31, 0x38, 0x7e]),
+        .init(label: "F8",       bytes: [0x1b, 0x5b, 0x31, 0x39, 0x7e]),
+        .init(label: "F9",       bytes: [0x1b, 0x5b, 0x32, 0x30, 0x7e]),
+        .init(label: "F10",      bytes: [0x1b, 0x5b, 0x32, 0x31, 0x7e]),
+        .init(label: "F11",      bytes: [0x1b, 0x5b, 0x32, 0x33, 0x7e]),
+        .init(label: "F12",      bytes: [0x1b, 0x5b, 0x32, 0x34, 0x7e])
     ]
 
     public init() {}
@@ -66,38 +103,27 @@ public struct SettingsView: View {
                     Button {
                         Task { await applyServer() }
                     } label: {
-                        if working { ProgressView() } else { Text("Save & subscribe") }
+                        if working { ProgressView() } else { Text(subscribeActionLabel) }
                     }
-                    .disabled(working || serverURLInput.isEmpty)
+                    .disabled(working || trimmedServerURLInput.isEmpty)
                     if let subscription {
-                        Divider()
-                        Button {
-                            UIPasteboard.general.string = Self.agentSetupPrompt(notifyURL: subscription.notifyURL)
-                            flashToast("Agent setup prompt copied")
-                        } label: {
-                            Label("Copy agent setup prompt", systemImage: "doc.on.doc")
-                        }
-                        HStack {
-                            Text("Subscribed \(subscription.subscribedAt.formatted(date: .abbreviated, time: .shortened))")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                        Button("Resubscribe") {
-                            Task {
-                                try? await PushService.shared.resubscribe()
-                                await reload()
-                                flashToast("Resubscribed")
-                            }
-                        }
                         Button(role: .destructive) {
                             Task {
                                 try? await PushService.shared.clearSubscription()
                                 await reload()
-                                flashToast("Subscription cleared")
+                                toast = "Subscription cleared"
                             }
                         } label: {
                             Label("Clear subscription", systemImage: "trash")
                         }
+                        Button {
+                            UIPasteboard.general.string = Self.agentSetupPrompt(notifyURL: subscription.notifyURL)
+                            toast = "Agent setup prompt copied"
+                        } label: {
+                            Label("Copy agent setup prompt", systemImage: "doc.on.doc")
+                        }
+                        Text("Subscribed \(subscription.subscribedAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text(deviceToken == nil
                              ? "Awaiting APNs registration…"
@@ -109,71 +135,102 @@ public struct SettingsView: View {
                 } footer: {
                     Text("Subscribe, then tap \"Copy agent setup prompt\" and paste it into Claude Code on your dev server. The agent installs the hook for you.")
                 }
-                Section {
-                    let existingLabels = Set(shortcuts.map { $0.label })
-                    let available = SettingsView.commonShortcuts.filter { !existingLabels.contains($0.label) }
-                    if available.isEmpty {
-                        Text("All common keys added.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
-                            ForEach(available, id: \.label) { sc in
-                                Button {
-                                    Task {
-                                        try? await CustomShortcutStore.shared.add(sc)
-                                        await reload()
+                Section("Shortcuts") {
+                    DisclosureGroup(isExpanded: $quickAddExpanded) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if building.isEmpty {
+                                Text("Tap keys below. They'll send in the order you tap.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 6)], spacing: 6) {
+                                    ForEach(Array(building.enumerated()), id: \.offset) { idx, sc in
+                                        Button {
+                                            building.remove(at: idx)
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Text(sc.label)
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.caption2)
+                                                    .opacity(0.7)
+                                            }
+                                        }
+                                        .buttonStyle(TintedChipButtonStyle())
                                     }
-                                } label: {
-                                    Text(sc.label)
-                                        .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                        .frame(maxWidth: .infinity, minHeight: 36)
-                                        .background(Color.accentColor.opacity(0.15),
-                                                    in: RoundedRectangle(cornerRadius: 8))
                                 }
-                                .buttonStyle(.plain)
+                            }
+                            Divider()
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 56), spacing: 6)], spacing: 6) {
+                                ForEach(SettingsView.commonShortcuts, id: \.label) { sc in
+                                    Button(sc.label) {
+                                        building.append(sc)
+                                    }
+                                    .buttonStyle(TintedChipButtonStyle())
+                                }
+                            }
+                            HStack {
+                                Button("Cancel", role: .cancel) {
+                                    building = []
+                                    quickAddExpanded = false
+                                }
+                                Spacer()
+                                Button("Save") {
+                                    Task { await saveBuilding() }
+                                }
+                                .disabled(building.isEmpty)
+                                .buttonStyle(.borderedProminent)
                             }
                         }
                         .padding(.vertical, 4)
+                    } label: {
+                        Label("Add a shortcut", systemImage: "plus.circle")
                     }
-                } header: {
-                    Text("Quick add")
-                } footer: {
-                    Text("Tap a key to add it to your shortcut bar.")
-                }
-                Section("Custom shortcuts") {
-                    if shortcuts.isEmpty {
-                        Text("No shortcuts yet. Use Quick add above, or type bytes manually below.")
+                    HStack {
+                        Text("\(barItems.count) in bar")
                             .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        ForEach(shortcuts) { sc in
-                            HStack {
-                                Text(sc.label).bold()
-                                Spacer()
-                                Text(displayBytes(sc.bytes))
-                                    .font(.caption.monospaced()).foregroundStyle(.secondary)
-                                    .lineLimit(1).truncationMode(.tail)
+                        Spacer()
+                        Button(shortcutsEditMode.isEditing ? "Done" : "Manage") {
+                            withAnimation {
+                                shortcutsEditMode = shortcutsEditMode.isEditing ? .inactive : .active
                             }
                         }
-                        .onDelete { offsets in
-                            Task {
-                                for i in offsets {
-                                    try? await CustomShortcutStore.shared.remove(id: shortcuts[i].id)
+                        .font(.callout)
+                        .disabled(barItems.isEmpty)
+                    }
+                    if shortcutsEditMode.isEditing {
+                        ForEach(barItems) { item in
+                            HStack(spacing: 10) {
+                                if case .custom(let sc) = item {
+                                    Button {
+                                        Task { await deleteCustom(sc.id) }
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundStyle(.red)
+                                            .font(.title3)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
+                                Text(item.label).bold()
+                                Spacer()
+                                switch item {
+                                case .builtin:
+                                    Text("built-in")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                case .custom(let sc):
+                                    Text(displayBytes(sc.bytes))
+                                        .font(.caption.monospaced()).foregroundStyle(.secondary)
+                                        .lineLimit(1).truncationMode(.tail)
+                                }
+                            }
+                        }
+                        .onMove { source, destination in
+                            var ids = barItems.map(\.id)
+                            ids.move(fromOffsets: source, toOffset: destination)
+                            Task {
+                                try? await HotkeyLayoutStore.shared.setOrder(ids)
+                                NotificationCenter.default.post(name: .hotkeyLayoutChanged, object: nil)
                                 await reload()
                             }
                         }
-                    }
-                    HStack {
-                        TextField("Label", text: $newLabel)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .frame(maxWidth: 100)
-                        TextField("Text or \\e \\n \\t \\xNN", text: $newText)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .font(.callout.monospaced())
-                        Button("Add") {
-                            Task { await addShortcut() }
-                        }
-                        .disabled(newLabel.isEmpty || newText.isEmpty)
                     }
                 }
                 Section("Voice input") {
@@ -183,20 +240,37 @@ public struct SettingsView: View {
                         }
                     }
                 }
-                Section("Terminal appearance") {
-                    Picker("Theme", selection: $appearance.theme) {
-                        ForEach(TerminalTheme.allCases, id: \.self) { t in
-                            Text(t.displayName).tag(t)
+                Section {
+                    Picker("Return key", selection: $appearance.returnKeyStyle) {
+                        ForEach(ReturnKeyStyle.allCases, id: \.self) { s in
+                            Text(s.displayName).tag(s)
                         }
                     }
+                } header: {
+                    Text("Keyboard")
+                } footer: {
+                    Text("Changes the bottom-right key on the software keyboard. \"Return\" is the usual ↵ arrow.")
+                }
+                Section("Terminal") {
                     Stepper("Font size: \(appearance.fontSize) pt",
                             value: $appearance.fontSize, in: 8...22)
                 }
                 if let error {
-                    Section { Text(error).foregroundStyle(.red) }
+                    Section { InlineErrorText(error) }
                 }
             }
             .navigationTitle("Settings")
+            .environment(\.editMode, $shortcutsEditMode)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil)
+                    }
+                }
+            }
             .task { await reload() }
             .onChange(of: appearance) { _, new in
                 Task { try? await AppearanceStore.shared.set(new) }
@@ -204,17 +278,7 @@ public struct SettingsView: View {
             .onChange(of: voiceLanguage) { _, new in
                 VoicePreferences.shared.language = new
             }
-            .overlay(alignment: .top) {
-                if let info {
-                    Text(info)
-                        .font(.callout)
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(.thinMaterial, in: Capsule())
-                        .padding(.top, 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .animation(.easeInOut(duration: 0.15), value: info)
+            .toast($toast)
         }
     }
 
@@ -246,12 +310,13 @@ public struct SettingsView: View {
         """
     }
 
-    private func flashToast(_ s: String) {
-        info = s
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if info == s { info = nil }
-        }
+    private var trimmedServerURLInput: String {
+        serverURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var subscribeActionLabel: String {
+        guard let sub = subscription else { return "Subscribe" }
+        return sub.serverURL == trimmedServerURLInput ? "Update subscription" : "Change server"
     }
 
     private func reload() async {
@@ -260,46 +325,30 @@ public struct SettingsView: View {
         deviceToken = await PushService.shared.deviceToken
         appearance = await AppearanceStore.shared.appearance
         shortcuts = await CustomShortcutStore.shared.shortcuts
+        barItems = await HotkeyLayoutStore.shared.ordered(
+            builtins: HotkeyButton.defaults,
+            customs: shortcuts
+        )
         if serverURLInput.isEmpty { serverURLInput = settings.serverURL }
     }
 
-    private func addShortcut() async {
-        let bytes = parseShortcut(newText)
-        guard !bytes.isEmpty else { return }
-        let sc = CustomShortcut(label: newLabel, bytes: bytes)
-        try? await CustomShortcutStore.shared.add(sc)
-        newLabel = ""
-        newText = ""
+    private func deleteCustom(_ id: UUID) async {
+        try? await CustomShortcutStore.shared.remove(id: id)
+        NotificationCenter.default.post(name: .hotkeyLayoutChanged, object: nil)
         await reload()
     }
 
-    private func parseShortcut(_ s: String) -> [UInt8] {
-        var out: [UInt8] = []
-        var i = s.startIndex
-        while i < s.endIndex {
-            let ch = s[i]
-            if ch == "\\", let next = s.index(i, offsetBy: 1, limitedBy: s.endIndex), next < s.endIndex {
-                let code = s[next]
-                switch code {
-                case "n": out.append(0x0a); i = s.index(after: next)
-                case "r": out.append(0x0d); i = s.index(after: next)
-                case "t": out.append(0x09); i = s.index(after: next)
-                case "e": out.append(0x1b); i = s.index(after: next)
-                case "\\": out.append(0x5c); i = s.index(after: next)
-                case "x":
-                    if let h1 = s.index(next, offsetBy: 1, limitedBy: s.endIndex), h1 < s.endIndex,
-                       let h2 = s.index(next, offsetBy: 2, limitedBy: s.endIndex), h2 < s.endIndex,
-                       let v = UInt8(String(s[h1...h2]), radix: 16) {
-                        out.append(v); i = s.index(after: h2)
-                    } else { out.append(0x5c); out.append(0x78); i = s.index(after: next) }
-                default:
-                    out.append(0x5c); out.append(contentsOf: String(code).utf8); i = s.index(after: next)
-                }
-            } else {
-                out.append(contentsOf: String(ch).utf8); i = s.index(after: i)
-            }
-        }
-        return out
+    private func saveBuilding() async {
+        guard !building.isEmpty else { return }
+        let label = building.map { $0.label }.joined(separator: " ")
+        let bytes = building.flatMap { $0.bytes }
+        let sc = CustomShortcut(label: label, bytes: bytes)
+        try? await CustomShortcutStore.shared.add(sc)
+        building = []
+        quickAddExpanded = false
+        NotificationCenter.default.post(name: .hotkeyLayoutChanged, object: nil)
+        await reload()
+        toast = "Shortcut added"
     }
 
     private func displayBytes(_ b: [UInt8]) -> String {
@@ -312,10 +361,18 @@ public struct SettingsView: View {
     private func applyServer() async {
         error = nil; working = true
         defer { working = false }
+        let input = trimmedServerURLInput
+        guard !input.isEmpty else { return }
         do {
-            try await PushService.shared.setServerURL(serverURLInput)
-            await reload()
-            flashToast("Subscribed")
+            if let sub = subscription, sub.serverURL == input {
+                try await PushService.shared.resubscribe()
+                await reload()
+                toast = "Resubscribed"
+            } else {
+                try await PushService.shared.setServerURL(input)
+                await reload()
+                toast = "Subscribed"
+            }
         } catch {
             self.error = String(describing: error)
         }

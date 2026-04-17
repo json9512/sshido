@@ -28,6 +28,10 @@ public struct SessionView: View {
     @StateObject private var hotkeys = HotkeyState()
     @State private var photoItem: PhotosPickerItem?
     @State private var uploading = false
+    @State private var showStuckRecovery = false
+    @State private var stuckTimer: Task<Void, Never>?
+    @StateObject private var oauthFlow = OAuthAuthorizeFlow()
+    @Environment(\.dismiss) private var dismiss
 
     private var profile: AgentProfile {
         AgentProfile.builtins.first { $0.id == host.agentProfileID } ?? .claudeCode
@@ -45,7 +49,7 @@ public struct SessionView: View {
     public var body: some View {
         VStack(spacing: 0) {
             if let ch = channel {
-                TerminalView(channel: ch) { b in
+                TerminalView(channel: ch, sessionID: session.id) { b in
                     Task { @MainActor in
                         self.bridge = b
                         b.onTitleChange = { newTitle in
@@ -58,19 +62,48 @@ public struct SessionView: View {
                 if voice.state != .idle || !voice.transcript.isEmpty {
                     voiceStrip(ch)
                 }
-                AgentBar(channel: ch, hotkeys: hotkeys)
+                AgentBar(channel: ch, bridge: bridge, hotkeys: hotkeys) {
+                    bridge?.focus()
+                }
             } else if let error {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40)).foregroundStyle(.orange)
-                    Text(error).font(.callout.monospaced())
-                        .multilineTextAlignment(.center).padding(.horizontal)
-                    Button("Retry") { Task { await load() } }.buttonStyle(.borderedProminent)
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.orange)
+                    Text("Couldn't open the session")
+                        .font(.headline)
+                    Text(error.isEmpty ? "(no error message)" : error)
+                        .font(.callout.monospaced())
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .textSelection(.enabled)
+                    HStack(spacing: 12) {
+                        Button("Retry") { Task { await load() } }
+                            .buttonStyle(.borderedProminent)
+                        Button("Back") { dismiss() }
+                            .buttonStyle(.bordered)
+                    }
+                    .padding(.top, 8)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ProgressView("Opening \(liveTitle)…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("Opening \(liveTitle.isEmpty ? session.title : liveTitle)…")
+                        .font(.callout).foregroundStyle(.primary)
+                    if showStuckRecovery {
+                        Text("Taking longer than usual…")
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 12) {
+                            Button("Retry") { Task { await load() } }
+                                .buttonStyle(.borderedProminent)
+                            Button("Back") { dismiss() }
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .task { await load() }
@@ -109,6 +142,13 @@ public struct SessionView: View {
                     Button { Task { await copyFromTerminal(.lastURL) } } label: {
                         Label("Copy last URL", systemImage: "link")
                     }
+                    Divider()
+                    Button { Task { await authorizeLastURL() } } label: {
+                        Label("Authorize in app", systemImage: "lock.shield")
+                    }
+                    Button { oauthFlow.pastePromptActive = true } label: {
+                        Label("Finish OAuth sign-in…", systemImage: "text.badge.checkmark")
+                    }
                 } label: {
                     Image(systemName: "doc.on.clipboard")
                 }
@@ -128,17 +168,34 @@ public struct SessionView: View {
                 }
             }
         }
-        .overlay(alignment: .top) {
-            if let toast {
-                Text(toast)
-                    .font(.callout)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(.thinMaterial, in: Capsule())
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+        .toast($toast)
+        .onReceive(oauthFlow.$toast.compactMap { $0 }) { msg in
+            toast = msg
+            oauthFlow.toast = nil
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { oauthFlow.presentedURL != nil },
+                set: { presenting in
+                    if !presenting {
+                        Task { await oauthFlow.sessionDismissed() }
+                    }
+                }
+            )
+        ) {
+            if let url = oauthFlow.presentedURL {
+                SafariSheet(url: url) {
+                    Task { await oauthFlow.sessionDismissed() }
+                }
+                .ignoresSafeArea()
             }
         }
-        .animation(.easeInOut(duration: 0.15), value: toast)
+        .sheet(isPresented: $oauthFlow.pastePromptActive) {
+            PasteCallbackSheet(isPresented: $oauthFlow.pastePromptActive) { pasted in
+                guard let ch = channel else { return }
+                Task { await oauthFlow.finishWithPastedCallback(pasted, channel: ch) }
+            }
+        }
     }
 
     @ViewBuilder
@@ -156,7 +213,16 @@ public struct SessionView: View {
     }
 
     private func load() async {
+        NSLog("[sshido] SessionView.load start host=\(host.name) session=\(session.id.uuidString.prefix(8))")
         error = nil
+        showStuckRecovery = false
+        stuckTimer?.cancel()
+        stuckTimer = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            if channel == nil && error == nil {
+                showStuckRecovery = true
+            }
+        }
         do {
             let auth: SSHAuth
             switch host.authMethod {
@@ -165,16 +231,21 @@ public struct SessionView: View {
                 auth = .password(pw)
             case .key:
                 guard let identityID = host.identityID else {
-                    error = "host authMethod=.key but no identity attached (host.id=\(host.id.uuidString.prefix(8)))"
+                    let msg = "host authMethod=.key but no identity attached (host.id=\(host.id.uuidString.prefix(8)))"
+                    NSLog("[sshido] SessionView.load error: \(msg)")
+                    error = msg
                     return
                 }
                 let pem = try await IdentityStore.shared.loadPEM(for: identityID)
                 auth = .privateKeyPEM(pem, passphrase: nil)
             }
             let ch = await SessionStore.shared.ensureChannel(for: session, host: host, auth: auth)
+            NSLog("[sshido] SessionView.load got channel")
             channel = ch
         } catch {
-            self.error = String(describing: error)
+            let msg = String(describing: error)
+            NSLog("[sshido] SessionView.load catch: \(msg)")
+            self.error = msg
         }
     }
 
@@ -208,20 +279,38 @@ public struct SessionView: View {
         try? await voice.start()
     }
 
+    private func authorizeLastURL() async {
+        guard let bridge, let ch = channel else { return }
+        let text = await bridge.copyFromTerminal(.lastURL)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            toast = "No URL on screen"
+            return
+        }
+        guard let target = OAuthURLDetector.detect(trimmed) else {
+            let preview = String(trimmed.prefix(80))
+            let suffix = trimmed.count > 80 ? "…(\(trimmed.count) chars)" : ""
+            toast = "No localhost redirect in: \(preview)\(suffix)"
+            NSLog("[sshido] authorizeLastURL: detector rejected URL: %@", trimmed)
+            return
+        }
+        await oauthFlow.startAuthorize(target: target, channel: ch)
+    }
+
     private func copyFromTerminal(_ kind: CopyKind) async {
         guard let bridge else { return }
         let text = await bridge.copyFromTerminal(kind)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             switch kind {
-            case .selection: flashToast("Long-press to select first")
-            case .viewport:  flashToast("Nothing on screen")
-            case .lastURL:   flashToast("No URL found")
+            case .selection: toast = "Long-press to select first"
+            case .viewport:  toast = "Nothing on screen"
+            case .lastURL:   toast = "No URL found"
             }
             return
         }
         UIPasteboard.general.string = trimmed
-        flashToast("Copied \(trimmed.count) chars")
+        toast = "Copied \(trimmed.count) chars"
     }
 
     private func uploadImage(_ item: PhotosPickerItem) async {
@@ -233,7 +322,7 @@ public struct SessionView: View {
         }
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else {
-                flashToast("Couldn't read image")
+                toast = "Couldn't read image"
                 return
             }
             let ext: String
@@ -246,7 +335,7 @@ public struct SessionView: View {
             let name = "sshido-\(UUID().uuidString.prefix(8)).\(ext)"
             let remotePath = "~/.sshido/uploads/\(name)"
             let expanded = remotePath.replacingOccurrences(of: "~", with: "/home/\(host.username)")
-            flashToast("Uploading \(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))…")
+            toast = "Uploading \(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))…"
             do {
                 try await ch.uploadFile(data: data, remotePath: expanded)
             } catch {
@@ -255,26 +344,19 @@ public struct SessionView: View {
             }
             let pasted = "~/.sshido/uploads/\(name) "
             try await ch.send(Array(pasted.utf8))
-            flashToast("Uploaded — path pasted")
+            toast = "Uploaded — path pasted"
         } catch {
-            flashToast("Upload failed: \(error)")
+            toast = "Upload failed: \(error)"
         }
     }
 
     private func pasteIntoTerminal() async {
         guard let ch = channel else { return }
         guard let text = UIPasteboard.general.string, !text.isEmpty else {
-            flashToast("Clipboard empty"); return
+            toast = "Clipboard empty"; return
         }
         try? await ch.send(Array(text.utf8))
     }
 
-    private func flashToast(_ s: String) {
-        toast = s
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if toast == s { toast = nil }
-        }
-    }
 }
 #endif

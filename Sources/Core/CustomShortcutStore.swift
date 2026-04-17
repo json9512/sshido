@@ -42,6 +42,11 @@ public actor CustomShortcutStore {
         }
     }
 
+    public func move(from source: IndexSet, to destination: Int) throws {
+        shortcuts.move(fromOffsets: source, toOffset: destination)
+        try persist()
+    }
+
     private func persist() throws {
         let data = try JSONEncoder().encode(shortcuts)
         try data.write(to: url, options: .atomic)

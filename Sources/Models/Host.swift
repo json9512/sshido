@@ -17,7 +17,6 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
     public var useTmux: Bool
     public var tmuxSession: String
     public var agentProfileID: UUID?
-    public var forceCompactAgent: Bool
 
     public init(
         id: UUID = UUID(),
@@ -30,8 +29,7 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         useMosh: Bool = false,
         useTmux: Bool = true,
         tmuxSession: String = "sshido",
-        agentProfileID: UUID? = nil,
-        forceCompactAgent: Bool = true
+        agentProfileID: UUID? = nil
     ) {
         self.id = id
         self.name = name
@@ -44,12 +42,11 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         self.useTmux = useTmux
         self.tmuxSession = tmuxSession
         self.agentProfileID = agentProfileID
-        self.forceCompactAgent = forceCompactAgent
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, hostname, port, username, identityID, authMethod
-        case useMosh, useTmux, tmuxSession, agentProfileID, forceCompactAgent
+        case useMosh, useTmux, tmuxSession, agentProfileID
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -65,7 +62,6 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         try c.encode(useTmux, forKey: .useTmux)
         try c.encode(tmuxSession, forKey: .tmuxSession)
         try c.encodeIfPresent(agentProfileID, forKey: .agentProfileID)
-        try c.encode(forceCompactAgent, forKey: .forceCompactAgent)
     }
 
     public init(from decoder: Decoder) throws {
@@ -81,6 +77,5 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         self.useTmux = try c.decodeIfPresent(Bool.self, forKey: .useTmux) ?? true
         self.tmuxSession = try c.decodeIfPresent(String.self, forKey: .tmuxSession) ?? "sshido"
         self.agentProfileID = try c.decodeIfPresent(UUID.self, forKey: .agentProfileID)
-        self.forceCompactAgent = try c.decodeIfPresent(Bool.self, forKey: .forceCompactAgent) ?? true
     }
 }

@@ -6,12 +6,15 @@ import sshidoModels
 #if canImport(sshidoCore)
 import sshidoCore
 #endif
+#if canImport(sshidoUI)
+import sshidoUI
+#endif
 
 struct SessionsListView: View {
     let host: RemoteHost
     @State private var sessions: [Session] = []
     @State private var error: String?
-    @State private var pendingSession: Session?
+    @EnvironmentObject private var router: AppRouter
 
     var body: some View {
         List {
@@ -25,7 +28,7 @@ struct SessionsListView: View {
             if !sessions.isEmpty {
                 Section("Open sessions") {
                     ForEach(sessions) { session in
-                        NavigationLink(value: session) {
+                        NavigationLink(value: AppRouter.Destination.session(session)) {
                             HStack(spacing: 10) {
                                 Image(systemName: "terminal.fill")
                                     .font(.title3).foregroundStyle(.tint)
@@ -41,8 +44,10 @@ struct SessionsListView: View {
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
+                                let sid = session.id
                                 Task {
-                                    await SessionStore.shared.close(sessionID: session.id)
+                                    await SessionStore.shared.close(sessionID: sid)
+                                    await MainActor.run { BridgeStore.shared.remove(sessionID: sid) }
                                     await reload()
                                 }
                             } label: {
@@ -53,17 +58,11 @@ struct SessionsListView: View {
                 }
             }
             if let error {
-                Section { Text(error).foregroundStyle(.red).font(.callout) }
+                Section { InlineErrorText(error) }
             }
         }
         .navigationTitle(host.name)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: Session.self) { session in
-            SessionView(session: session, host: host)
-        }
-        .navigationDestination(item: $pendingSession) { session in
-            SessionView(session: session, host: host)
-        }
         .task { await reload() }
     }
 
@@ -88,7 +87,7 @@ struct SessionsListView: View {
             }
             let session = await SessionStore.shared.openSession(for: host, auth: auth)
             await reload()
-            pendingSession = session
+            router.push(.session(session))
         } catch {
             self.error = String(describing: error)
         }

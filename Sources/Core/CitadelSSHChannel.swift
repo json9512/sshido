@@ -188,6 +188,15 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         try await w.changeSize(cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
     }
 
+    public func openForwardedChannel(host: String, port: Int) async throws -> SSHForwardedChannel {
+        guard let client else { throw SSHError.notConnected }
+        do {
+            return try await CitadelForwardedChannel.open(client: client, host: host, port: port)
+        } catch {
+            throw SSHError.transport("direct-tcpip open failed: \(error)")
+        }
+    }
+
     public func uploadFile(data: Data, remotePath: String) async throws {
         guard let client else { throw SSHError.notConnected }
         let sftp: SFTPClient

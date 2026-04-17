@@ -37,17 +37,14 @@ public struct HotkeyButton: Hashable, Codable, Sendable, Identifiable {
         HotkeyButton(label: "Esc", bytes: [0x1b], sfSymbol: "escape"),
         HotkeyButton(label: "Tab", bytes: [0x09], sfSymbol: "arrow.right.to.line"),
         HotkeyButton(label: "⇧Tab", bytes: [0x1b, 0x5b, 0x5a]),
+        HotkeyButton(label: "Space", bytes: [0x20], sfSymbol: "space"),
         HotkeyButton(label: "⌃C",  bytes: [0x03]),
         HotkeyButton(label: "⌃D",  bytes: [0x04]),
         HotkeyButton(label: "⌃O",  bytes: [0x0f]),
         HotkeyButton(label: "↑",   bytes: [0x1b, 0x5b, 0x41]),
         HotkeyButton(label: "↓",   bytes: [0x1b, 0x5b, 0x42]),
         HotkeyButton(label: "←",   bytes: [0x1b, 0x5b, 0x44]),
-        HotkeyButton(label: "→",   bytes: [0x1b, 0x5b, 0x43]),
-        HotkeyButton(label: "⇧",   kind: .modifier(.shift)),
-        HotkeyButton(label: "⌃",   kind: .modifier(.ctrl)),
-        HotkeyButton(label: "⌥",   kind: .modifier(.alt)),
-        HotkeyButton(label: "⌘",   kind: .modifier(.cmd))
+        HotkeyButton(label: "→",   bytes: [0x1b, 0x5b, 0x43])
     ]
 }
 
@@ -63,6 +60,29 @@ public extension CustomShortcut {
         .init(label: "⌃E",       bytes: [0x05]),
         .init(label: "⌃W",       bytes: [0x17])
     ]
+}
+
+public enum BarItem: Identifiable, Hashable, Sendable {
+    case builtin(HotkeyButton)
+    case custom(CustomShortcut)
+
+    public var id: String {
+        switch self {
+        case .builtin(let b): return "b:\(b.label)"
+        case .custom(let c):  return "c:\(c.id.uuidString)"
+        }
+    }
+
+    public var label: String {
+        switch self {
+        case .builtin(let b): return b.label
+        case .custom(let c):  return c.label
+        }
+    }
+
+    public var isBuiltin: Bool {
+        if case .builtin = self { return true } else { return false }
+    }
 }
 
 public struct CustomShortcut: Identifiable, Hashable, Codable, Sendable {

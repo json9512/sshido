@@ -48,9 +48,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 @main
 struct sshidoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var router = AppRouter.shared
+
     var body: some Scene {
         WindowGroup {
             HostListView()
+                .environmentObject(router)
         }
     }
 }
