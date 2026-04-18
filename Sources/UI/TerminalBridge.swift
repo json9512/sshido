@@ -13,5 +13,6 @@ public protocol TerminalBridge: AnyObject {
     func requestServerRedraw()
     var isApplicationCursor: Bool { get }
     var onTitleChange: ((String) -> Void)? { get set }
+    var activityTracker: TerminalActivityTracker { get }
 }
 #endif

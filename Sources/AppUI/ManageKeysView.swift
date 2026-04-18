@@ -22,7 +22,7 @@ struct ManageKeysView: View {
                 if identities.isEmpty {
                     Section {
                         Text("No keys saved.")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(DS.Color.textTertiary)
                     }
                 } else {
                     Section {
@@ -41,6 +41,8 @@ struct ManageKeysView: View {
                     Section { InlineErrorText(error) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(DS.Color.surface0)
             .navigationTitle("Manage keys")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -70,14 +72,15 @@ struct ManageKeysView: View {
     @ViewBuilder
     private func row(for id: Identity) -> some View {
         let usedBy = hostsByIdentity[id.id] ?? []
-        VStack(alignment: .leading, spacing: 2) {
-            Text(id.label).font(.body)
+        VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+            Text(id.label).font(DS.Font.body)
+                .foregroundStyle(DS.Color.textPrimary)
             if usedBy.isEmpty {
                 Text("Not used by any server")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
             } else {
                 Text("Used by \(usedBy.count) server\(usedBy.count == 1 ? "" : "s"): \(usedBy.map(\.name).joined(separator: ", "))")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
                     .lineLimit(2)
             }
         }

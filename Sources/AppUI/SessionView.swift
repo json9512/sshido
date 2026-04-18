@@ -33,6 +33,12 @@ public struct SessionView: View {
     @State private var showDisconnectAlert = false
     @State private var disconnectWatcher: Task<Void, Never>?
     @StateObject private var oauthFlow = OAuthAuthorizeFlow()
+    @State private var mascotState = MascotSpriteState()
+    @State private var showMascot = true
+    @State private var mascotOffset: CGSize = .zero
+    @State private var mascotMirrored = false
+    @State private var terminalSize: CGSize = .zero
+    @State private var showBuddyHint = false
     @EnvironmentObject private var router: AppRouter
     @Environment(\.dismiss) private var dismiss
 
@@ -52,16 +58,63 @@ public struct SessionView: View {
     public var body: some View {
         VStack(spacing: 0) {
             if let ch = channel {
-                TerminalView(channel: ch, sessionID: session.id) { b in
-                    Task { @MainActor in
-                        self.bridge = b
-                        b.onTitleChange = { newTitle in
-                            self.liveTitle = newTitle
-                            Task { await SessionStore.shared.renameSession(id: session.id, title: newTitle) }
+                ZStack(alignment: .bottomTrailing) {
+                    TerminalView(channel: ch, sessionID: session.id) { b in
+                        Task { @MainActor in
+                            self.bridge = b
+                            b.onTitleChange = { newTitle in
+                                self.liveTitle = newTitle
+                                Task { await SessionStore.shared.renameSession(id: session.id, title: newTitle) }
+                            }
                         }
                     }
+                    if showMascot, let pack = SpritePackManager.shared.activePack {
+                        MascotSpriteView(
+                            state: mascotState,
+                            sheets: pack.sheets,
+                            displaySize: pack.displaySize,
+                            containerSize: terminalSize,
+                            offset: $mascotOffset,
+                            mirrored: $mascotMirrored,
+                            onHide: {
+                                showMascot = false
+                                showBuddyHint = true
+                                Task {
+                                    try? await Task.sleep(for: .seconds(3))
+                                    withAnimation { showBuddyHint = false }
+                                }
+                            },
+                            onMirror: {
+                                mascotMirrored.toggle()
+                            }
+                        )
+                    }
                 }
-                    .ignoresSafeArea(.keyboard)
+                .ignoresSafeArea(.keyboard)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.onAppear { terminalSize = geo.size }
+                            .onChange(of: geo.size) { _, s in terminalSize = s }
+                    }
+                )
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        guard !showMascot, SpritePackManager.shared.activePack != nil else { return }
+                        showMascot = true
+                    }
+                )
+                .overlay(alignment: .bottom) {
+                    if showBuddyHint {
+                        Text("Double-tap to call your buddy")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(.bottom, 8)
+                            .allowsHitTesting(false)
+                    }
+                }
                 if voice.state != .idle || !voice.transcript.isEmpty {
                     voiceStrip(ch)
                 }
@@ -69,47 +122,70 @@ public struct SessionView: View {
                     bridge?.focus()
                 }
             } else if let error {
-                VStack(spacing: 16) {
+                VStack(spacing: DS.Spacing.lg) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 48))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(DS.Color.spark)
                     Text("Couldn't open the session")
-                        .font(.headline)
+                        .font(DS.Font.headline)
+                        .foregroundStyle(DS.Color.textPrimary)
                     Text(error.isEmpty ? "(no error message)" : error)
-                        .font(.callout.monospaced())
+                        .font(DS.Font.mono)
+                        .foregroundStyle(DS.Color.textSecondary)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, DS.Spacing.xl)
                         .textSelection(.enabled)
-                    HStack(spacing: 12) {
+                    HStack(spacing: DS.Spacing.md) {
                         Button("Retry") { Task { await load() } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(DSPrimaryButtonStyle())
                         Button("Back") { dismiss() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(DSSecondaryButtonStyle())
                     }
-                    .padding(.top, 8)
+                    .padding(.top, DS.Spacing.sm)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(DS.Color.void)
             } else {
-                VStack(spacing: 16) {
+                VStack(spacing: DS.Spacing.lg) {
                     ProgressView()
                         .controlSize(.large)
+                        .tint(DS.Color.titaniumLight)
                     Text("Opening \(liveTitle.isEmpty ? session.title : liveTitle)…")
-                        .font(.callout).foregroundStyle(.primary)
+                        .font(DS.Font.callout).foregroundStyle(DS.Color.textSecondary)
                     if showStuckRecovery {
                         Text("Taking longer than usual…")
-                            .font(.caption).foregroundStyle(.secondary)
-                        HStack(spacing: 12) {
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                        HStack(spacing: DS.Spacing.md) {
                             Button("Retry") { Task { await load() } }
-                                .buttonStyle(.borderedProminent)
+                                .buttonStyle(DSPrimaryButtonStyle())
                             Button("Back") { dismiss() }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(DSSecondaryButtonStyle())
                         }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(DS.Color.void)
             }
         }
         .task { await load() }
+        .task {
+            let appearance = await AppearanceStore.shared.appearance
+            showMascot = appearance.showMascotCompanion
+            if let pack = SpritePackManager.shared.activePack {
+                mascotState.loadPack(pack)
+            }
+        }
+        .task(id: bridge != nil) {
+            guard let b = bridge as? MetalTerminalBridge else { return }
+            let tracker = b.activityTracker
+            while !Task.isCancelled {
+                let mood = tracker.suggestedMood
+                if mood != mascotState.currentMood {
+                    mascotState.transition(to: mood)
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
         .onChange(of: scenePhase) { _, new in
             if new == .active {
                 bridge?.requestServerRedraw()
@@ -125,8 +201,10 @@ public struct SessionView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
-                    Text(liveTitle).font(.headline).lineLimit(1).truncationMode(.middle)
-                    ConnectStatusPill(phase: connectPhase)
+                    Text(liveTitle).font(DS.Font.headline)
+                        .foregroundStyle(DS.Color.textPrimary)
+                        .lineLimit(1).truncationMode(.middle)
+                    DSStatusIndicator(style: .pill(phase: connectPillPhase))
                 }
             }
         }
@@ -217,14 +295,16 @@ public struct SessionView: View {
     private func voiceStrip(_ ch: SSHChannel) -> some View {
         HStack {
             Text(voiceStatus)
-                .font(.system(.callout, design: .monospaced)).lineLimit(2)
+                .font(DS.Font.mono).lineLimit(2)
+                .foregroundStyle(DS.Color.textPrimary)
             Spacer()
             Button("Send") { Task { await voice.commit(to: ch) } }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(DSPrimaryButtonStyle())
                 .disabled(voice.transcript.isEmpty)
             Button("Discard") { voice.clear() }
+                .buttonStyle(DSGhostButtonStyle())
         }
-        .padding(8).background(.thinMaterial)
+        .padding(DS.Spacing.sm).background(DS.Color.surface1)
     }
 
     private func load() async {
@@ -279,7 +359,7 @@ public struct SessionView: View {
         }
     }
 
-    private var connectPhase: ConnectStatusPill.Phase {
+    private var connectPillPhase: DSStatusIndicator.Phase {
         if channel == nil { return .connecting }
         switch net.status {
         case .online:  return .online

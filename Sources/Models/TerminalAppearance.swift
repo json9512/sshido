@@ -36,21 +36,25 @@ public enum ReturnKeyStyle: String, Codable, Hashable, Sendable, CaseIterable {
 public struct TerminalAppearance: Codable, Hashable, Sendable {
     public var fontSize: Int
     public var returnKeyStyle: ReturnKeyStyle
+    public var showMascotCompanion: Bool
 
     public init(fontSize: Int = 12,
-                returnKeyStyle: ReturnKeyStyle = .defaultReturn) {
+                returnKeyStyle: ReturnKeyStyle = .defaultReturn,
+                showMascotCompanion: Bool = true) {
         self.fontSize = fontSize
         self.returnKeyStyle = returnKeyStyle
+        self.showMascotCompanion = showMascotCompanion
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.fontSize = try c.decodeIfPresent(Int.self, forKey: .fontSize) ?? 12
         self.returnKeyStyle = try c.decodeIfPresent(ReturnKeyStyle.self, forKey: .returnKeyStyle) ?? .defaultReturn
+        self.showMascotCompanion = try c.decodeIfPresent(Bool.self, forKey: .showMascotCompanion) ?? true
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fontSize, returnKeyStyle
+        case fontSize, returnKeyStyle, showMascotCompanion
     }
 
     public static let `default` = TerminalAppearance()

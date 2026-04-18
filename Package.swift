@@ -31,7 +31,11 @@ let package = Package(
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
             ],
             path: "Sources/UI",
-            resources: [.process("Metal/Shaders.metal")]
+            resources: [
+                .process("Metal/Shaders.metal"),
+                .process("Metal/ChromeShaders.metal"),
+                .process("Sprites/Assets"),
+            ]
         ),
         .testTarget(
             name: "sshidoCoreTests",

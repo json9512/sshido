@@ -72,8 +72,9 @@ public struct AgentBar: View {
                 } label: {
                     Image(systemName: keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
                         .font(.system(size: 15))
+                        .foregroundStyle(Color(red: 232/255, green: 232/255, blue: 237/255))
                         .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(Color.secondary.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+                        .background(Color(red: 36/255, green: 36/255, blue: 41/255), in: RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 ForEach(items) { item in
@@ -86,7 +87,7 @@ public struct AgentBar: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
         }
-        .background(.ultraThinMaterial)
+        .background(Color(red: 26/255, green: 26/255, blue: 31/255))
         .task { await reload() }
         .onReceive(NotificationCenter.default.publisher(for: .hotkeyLayoutChanged)) { _ in
             Task { await reload() }
@@ -111,8 +112,9 @@ public struct AgentBar: View {
         } label: {
             Text(sc.label)
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(Color(red: 232/255, green: 232/255, blue: 237/255))
                 .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color(red: 74/255, green: 158/255, blue: 255/255).opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
     }
@@ -130,12 +132,12 @@ public struct AgentBar: View {
                 if let symbol = btn.sfSymbol { Image(systemName: symbol).font(.system(size: 13)) }
                 Text(btn.label).font(.system(size: 13, weight: .medium, design: .monospaced))
             }
+            .foregroundStyle(isArmed ? Color.white : Color(red: 232/255, green: 232/255, blue: 237/255))
             .padding(.horizontal, 10).padding(.vertical, 8)
             .background(
-                isArmed ? Color.accentColor.opacity(0.55) : Color.secondary.opacity(0.18),
+                isArmed ? Color(red: 74/255, green: 158/255, blue: 255/255).opacity(0.55) : Color(red: 36/255, green: 36/255, blue: 41/255),
                 in: RoundedRectangle(cornerRadius: 8)
             )
-            .foregroundStyle(isArmed ? Color.white : Color.primary)
         }
         .buttonStyle(.plain)
     }

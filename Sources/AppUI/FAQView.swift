@@ -47,6 +47,8 @@ public struct FAQView: View {
                 )
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(DS.Color.surface0)
         .navigationTitle("Help")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -60,13 +62,15 @@ private struct FAQItem: View {
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
             Text(a)
-                .font(.body)
+                .font(DS.Font.body)
+                .foregroundStyle(DS.Color.textSecondary)
                 .lineSpacing(4)
                 .textSelection(.enabled)
-                .padding(.top, 4)
+                .padding(.top, DS.Spacing.xs)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
-            Text(q).font(.callout).bold()
+            Text(q).font(DS.Font.callout).bold()
+                .foregroundStyle(DS.Color.textPrimary)
         }
     }
 }

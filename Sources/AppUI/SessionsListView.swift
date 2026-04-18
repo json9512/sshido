@@ -10,38 +10,6 @@ import sshidoCore
 import sshidoUI
 #endif
 
-private struct SessionStatusDot: View {
-    let isConnected: Bool
-    @State private var pulsing = false
-
-    var body: some View {
-        Circle()
-            .fill(isConnected ? Color.green : Color.gray.opacity(0.5))
-            .frame(width: 8, height: 8)
-            .overlay(
-                Circle()
-                    .stroke(Color.green.opacity(isConnected ? 0.4 : 0), lineWidth: 4)
-                    .scaleEffect(pulsing ? 2.0 : 1.0)
-                    .opacity(pulsing ? 0 : 0.4)
-            )
-            .onAppear {
-                if isConnected {
-                    withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
-                        pulsing = true
-                    }
-                }
-            }
-            .onChange(of: isConnected) { _, connected in
-                pulsing = false
-                if connected {
-                    withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
-                        pulsing = true
-                    }
-                }
-            }
-    }
-}
-
 struct SessionsListView: View {
     let host: RemoteHost
     @State private var sessions: [Session] = []
@@ -62,22 +30,22 @@ struct SessionsListView: View {
                 Section("Open sessions") {
                     ForEach(sessions) { session in
                         NavigationLink(value: AppRouter.Destination.session(session)) {
-                            HStack(spacing: 10) {
+                            HStack(spacing: DS.Spacing.md) {
                                 ZStack {
                                     Image(systemName: "terminal.fill")
-                                        .font(.title3).foregroundStyle(.tint)
-                                    SessionStatusDot(
-                                        isConnected: connectedIDs.contains(session.id)
-                                    )
-                                    .offset(x: 10, y: -10)
+                                        .font(.title3).foregroundStyle(DS.Color.titanium)
+                                    DSStatusIndicator(style: .dot(active: connectedIDs.contains(session.id)))
+                                        .scaleEffect(0.7)
+                                        .offset(x: 10, y: -10)
                                 }
                                 .frame(width: 24)
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
                                     Text(session.title)
-                                        .font(.headline)
+                                        .font(DS.Font.headline)
+                                        .foregroundStyle(DS.Color.textPrimary)
                                         .dynamicTypeSize(.xSmall ... .accessibility2)
                                     Text(session.createdAt.formatted(.relative(presentation: .named)))
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
                                 }
                             }
                         }
@@ -100,6 +68,8 @@ struct SessionsListView: View {
                 Section { InlineErrorText(error) }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(DS.Color.surface0)
         .navigationTitle(host.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }

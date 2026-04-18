@@ -6,38 +6,9 @@ import sshidoModels
 #if canImport(sshidoCore)
 import sshidoCore
 #endif
-
-private struct PulsingDot: View {
-    let active: Bool
-    @State private var pulse = false
-    var body: some View {
-        let color: Color = active ? .green : .secondary
-        ZStack {
-            Circle()
-                .stroke(color.opacity(0.5), lineWidth: 6)
-                .frame(width: 10, height: 10)
-                .scaleEffect(active && pulse ? 2.2 : 1)
-                .opacity(active && pulse ? 0 : 0.5)
-            Circle()
-                .fill(color)
-                .frame(width: 10, height: 10)
-        }
-        .frame(width: 24, height: 24)
-        .onAppear {
-            guard active else { return }
-            withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
-                pulse = true
-            }
-        }
-        .onChange(of: active) { _, new in
-            pulse = false
-            guard new else { return }
-            withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
-                pulse = true
-            }
-        }
-    }
-}
+#if canImport(sshidoUI)
+import sshidoUI
+#endif
 
 public struct HostListView: View {
     @State private var hosts: [RemoteHost] = []
@@ -70,6 +41,9 @@ public struct HostListView: View {
         .task { await reload() }
         .onChange(of: scenePhase) { _, new in
             if new == .active { Task { await refreshConnections() } }
+        }
+        .onChange(of: router.path) { _, _ in
+            Task { await refreshConnections() }
         }
         .onChange(of: deepLinks.pendingSessionRef) { _, _ in
             Task { await handleDeepLink() }
@@ -116,18 +90,18 @@ public struct HostListView: View {
                 ContentUnavailableView(label: {
                     Label("No servers yet", systemImage: "server.rack")
                 }, description: {
-                    VStack(spacing: 8) {
+                    VStack(spacing: DS.Spacing.sm) {
                         Text("Tap + to add a server.")
                         Text("Use a private key or a password. For remote access over LTE, install Tailscale on both devices and use the tailnet hostname.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
+                            .padding(.horizontal, DS.Spacing.xl)
                     }
                 }, actions: {
                     Button { router.sheet = .addHost } label: {
                         Label("Add server", systemImage: "plus")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(DSPrimaryButtonStyle())
                 })
             } else if sizeClass == .regular {
                 List(selection: Binding(
@@ -165,12 +139,14 @@ public struct HostListView: View {
                             Button {
                                 router.sheet = .editHost(host)
                             } label: { Image(systemName: "pencil") }
-                            .tint(.blue)
+                            .tint(DS.Color.accent)
                         }
                     }
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(DS.Color.surface0)
         .navigationTitle("")
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
@@ -186,30 +162,31 @@ public struct HostListView: View {
     @ViewBuilder
     private func hostRow(_ host: RemoteHost) -> some View {
         let connected = connectedHosts.contains(host.id)
-        HStack(spacing: 12) {
+        HStack(spacing: DS.Spacing.md) {
             Image(systemName: "server.rack")
                 .font(.title3)
-                .foregroundStyle(.tint)
+                .foregroundStyle(DS.Color.titanium)
                 .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(host.name).font(.headline)
+            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                HStack(spacing: DS.Spacing.sm) {
+                    Text(host.name).font(DS.Font.headline)
+                        .foregroundStyle(DS.Color.textPrimary)
                     if let pid = host.agentProfileID,
                        let p = AgentProfile.builtins.first(where: { $0.id == pid }) {
                         AgentChip(profile: p)
                     }
                 }
                 Text("\(host.username)@\(host.hostname):\(host.port)")
-                    .font(.caption.monospaced()).foregroundStyle(.secondary)
+                    .font(DS.Font.monoSmall).foregroundStyle(DS.Color.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            PulsingDot(active: connected)
-                .padding(.trailing, 4)
+            DSStatusIndicator(style: .dot(active: connected))
+                .padding(.trailing, DS.Spacing.xs)
                 .accessibilityLabel(connected ? "Connected" : "Not connected")
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, DS.Spacing.xxs)
     }
 
     private func reload() async {

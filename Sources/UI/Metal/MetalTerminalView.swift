@@ -31,7 +31,7 @@ public final class MetalTerminalView: UIView, UIKeyInput, UITextInputTraits {
     public init(renderer: MetalTerminalRenderer) {
         self.renderer = renderer
         super.init(frame: .zero)
-        backgroundColor = .black
+        backgroundColor = UIColor(red: 0.137, green: 0.137, blue: 0.145, alpha: 1) // #232325
         layer.addSublayer(renderer.metalLayer)
         renderer.metalLayer.frame = bounds
 
@@ -72,6 +72,7 @@ public final class MetalTerminalView: UIView, UIKeyInput, UITextInputTraits {
 
     public func insertText(_ text: String) {
         deleteRepeatCount = 0
+        bridge?.activityTracker.onUserInput()
         if text == "\n" || text == "\r" || text == "\r\n" {
             bridge?.sendBytes([0x0d])
             return

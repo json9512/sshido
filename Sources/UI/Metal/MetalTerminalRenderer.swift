@@ -67,22 +67,21 @@ public final class MetalTerminalRenderer {
     private var displayLink: CADisplayLink?
     public var dirty: Bool = true
 
-    public init?(fontSize: CGFloat = 12) {
-        guard let dev = MTLCreateSystemDefaultDevice(),
-              let q = dev.makeCommandQueue() else { return nil }
-        self.device = dev
-        self.commandQueue = q
+    public init?(fontSize: CGFloat = 12, context: MetalContext? = nil) {
+        guard let ctx = context ?? .shared else { return nil }
+        self.device = ctx.device
+        self.commandQueue = ctx.commandQueue
         self.scale = UIScreen.main.scale
         self.fontSize = fontSize
-        self.atlas = GlyphAtlas(device: dev, fontSize: fontSize, scale: scale)
-        metalLayer.device = dev
+        self.atlas = GlyphAtlas(device: ctx.device, fontSize: fontSize, scale: scale)
+        metalLayer.device = ctx.device
         metalLayer.pixelFormat = .bgra8Unorm
         metalLayer.framebufferOnly = true
         metalLayer.contentsScale = scale
         let sd = MTLSamplerDescriptor()
         sd.minFilter = .linear
         sd.magFilter = .linear
-        guard let s = dev.makeSamplerState(descriptor: sd) else { return nil }
+        guard let s = ctx.device.makeSamplerState(descriptor: sd) else { return nil }
         self.sampler = s
         self.pipeline = makePipeline()
     }

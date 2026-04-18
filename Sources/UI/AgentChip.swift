@@ -18,11 +18,11 @@ public struct AgentChip: View {
     }
     private var tint: Color {
         switch profile.tint {
-        case "orange": return .orange
+        case "orange": return Color(red: 232/255, green: 145/255, blue: 90/255)  // spark
         case "purple": return .purple
-        case "gray":   return .gray
-        case "blue":   return .blue
-        default:       return .accentColor
+        case "gray":   return Color(red: 124/255, green: 130/255, blue: 144/255) // titanium
+        case "blue":   return Color(red: 74/255,  green: 158/255, blue: 255/255) // accent
+        default:       return Color(red: 74/255,  green: 158/255, blue: 255/255)
         }
     }
 }
@@ -45,14 +45,15 @@ public struct ConnectStatusPill: View {
                             value: phase
                         )
                 )
-            Text(label).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+            Text(label).font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color(red: 142/255, green: 142/255, blue: 153/255))
         }
     }
     private var color: Color {
         switch phase {
-        case .online: return .green
-        case .connecting: return .yellow
-        case .offline: return .red
+        case .online: return Color(red: 52/255, green: 199/255, blue: 89/255)
+        case .connecting: return Color(red: 255/255, green: 214/255, blue: 10/255)
+        case .offline: return Color(red: 255/255, green: 69/255, blue: 58/255)
         }
     }
     private var label: String {

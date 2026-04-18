@@ -2,6 +2,9 @@
 import Foundation
 import AVFoundation
 import Speech
+#if canImport(sshidoModels)
+import sshidoModels
+#endif
 #if canImport(sshidoCore)
 import sshidoCore
 #endif

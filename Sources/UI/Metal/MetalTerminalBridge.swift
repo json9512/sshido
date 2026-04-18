@@ -26,6 +26,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     private var appearanceObserver: NSObjectProtocol?
     private var lastTitle: String = ""
 
+    public let activityTracker = TerminalActivityTracker()
     public var onTitleChange: ((String) -> Void)?
 
     public init(channel: SSHChannel) {
@@ -91,7 +92,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         return (loc.x, loc.y)
     }
 
-    public var defaultBackground: SIMD4<Float> { SIMD4(0, 0, 0, 1) }
+    public var defaultBackground: SIMD4<Float> { SIMD4(0.137, 0.137, 0.145, 1) } // #232325
     public var defaultForeground: SIMD4<Float> { SIMD4(0.88, 0.88, 0.88, 1) }
 
     public func isSelected(col: Int, row: Int) -> Bool {
@@ -105,6 +106,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         }
         terminal.feed(byteArray: Array(data))
         renderer.setNeedsRender()
+        activityTracker.onDataReceived(byteCount: data.count)
     }
 
     public func refit() {
@@ -234,9 +236,17 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         readerTask?.cancel()
         readerTask = Task { [weak self] in
             guard let self else { return }
+            var firstChunk = true
             for await chunk in channel.output {
-                await MainActor.run { self.feed(chunk) }
+                await MainActor.run {
+                    if firstChunk {
+                        firstChunk = false
+                        self.activityTracker.onConnected()
+                    }
+                    self.feed(chunk)
+                }
             }
+            await MainActor.run { self.activityTracker.onDisconnected() }
         }
     }
 
