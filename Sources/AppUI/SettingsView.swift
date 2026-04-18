@@ -23,6 +23,7 @@ public struct SettingsView: View {
     @State private var shortcuts: [CustomShortcut] = []
     @State private var barItems: [BarItem] = []
     @State private var voiceLanguage: VoiceLanguage = VoicePreferences.shared.language
+    @State private var voiceAutoSend: Bool = VoicePreferences.shared.autoSend
     @State private var quickAddExpanded = false
     @State private var building: [CustomShortcut] = []
     @State private var shortcutsEditMode: EditMode = .inactive
@@ -273,6 +274,8 @@ public struct SettingsView: View {
                         }
                     }
                     .dsRow()
+                    Toggle("Send Enter after voice input", isOn: $voiceAutoSend)
+                        .dsRow()
                 }
                 Section {
                     Picker("Return key", selection: $appearance.returnKeyStyle) {
@@ -321,6 +324,9 @@ public struct SettingsView: View {
             }
             .onChange(of: voiceLanguage) { _, new in
                 VoicePreferences.shared.language = new
+            }
+            .onChange(of: voiceAutoSend) { _, new in
+                VoicePreferences.shared.autoSend = new
             }
             .toast($toast)
         }

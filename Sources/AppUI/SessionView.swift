@@ -115,7 +115,7 @@ public struct SessionView: View {
                             .allowsHitTesting(false)
                     }
                 }
-                if voice.state != .idle || !voice.transcript.isEmpty {
+                if voice.isVoiceModeActive {
                     voiceStrip(ch)
                 }
                 AgentBar(channel: ch, bridge: bridge, hotkeys: hotkeys) {
@@ -242,7 +242,8 @@ public struct SessionView: View {
                 }
                 .disabled(uploading)
                 Button { Task { await toggleVoice() } } label: {
-                    Image(systemName: voice.isRecording ? "mic.fill" : "mic")
+                    Image(systemName: voice.isVoiceModeActive ? "mic.fill" : "mic")
+                        .foregroundStyle(voice.isVoiceModeActive ? DS.Color.accent : .primary)
                 }
             }
         }
@@ -293,18 +294,25 @@ public struct SessionView: View {
 
     @ViewBuilder
     private func voiceStrip(_ ch: SSHChannel) -> some View {
-        HStack {
+        HStack(spacing: DS.Spacing.sm) {
+            Image(systemName: voiceIcon)
+                .foregroundStyle(DS.Color.accent)
+                .font(.system(size: 14))
             Text(voiceStatus)
                 .font(DS.Font.mono).lineLimit(2)
-                .foregroundStyle(DS.Color.textPrimary)
+                .foregroundStyle(voice.state == .sending ? DS.Color.accent : DS.Color.textPrimary)
             Spacer()
-            Button("Send") { Task { await voice.commit(to: ch) } }
-                .buttonStyle(DSPrimaryButtonStyle())
-                .disabled(voice.transcript.isEmpty)
-            Button("Discard") { voice.clear() }
-                .buttonStyle(DSGhostButtonStyle())
         }
         .padding(DS.Spacing.sm).background(DS.Color.surface1)
+    }
+
+    private var voiceIcon: String {
+        switch voice.state {
+        case .listening:    return "waveform"
+        case .translating:  return "brain"
+        case .sending:      return "arrow.right.circle.fill"
+        default:            return "mic.fill"
+        }
     }
 
     private func load() async {
@@ -337,6 +345,9 @@ public struct SessionView: View {
             let ch = await SessionStore.shared.ensureChannel(for: session, host: host, auth: auth)
             NSLog("[sshido] SessionView.load got channel")
             channel = ch
+            voice.onSendBytes = { bytes in
+                Task { try? await ch.send(bytes) }
+            }
             startDisconnectWatcher()
         } catch {
             let msg = String(describing: error)
@@ -369,18 +380,36 @@ public struct SessionView: View {
     }
 
     private var voiceStatus: String {
-        if !voice.transcript.isEmpty { return voice.transcript }
         switch voice.state {
-        case .idle:       return ""
-        case .recording:  return "Listening…"
-        case .finishing:  return "Finishing…"
+        case .idle:        return ""
+        case .voiceActive: return "Voice mode"
+        case .listening:
+            return voice.transcript.isEmpty ? "Listening…" : voice.transcript
+        case .translating:
+            return voice.aiStatus.isEmpty ? voice.transcript : voice.aiStatus
+        case .sending:
+            return voice.translatedCommand.isEmpty ? voice.transcript : voice.translatedCommand
         }
     }
 
     private func toggleVoice() async {
-        if voice.isRecording { await voice.stop(); return }
-        guard await voice.requestAuthorization() else { return }
-        try? await voice.start()
+        voice.language = VoicePreferences.shared.language
+        if voice.isVoiceModeActive {
+            voice.deactivate()
+            return
+        }
+        guard await voice.requestAuthorization() else {
+            toast = voice.error ?? "Voice permission denied"
+            return
+        }
+        do {
+            try await voice.toggleVoiceMode()
+            if !voice.aiStatus.isEmpty {
+                toast = voice.aiStatus
+            }
+        } catch {
+            toast = voice.error ?? error.localizedDescription
+        }
     }
 
     private func authorizeLastURL() async {
