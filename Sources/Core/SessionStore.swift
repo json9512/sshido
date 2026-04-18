@@ -110,11 +110,11 @@ public actor SessionStore {
         let bootstrap: String?
         if host.useTmux {
             let name = shellEscape(tmuxName(host: host, session: sessionID))
-            bootstrap = "if command -v tmux >/dev/null 2>&1; then unset TMUX TMUX_PANE; exec tmux new -A -s \(name); fi"
+            bootstrap = "if command -v tmux >/dev/null 2>&1; then unset TMUX TMUX_PANE; tmux setenv -g SSHIDO_SESSION 1 2>/dev/null || true; exec tmux new -A -s \(name) -e SSHIDO_SESSION=1; fi"
         } else {
             bootstrap = nil
         }
-        let env: [String: String] = ["TERM": "xterm-256color"]
+        let env: [String: String] = ["TERM": "xterm-256color", "SSHIDO_SESSION": "1"]
         return CitadelSSHChannel(
             host: host.hostname,
             port: host.port,

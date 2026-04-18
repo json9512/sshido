@@ -15,7 +15,7 @@ fi
 
 priority="normal"
 case "$EVENT" in
-    AskUserQuestion|Error|Notification) priority="high" ;;
+    Notification|StopFailure) priority="high" ;;
 esac
 
 session_ref=""

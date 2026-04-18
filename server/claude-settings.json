@@ -1,13 +1,28 @@
 {
   "hooks": {
-    "AskUserQuestion": [
-      { "type": "command", "command": "~/.claude/hooks/notify.sh AskUserQuestion 'Claude needs input' \"$CLAUDE_HOOK_BODY\"" }
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "[ -z \"$SSHIDO_SESSION\" ] || ~/.local/bin/sshido-notify -p high 'Claude needs input' 'Check your session'" }
+        ]
+      }
     ],
     "Stop": [
-      { "type": "command", "command": "~/.claude/hooks/notify.sh Stop 'Task complete' \"$CLAUDE_HOOK_BODY\"" }
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "[ -z \"$SSHIDO_SESSION\" ] || ~/.local/bin/sshido-notify 'Task complete' 'Claude finished'" }
+        ]
+      }
     ],
-    "Error": [
-      { "type": "command", "command": "~/.claude/hooks/notify.sh Error 'Claude error' \"$CLAUDE_HOOK_BODY\"" }
+    "StopFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "[ -z \"$SSHIDO_SESSION\" ] || ~/.local/bin/sshido-notify -p high 'Claude error' 'Claude stopped with an error'" }
+        ]
+      }
     ]
   }
 }

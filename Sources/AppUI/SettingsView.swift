@@ -292,21 +292,24 @@ public struct SettingsView: View {
 
         My Notify URL is: \(notifyURL)
 
+        Context: sshido exports SSHIDO_SESSION=1 in every shell it opens (plain SSH and inside its tmux sessions). The hooks below gate on that env var so Claude Code running in a local terminal on this machine will not push — only sessions opened from the sshido iOS app will.
+
         Do the following, idempotently:
 
         1. mkdir -p ~/.claude/hooks ~/.sshido
         2. Write ~/.sshido/notify.url containing exactly the Notify URL above (no trailing newline chars beyond one), chmod 600.
         3. Write ~/.claude/hooks/notify.sh (chmod +x):
-           - reads URL from $SSHIDO_NOTIFY_URL or ~/.sshido/notify.url
+           - reads URL from $SSHIDO_NOTIFY_URL or ~/.sshido/notify.url; exits 0 silently if neither is set
            - takes args: EVENT TITLE BODY
-           - POSTs JSON {title, body, priority, sessionRef, hostRef} to the URL
-           - priority="high" for AskUserQuestion / Error / Notification, else "normal"
+           - POSTs JSON {title, body, priority, sessionRef, hostRef} to the URL via `curl -fsS -m 5`
+           - priority="high" for Notification / StopFailure, else "normal"
            - sessionRef from `tmux display-message -p '#S'` when inside tmux
            - hostRef from `hostname -s`
-        4. Merge these hooks into ~/.claude/settings.json (preserve existing keys):
-           - AskUserQuestion → ~/.claude/hooks/notify.sh AskUserQuestion "Claude needs input" "$CLAUDE_HOOK_BODY"
-           - Stop            → ~/.claude/hooks/notify.sh Stop "Task complete" "$CLAUDE_HOOK_BODY"
-           - Error           → ~/.claude/hooks/notify.sh Error "Claude error" "$CLAUDE_HOOK_BODY"
+        4. Merge these hooks into ~/.claude/settings.json (preserve existing keys). Valid Claude Code events only — do NOT use "AskUserQuestion" or "Error" (those are ignored with a warning). Each command must be gated on $SSHIDO_SESSION:
+           - Notification → [ -z "$SSHIDO_SESSION" ] || ~/.claude/hooks/notify.sh Notification "Claude needs input" "Check your session"
+           - Stop         → [ -z "$SSHIDO_SESSION" ] || ~/.claude/hooks/notify.sh Stop "Task complete" "Claude finished"
+           - StopFailure  → [ -z "$SSHIDO_SESSION" ] || ~/.claude/hooks/notify.sh StopFailure "Claude error" "Claude stopped with an error"
+           Use the canonical shape: { "hooks": { "<Event>": [ { "matcher": "", "hooks": [ { "type": "command", "command": "..." } ] } ] } }.
         5. Verify with: curl -fsS -X POST -H 'content-type: application/json' -d '{"title":"test","body":"hello from agent","priority":"high"}' "$(cat ~/.sshido/notify.url)" — expect HTTP 204.
         6. Print a one-line summary.
 
