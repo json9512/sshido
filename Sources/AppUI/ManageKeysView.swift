@@ -27,7 +27,7 @@ struct ManageKeysView: View {
                 } else {
                     Section {
                         ForEach(identities) { id in
-                            row(for: id)
+                            row(for: id).dsRow()
                         }
                         .onDelete { offsets in
                             guard let idx = offsets.first else { return }
@@ -35,14 +35,14 @@ struct ManageKeysView: View {
                         }
                     } footer: {
                         Text("Deleting a key removes its private key from the Keychain on this device. Any servers still authorized with the public key will remain authorized until you remove it server-side.")
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                     }
                 }
                 if let error {
                     Section { InlineErrorText(error) }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(DS.Color.surface0)
+            .dsFormStyle()
             .navigationTitle("Manage keys")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

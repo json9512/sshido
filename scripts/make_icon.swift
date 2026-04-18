@@ -30,7 +30,7 @@ let para = NSMutableParagraphStyle()
 para.alignment = .center
 let attrs: [NSAttributedString.Key: Any] = [
     .font: font,
-    .foregroundColor: NSColor(calibratedRed: 0.26, green: 0.84, blue: 0.56, alpha: 1),
+    .foregroundColor: NSColor(calibratedRed: 0.353, green: 0.784, blue: 0.839, alpha: 1),
     .paragraphStyle: para,
     .kern: -30
 ]

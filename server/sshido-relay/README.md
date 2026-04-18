@@ -37,8 +37,7 @@ go build -o sshido-relay .
   -team-id XXXXXXXXXX
 ```
 
-On a real server use a systemd unit (Linux) or launchd (macOS). Reference
-example in `../install.sh`.
+On a real server use a systemd unit (Linux) or launchd (macOS).
 
 ## APIs
 
@@ -80,8 +79,9 @@ curl -fsS -X POST "$URL" -H 'content-type: application/json' \
        '{title:$t, body:$b, priority:$p}')"
 ```
 
-Then merge the relevant entries into `~/.claude/settings.json` (see the
-example in `../claude-settings.json`).
+Then merge the relevant entries into `~/.claude/settings.json`. End users
+don't do this by hand — the iOS app ships a one-shot agent-setup prompt that
+makes Claude Code write the hook and settings itself (see the root README).
 
 ## Security
 

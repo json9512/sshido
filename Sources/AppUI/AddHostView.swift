@@ -37,23 +37,25 @@ struct AddHostView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Name", text: $name).autocorrectionDisabled()
+                    TextField("Name", text: $name).autocorrectionDisabled().dsRow()
                     TextField("Host", text: $hostname)
-                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    TextField("Port", text: $port).keyboardType(.numberPad)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().dsRow()
+                    TextField("Port", text: $port).keyboardType(.numberPad).dsRow()
                     TextField("Username", text: $username)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().dsRow()
                 } header: {
-                    Text("Connection")
+                    DSSectionHeader("Connection")
                 } footer: {
                     Text("Different networks? Install Tailscale on both devices, then use the Tailscale hostname (e.g. mac.tail-scale.ts.net) as Host.")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
-                Section("Authentication") {
+                Section(header: DSSectionHeader("Authentication")) {
                     Picker("Method", selection: $authMethod) {
                         Text("Key").tag(HostAuthMethod.key)
                         Text("Password").tag(HostAuthMethod.password)
                     }
                     .pickerStyle(.segmented)
+                    .dsRow()
                     if authMethod == .key {
                         Picker("Key", selection: $selectedIdentityID) {
                             Text("— none —").tag(Optional<UUID>.none)
@@ -61,26 +63,33 @@ struct AddHostView: View {
                                 Text(id.label).tag(Optional(id.id))
                             }
                         }
+                        .dsRow()
                         Button("Add new key…") { showAddIdentity = true }
+                            .foregroundStyle(DS.Color.accent).dsRow()
                         if !identities.isEmpty {
                             Button("Manage keys…") { showManageKeys = true }
+                                .foregroundStyle(DS.Color.accent).dsRow()
                         }
                     } else {
                         SecureField(existing != nil ? "Password (unchanged if blank)" : "Password",
                                     text: $password)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .onChange(of: password) { _, _ in passwordTouched = true }
+                            .dsRow()
                     }
                 }
                 if let error {
-                    Section { InlineErrorText(error) }
+                    Section { InlineErrorText(error).dsRow() }
                 }
             }
+            .dsFormStyle()
             .navigationTitle(existing == nil ? "Add server" : "Edit server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.disabled(working)
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(DS.Color.textSecondary)
+                        .disabled(working)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {

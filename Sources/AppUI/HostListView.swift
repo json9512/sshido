@@ -109,7 +109,7 @@ public struct HostListView: View {
                     set: { router.selectedHost = $0; router.detailPath.removeAll() }
                 )) {
                     ForEach(hosts) { host in
-                        hostRow(host).tag(host)
+                        hostRow(host).tag(host).dsRow()
                     }
                     .onDelete { offsets in
                         Task {
@@ -128,14 +128,16 @@ public struct HostListView: View {
                         }
                         .buttonStyle(.plain)
                         .contentShape(Rectangle())
+                        .dsRow()
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
+                            Button {
                                 Task {
                                     try? await HostStore.shared.remove(id: host.id)
                                     KeychainKeyStore().deletePassword(hostID: host.id)
                                     await reload()
                                 }
                             } label: { Image(systemName: "trash") }
+                            .tint(DS.Color.error)
                             Button {
                                 router.sheet = .editHost(host)
                             } label: { Image(systemName: "pencil") }
@@ -145,8 +147,7 @@ public struct HostListView: View {
                 }
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(DS.Color.surface0)
+        .dsFormStyle()
         .navigationTitle("")
         .toolbarTitleDisplayMode(.inline)
         .toolbar {

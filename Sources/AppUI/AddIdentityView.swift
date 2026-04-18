@@ -22,31 +22,39 @@ struct AddIdentityView: View {
         NavigationStack {
             Form {
                 if installCommand == nil {
-                    Section("Label") {
+                    Section(header: DSSectionHeader("Label")) {
                         TextField("e.g. MacBook id_ed25519", text: $label)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                            .dsRow()
                     }
                     Section {
                         Button {
                             Task { await generateAndSave() }
                         } label: {
                             Label("Generate new Ed25519 key on this device", systemImage: "key.fill")
+                                .foregroundStyle(DS.Color.accent)
                         }
                         .disabled(label.isEmpty)
+                        .dsRow()
                     } footer: {
                         Text("Recommended. We create a modern SSH key here and you only need to paste a one-line command onto your server.")
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                     }
                     Section {
                         TextEditor(text: $pem)
-                            .font(.system(.footnote, design: .monospaced))
+                            .font(DS.Font.monoSmall)
+                            .foregroundStyle(DS.Color.textPrimary)
+                            .scrollContentBackground(.hidden)
                             .frame(minHeight: 120)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .dsRow()
                     } header: {
-                        Text("Or paste an existing private key")
+                        DSSectionHeader("Or paste an existing private key")
                     } footer: {
                         Text("Ed25519 OpenSSH format (starts with -----BEGIN OPENSSH PRIVATE KEY-----).")
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                     }
                 }
                 if let installCommand {
@@ -56,25 +64,32 @@ struct AddIdentityView: View {
                             toast = "Install command copied"
                         } label: {
                             Label("Copy install command", systemImage: "doc.on.doc")
+                                .foregroundStyle(DS.Color.accent)
                         }
+                        .dsRow()
                         Text(installCommand)
-                            .font(.system(.footnote, design: .monospaced))
+                            .font(DS.Font.monoSmall)
+                            .foregroundStyle(DS.Color.textSecondary)
                             .textSelection(.enabled)
+                            .dsRow()
                     } header: {
-                        Text("Register public key on your server")
+                        DSSectionHeader("Register public key on your server")
                     } footer: {
                         Text("Paste this command into a shell on your Mac to authorize this device. You only need to do this once per server.")
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                     }
                 }
                 if let error {
-                    Section { InlineErrorText(error) }
+                    Section { InlineErrorText(error).dsRow() }
                 }
             }
+            .dsFormStyle()
             .navigationTitle(installCommand == nil ? "Add key" : "Install on server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(installCommand == nil ? "Cancel" : "Done") { dismiss() }
+                        .foregroundStyle(DS.Color.textSecondary)
                 }
                 if installCommand == nil {
                     ToolbarItem(placement: .confirmationAction) {

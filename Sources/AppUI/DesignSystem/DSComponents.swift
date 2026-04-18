@@ -73,6 +73,38 @@ struct TintedChipButtonStyle: ButtonStyle {
     }
 }
 
+// MARK: - Form & Row Styling
+
+struct DSFormModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .scrollContentBackground(.hidden)
+            .background(DS.Color.surface0)
+            .foregroundStyle(DS.Color.textPrimary)
+            .tint(DS.Color.accent)
+    }
+}
+
+extension View {
+    func dsFormStyle() -> some View { modifier(DSFormModifier()) }
+
+    func dsRow() -> some View {
+        self.listRowBackground(DS.Color.surface1)
+            .listRowSeparator(.hidden)
+    }
+}
+
+struct DSSectionHeader: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+    var body: some View {
+        Text(title.uppercased())
+            .font(DS.Font.caption)
+            .foregroundStyle(DS.Color.titanium)
+            .tracking(1.2)
+    }
+}
+
 // MARK: - Inline Error
 
 struct InlineErrorText: View {
@@ -207,7 +239,7 @@ struct DSStatusIndicator: View {
     var body: some View {
         switch style {
         case .dot(let active):
-            dotView(active: active, color: active ? DS.Color.success : DS.Color.titaniumDark)
+            dotView(active: active, color: active ? DS.Color.accent : DS.Color.titaniumDark)
         case .pill(let phase):
             pillView(phase: phase)
         }
@@ -260,8 +292,8 @@ struct DSStatusIndicator: View {
 
     private func phaseColor(_ phase: Phase) -> Color {
         switch phase {
-        case .online:     return DS.Color.success
-        case .connecting: return DS.Color.warning
+        case .online:     return DS.Color.accent
+        case .connecting: return DS.Color.spark
         case .offline:    return DS.Color.error
         }
     }

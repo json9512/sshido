@@ -7,7 +7,7 @@ public struct FAQView: View {
 
     public var body: some View {
         List {
-            Section("Server requirements") {
+            Section(header: DSSectionHeader("Server requirements")) {
                 FAQItem(
                     q: "What do I need on my server?",
                     a: """
@@ -26,7 +26,7 @@ public struct FAQView: View {
                     a: "No. Your normal login shell and rc files run as usual."
                 )
             }
-            Section("Connectivity") {
+            Section(header: DSSectionHeader("Connectivity")) {
                 FAQItem(
                     q: "Connecting from LTE or another network?",
                     a: "Install Tailscale on both your phone and Mac. Use the tailnet hostname (e.g. mac.tail-xxxxx.ts.net) as the host. No port forwarding."
@@ -36,7 +36,7 @@ public struct FAQView: View {
                     a: "Yes. tmux keeps the session alive on the server. Reopen sshido and tap the session to reattach."
                 )
             }
-            Section("Auth") {
+            Section(header: DSSectionHeader("Auth")) {
                 FAQItem(
                     q: "Key or password?",
                     a: """
@@ -47,8 +47,7 @@ public struct FAQView: View {
                 )
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(DS.Color.surface0)
+        .dsFormStyle()
         .navigationTitle("Help")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -72,6 +71,8 @@ private struct FAQItem: View {
             Text(q).font(DS.Font.callout).bold()
                 .foregroundStyle(DS.Color.textPrimary)
         }
+        .tint(DS.Color.titanium)
+        .dsRow()
     }
 }
 #endif

@@ -93,54 +93,82 @@ public struct SettingsView: View {
                         FAQView()
                     } label: {
                         Label("Help & FAQ", systemImage: "questionmark.circle")
+                            .foregroundStyle(DS.Color.textPrimary)
                     }
+                    .dsRow()
                 }
                 Section {
-                    TextField("https://push.example.com", text: $serverURLInput)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .font(.callout.monospaced())
-                    Button {
-                        Task { await applyServer() }
-                    } label: {
-                        if working { ProgressView() } else { Text(subscribeActionLabel) }
-                    }
-                    .disabled(working || trimmedServerURLInput.isEmpty)
-                    if let subscription {
-                        Button(role: .destructive) {
-                            Task {
-                                try? await PushService.shared.clearSubscription()
-                                await reload()
-                                toast = "Subscription cleared"
-                            }
-                        } label: {
-                            Label("Clear subscription", systemImage: "trash")
-                        }
+                    HStack(spacing: DS.Spacing.sm) {
+                        TextField("https://push.example.com", text: $serverURLInput)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .font(DS.Font.mono)
                         Button {
-                            UIPasteboard.general.string = Self.agentSetupPrompt(notifyURL: subscription.notifyURL)
-                            toast = "Agent setup prompt copied"
+                            Task { await applyServer() }
                         } label: {
-                            Label("Copy agent setup prompt", systemImage: "doc.on.doc")
+                            if working {
+                                ProgressView().tint(DS.Color.accent)
+                            } else {
+                                Image(systemName: subscription != nil ? "arrow.clockwise" : "paperplane.fill")
+                                    .foregroundStyle(DS.Color.accent)
+                            }
                         }
-                        Text("Subscribed \(subscription.subscribedAt.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.caption).foregroundStyle(.secondary)
+                        .disabled(working || trimmedServerURLInput.isEmpty)
+                    }
+                    .dsRow()
+                    if let subscription {
+                        HStack {
+                            Text("Subscribed \(subscription.subscribedAt.formatted(date: .abbreviated, time: .shortened))")
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                            Spacer(minLength: DS.Spacing.lg)
+                            Button {
+                                UIPasteboard.general.string = Self.agentSetupPrompt(notifyURL: subscription.notifyURL)
+                                toast = "Agent setup prompt copied"
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(DS.Color.accent)
+                                    .frame(width: 40, height: 40)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy agent setup prompt")
+                            Button {
+                                Task {
+                                    try? await PushService.shared.clearSubscription()
+                                    await reload()
+                                    toast = "Subscription cleared"
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(DS.Color.error)
+                                    .frame(width: 40, height: 40)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help("Clear subscription")
+                        }
+                        .dsRow()
                     } else {
                         Text(deviceToken == nil
                              ? "Awaiting APNs registration…"
                              : "Not subscribed yet")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                            .dsRow()
                     }
                 } header: {
-                    Text("Push notifications")
+                    DSSectionHeader("Push notifications")
                 } footer: {
-                    Text("Subscribe, then tap \"Copy agent setup prompt\" and paste it into Claude Code on your dev server. The agent installs the hook for you.")
+                    Text("Enter your push server URL and tap send. Then copy the agent setup prompt and paste it into Claude Code.")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
-                Section("Shortcuts") {
+                Section(header: DSSectionHeader("Shortcuts")) {
                     DisclosureGroup(isExpanded: $quickAddExpanded) {
                         VStack(alignment: .leading, spacing: 12) {
                             if building.isEmpty {
                                 Text("Tap keys below. They'll send in the order you tap.")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(DS.Color.textSecondary)
                             } else {
                                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 6)], spacing: 6) {
                                     ForEach(Array(building.enumerated()), id: \.offset) { idx, sc in
@@ -177,25 +205,30 @@ public struct SettingsView: View {
                                     Task { await saveBuilding() }
                                 }
                                 .disabled(building.isEmpty)
-                                .buttonStyle(.borderedProminent)
+                                .buttonStyle(DSPrimaryButtonStyle())
                             }
                         }
                         .padding(.vertical, 4)
                     } label: {
                         Label("Add a shortcut", systemImage: "plus.circle")
+                            .foregroundStyle(DS.Color.accent)
                     }
+                    .tint(DS.Color.accent)
+                    .dsRow()
                     HStack {
                         Text("\(barItems.count) in bar")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
                         Spacer()
                         Button(shortcutsEditMode.isEditing ? "Done" : "Manage") {
                             withAnimation {
                                 shortcutsEditMode = shortcutsEditMode.isEditing ? .inactive : .active
                             }
                         }
-                        .font(.callout)
+                        .font(DS.Font.callout)
+                        .foregroundStyle(DS.Color.accent)
                         .disabled(barItems.isEmpty)
                     }
+                    .dsRow()
                     if shortcutsEditMode.isEditing {
                         ForEach(barItems) { item in
                             HStack(spacing: 10) {
@@ -204,7 +237,7 @@ public struct SettingsView: View {
                                         Task { await deleteCustom(sc.id) }
                                     } label: {
                                         Image(systemName: "minus.circle.fill")
-                                            .foregroundStyle(.red)
+                                            .foregroundStyle(DS.Color.error)
                                             .font(.title3)
                                     }
                                     .buttonStyle(.plain)
@@ -214,10 +247,10 @@ public struct SettingsView: View {
                                 switch item {
                                 case .builtin:
                                     Text("built-in")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(.caption).foregroundStyle(DS.Color.textSecondary)
                                 case .custom(let sc):
                                     Text(displayBytes(sc.bytes))
-                                        .font(.caption.monospaced()).foregroundStyle(.secondary)
+                                        .font(.caption.monospaced()).foregroundStyle(DS.Color.textSecondary)
                                         .lineLimit(1).truncationMode(.tail)
                                 }
                             }
@@ -233,12 +266,13 @@ public struct SettingsView: View {
                         }
                     }
                 }
-                Section("Voice input") {
+                Section(header: DSSectionHeader("Voice input")) {
                     Picker("Language", selection: $voiceLanguage) {
                         ForEach(VoiceLanguage.allCases, id: \.self) { v in
                             Text(v.displayName).tag(v)
                         }
                     }
+                    .dsRow()
                 }
                 Section {
                     Picker("Return key", selection: $appearance.returnKeyStyle) {
@@ -246,15 +280,19 @@ public struct SettingsView: View {
                             Text(s.displayName).tag(s)
                         }
                     }
+                    .dsRow()
                 } header: {
-                    Text("Keyboard")
+                    DSSectionHeader("Keyboard")
                 } footer: {
                     Text("Changes the bottom-right key on the software keyboard. \"Return\" is the usual ↵ arrow.")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
-                Section("Terminal") {
+                Section(header: DSSectionHeader("Terminal")) {
                     Stepper("Font size: \(appearance.fontSize) pt",
                             value: $appearance.fontSize, in: 8...22)
-                    Toggle("Sprite companion", isOn: $appearance.showMascotCompanion)
+                        .dsRow()
+                    Toggle("Show mascot", isOn: $appearance.showMascotCompanion)
+                        .dsRow()
                 }
                 if appearance.showMascotCompanion {
                     mascotSection
@@ -263,7 +301,9 @@ public struct SettingsView: View {
                     Section { InlineErrorText(error) }
                 }
             }
+            .dsFormStyle()
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
             .environment(\.editMode, $shortcutsEditMode)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -312,8 +352,6 @@ public struct SettingsView: View {
            Use the canonical shape: { "hooks": { "<Event>": [ { "matcher": "", "hooks": [ { "type": "command", "command": "..." } ] } ] } }.
         5. Verify with: curl -fsS -X POST -H 'content-type: application/json' -d '{"title":"test","body":"hello from agent","priority":"high"}' "$(cat ~/.sshido/notify.url)" — expect HTTP 204.
         6. Print a one-line summary.
-
-        Reference: github.com/json9512/sshido under server/hooks/notify.sh and server/claude-settings.json.
         """
     }
 
@@ -441,7 +479,7 @@ public struct SettingsView: View {
             }
 
             Button {
-                withAnimation { showMascotGrid.toggle() }
+                showMascotGrid.toggle()
             } label: {
                 HStack {
                     Text("Manage Mascot")
@@ -454,54 +492,60 @@ public struct SettingsView: View {
             .buttonStyle(.plain)
 
             if showMascotGrid {
-                let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
-                LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(mascotGridItems, id: \.id) { pack in
-                        mascotCell(pack, isActive: manager.activePack?.id == pack.id || (pack.group != nil && manager.activePack?.group == pack.group))
-                            .onTapGesture {
-                                if let group = pack.group {
-                                    withAnimation { expandedGroup = expandedGroup == group ? nil : group }
-                                } else {
-                                    manager.setActive(pack)
-                                    toast = "Switched to \(pack.name)"
-                                    withAnimation {
-                                        showMascotGrid = false
-                                        expandedGroup = nil
-                                    }
-                                }
-                            }
-                    }
-                }
-                .padding(.vertical, 4)
-
-                // Variant picker for expanded group
                 if let group = expandedGroup {
+                    // Variant picker for expanded group
                     let groupVariants = variants(for: group)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Choose style")
+                        Button {
+                            expandedGroup = nil
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Back")
+                                    .font(DS.Font.callout)
+                            }
+                            .foregroundStyle(DS.Color.accent)
+                        }
+                        .buttonStyle(.plain)
+
+                        Text("Choose \(group.capitalized) style")
                             .font(DS.Font.caption)
                             .foregroundStyle(DS.Color.textSecondary)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(groupVariants, id: \.id) { vPack in
-                                    variantChip(vPack, isActive: manager.activePack?.id == vPack.id)
-                                        .onTapGesture {
-                                            manager.setActive(vPack)
-                                            toast = "Switched to \(vPack.name)"
-                                            withAnimation {
-                                                showMascotGrid = false
-                                                expandedGroup = nil
-                                            }
-                                        }
-                                }
+
+                        let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(groupVariants, id: \.id) { vPack in
+                                variantChip(vPack, isActive: manager.activePack?.id == vPack.id)
+                                    .onTapGesture {
+                                        manager.setActive(vPack)
+                                        toast = "Switched to \(vPack.name)"
+                                    }
                             }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } else {
+                    // Main mascot grid
+                    let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(mascotGridItems, id: \.id) { pack in
+                            mascotCell(pack, isActive: manager.activePack?.id == pack.id || (pack.group != nil && manager.activePack?.group == pack.group))
+                                .onTapGesture {
+                                    if let group = pack.group {
+                                        expandedGroup = group
+                                    } else {
+                                        manager.setActive(pack)
+                                        toast = "Switched to \(pack.name)"
+                                    }
+                                }
                         }
                     }
                     .padding(.vertical, 4)
                 }
             }
         } header: {
-            Text("Mascot")
+            DSSectionHeader("Mascot")
         }
     }
 

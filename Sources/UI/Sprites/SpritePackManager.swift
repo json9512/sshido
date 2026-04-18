@@ -72,92 +72,22 @@ public final class SpritePackManager {
         installedPacks = packs
     }
 
-    private static let wolfFoxVariants = ["Original", "Earth", "Fire", "Gold", "Metal", "Water", "Wood"]
-
-    private static let dogBreeds: [(slug: String, name: String)] = [
-        ("golden", "Golden Retriever"), ("akita", "Akita"), ("greatdane", "Great Dane"),
-        ("schnauzer", "Schnauzer"), ("saintbernard", "Saint Bernard"), ("husky", "Husky"),
-    ]
-    private static let bearVariants: [(slug: String, name: String)] = [
-        ("piggypink", "Piggy Pink"), ("molten", "Molten"), ("tsunami", "Tsunami"),
-        ("emeraldvision", "Emerald Vision"), ("softgameboy", "Soft Gameboy"), ("arcticdust", "Arctic Dust"),
-    ]
-
     private var builtinLoaders: [() -> SpritePack?] {
-        var loaders: [() -> SpritePack?] = [
-            // Existing packs
-            { self.loadBuiltinPNG(prefix: "black_cat", name: "Black Cat", id: "builtin-black-cat") },
-            { self.loadBuiltinGIF(prefix: "shoom",     name: "Shoom",     id: "builtin-shoom") },
+        let loaders: [() -> SpritePack?] = [
+            // Peak group (3 colors)
             { self.loadBuiltinGIF(prefix: "peak_green", name: "Peak Green", id: "builtin-peak-green", group: "peak", variant: "Green") },
             { self.loadBuiltinGIF(prefix: "peak_blue",  name: "Peak Blue",  id: "builtin-peak-blue",  group: "peak", variant: "Blue") },
             { self.loadBuiltinGIF(prefix: "peak_pink",  name: "Peak Pink",  id: "builtin-peak-pink",  group: "peak", variant: "Pink") },
-            { self.loadBuiltinGIF(prefix: "cat1",      name: "Cat Orange", id: "builtin-cat-orange", group: "cat", variant: "Orange") },
-            { self.loadBuiltinGIF(prefix: "cat2",      name: "Cat White",  id: "builtin-cat-white",  group: "cat", variant: "White") },
 
-            // Standalone packs
-            { self.loadBuiltinGIF(prefix: "capybara", name: "Capybara", id: "builtin-capybara",
-                                  extraNames: ["lean_down", "lean_up"]) },
-            { self.loadBuiltinGIF(prefix: "pengu", name: "Pengu", id: "builtin-pengu",
-                                  extraNames: ["attack_ice", "attack_ray"]) },
-            { self.loadBuiltinGIF(prefix: "crow",      name: "Crow",      id: "builtin-crow") },
-            { self.loadBuiltinGIF(prefix: "crab",      name: "Crab",      id: "builtin-crab") },
-            { self.loadBuiltinGIF(prefix: "horse",     name: "Horse",     id: "builtin-horse") },
-            { self.loadBuiltinGIF(prefix: "otter",     name: "Otter",     id: "builtin-otter") },
+            // Otter (standalone)
+            { self.loadBuiltinGIF(prefix: "otter", name: "Otter", id: "builtin-otter") },
+
+            // Sleepy Cat group (3 colors)
+            { self.loadBuiltinGIF(prefix: "sleepycat_1", name: "Sleepy Cat Cream",  id: "builtin-sleepycat-cream",  group: "sleepycat", variant: "Cream") },
+            { self.loadBuiltinGIF(prefix: "sleepycat_3", name: "Sleepy Cat Ginger", id: "builtin-sleepycat-ginger", group: "sleepycat", variant: "Ginger") },
+            { self.loadBuiltinGIF(prefix: "sleepycat_5", name: "Sleepy Cat Silver", id: "builtin-sleepycat-silver", group: "sleepycat", variant: "Silver") },
         ]
-
-        // Wolf & Fox groups
-        for v in Self.wolfFoxVariants {
-            let slug = v.lowercased()
-            loaders.append { self.loadBuiltinGIF(prefix: "wolf_\(slug)", name: "Wolf \(v)", id: "builtin-wolf-\(slug)", group: "wolf", variant: v) }
-            loaders.append { self.loadBuiltinGIF(prefix: "fox_\(slug)",  name: "Fox \(v)",  id: "builtin-fox-\(slug)",  group: "fox",  variant: v) }
-        }
-
-        // Dog group (6 breeds)
-        for breed in Self.dogBreeds {
-            loaders.append { self.loadBuiltinGIF(prefix: "dog_\(breed.slug)", name: "Dog \(breed.name)", id: "builtin-dog-\(breed.slug)",
-                                                 group: "dog", variant: breed.name,
-                                                 extraNames: ["walk", "licking", "lying_down"]) }
-        }
-
-        // Bear group (6 colors)
-        for bear in Self.bearVariants {
-            loaders.append { self.loadBuiltinGIF(prefix: "bear_\(bear.slug)", name: "Bear \(bear.name)", id: "builtin-bear-\(bear.slug)",
-                                                 group: "bear", variant: bear.name,
-                                                 extraNames: ["tumble", "walk", "sniffing"]) }
-        }
-
-        // Sleeping Cat group (3 colors)
-        for n in ["1", "3", "5"] {
-            loaders.append { self.loadBuiltinGIF(prefix: "sleepycat_\(n)", name: "Sleepy Cat \(n)", id: "builtin-sleepycat-\(n)",
-                                                 group: "sleepycat", variant: n) }
-        }
-
         return loaders
-    }
-
-    private func loadBuiltinPNG(prefix: String, name: String, id: String) -> SpritePack? {
-        let size = CGSize(width: 32, height: 32)
-        var sheets: [MascotMood: SpriteSheet] = [:]
-        for mood in MascotMood.allCases {
-            if let sheet = SpriteSheet(named: "\(prefix)_\(mood.rawValue)", frameSize: size) {
-                sheets[mood] = sheet
-            }
-        }
-        guard sheets.count == MascotMood.allCases.count else { return nil }
-
-        let manifest = SpriteManifest(
-            version: 1, name: name, author: "Community", license: "CC0",
-            format: nil, frameSize: [32, 32],
-            animations: [
-                "sitting":  .init(frames: 15, fps: 4,  loop: true),
-                "watching": .init(frames: 15, fps: 10, loop: true),
-                "excited":  .init(frames: 15, fps: 14, loop: true),
-                "spooked":  .init(frames: 15, fps: 6,  loop: true),
-                "happy":    .init(frames: 15, fps: 8,  loop: true),
-                "napping":  .init(frames: 15, fps: 2,  loop: true),
-            ]
-        )
-        return SpritePack(manifest: manifest, id: id, directory: nil, sheets: sheets, preview: nil)
     }
 
     private func loadBuiltinGIF(prefix: String, name: String, id: String, group: String? = nil, variant: String? = nil, extraNames: [String] = []) -> SpritePack? {

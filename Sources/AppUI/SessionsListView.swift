@@ -24,10 +24,12 @@ struct SessionsListView: View {
                     Task { await openNew() }
                 } label: {
                     Label("New session", systemImage: "plus.circle.fill")
+                        .foregroundStyle(DS.Color.accent)
                 }
+                .dsRow()
             }
             if !sessions.isEmpty {
-                Section("Open sessions") {
+                Section(header: DSSectionHeader("Open sessions")) {
                     ForEach(sessions) { session in
                         NavigationLink(value: AppRouter.Destination.session(session)) {
                             HStack(spacing: DS.Spacing.md) {
@@ -49,8 +51,9 @@ struct SessionsListView: View {
                                 }
                             }
                         }
+                        .dsRow()
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
+                            Button {
                                 let sid = session.id
                                 Task {
                                     await SessionStore.shared.close(sessionID: sid)
@@ -60,6 +63,7 @@ struct SessionsListView: View {
                             } label: {
                                 Image(systemName: "trash")
                             }
+                            .tint(DS.Color.error)
                         }
                     }
                 }
@@ -68,8 +72,7 @@ struct SessionsListView: View {
                 Section { InlineErrorText(error) }
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(DS.Color.surface0)
+        .dsFormStyle()
         .navigationTitle(host.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }

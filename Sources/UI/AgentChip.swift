@@ -18,11 +18,11 @@ public struct AgentChip: View {
     }
     private var tint: Color {
         switch profile.tint {
-        case "orange": return Color(red: 232/255, green: 145/255, blue: 90/255)  // spark
-        case "purple": return .purple
-        case "gray":   return Color(red: 124/255, green: 130/255, blue: 144/255) // titanium
-        case "blue":   return Color(red: 74/255,  green: 158/255, blue: 255/255) // accent
-        default:       return Color(red: 74/255,  green: 158/255, blue: 255/255)
+        case "orange": return Color(red: 0.831, green: 0.627, blue: 0.329) // spark #D4A054
+        case "purple": return Color(red: 0.639, green: 0.502, blue: 0.831) // muted purple
+        case "gray":   return Color(red: 0.486, green: 0.510, blue: 0.565) // titanium #7C8290
+        case "blue":   return Color(red: 0.353, green: 0.784, blue: 0.839) // accent #5AC8D6
+        default:       return Color(red: 0.353, green: 0.784, blue: 0.839)
         }
     }
 }
@@ -46,14 +46,14 @@ public struct ConnectStatusPill: View {
                         )
                 )
             Text(label).font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color(red: 142/255, green: 142/255, blue: 153/255))
+                .foregroundStyle(Color(red: 0.557, green: 0.557, blue: 0.600)) // textSecondary #8E8E99
         }
     }
     private var color: Color {
         switch phase {
-        case .online: return Color(red: 52/255, green: 199/255, blue: 89/255)
-        case .connecting: return Color(red: 255/255, green: 214/255, blue: 10/255)
-        case .offline: return Color(red: 255/255, green: 69/255, blue: 58/255)
+        case .online: return Color(red: 0.353, green: 0.784, blue: 0.839)     // accent #5AC8D6
+        case .connecting: return Color(red: 0.831, green: 0.627, blue: 0.329) // spark #D4A054
+        case .offline: return Color(red: 0.878, green: 0.361, blue: 0.310)    // error #E05C4F
         }
     }
     private var label: String {

@@ -114,7 +114,7 @@ public struct AgentBar: View {
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(Color(red: 232/255, green: 232/255, blue: 237/255))
                 .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(Color(red: 74/255, green: 158/255, blue: 255/255).opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color(red: 0.353, green: 0.784, blue: 0.839).opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
     }
@@ -135,7 +135,7 @@ public struct AgentBar: View {
             .foregroundStyle(isArmed ? Color.white : Color(red: 232/255, green: 232/255, blue: 237/255))
             .padding(.horizontal, 10).padding(.vertical, 8)
             .background(
-                isArmed ? Color(red: 74/255, green: 158/255, blue: 255/255).opacity(0.55) : Color(red: 36/255, green: 36/255, blue: 41/255),
+                isArmed ? Color(red: 0.353, green: 0.784, blue: 0.839).opacity(0.55) : Color(red: 36/255, green: 36/255, blue: 41/255),
                 in: RoundedRectangle(cornerRadius: 8)
             )
         }

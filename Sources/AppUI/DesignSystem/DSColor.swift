@@ -22,19 +22,19 @@ extension DS {
         static let titaniumLight = SwiftUI.Color(hex: 0xA8ADBA)
         static let titaniumDark  = SwiftUI.Color(hex: 0x4A4E58)
 
-        // MARK: - Accent (cool blue)
-        static let accent      = SwiftUI.Color(hex: 0x4A9EFF)
-        static let accentMuted = SwiftUI.Color(hex: 0x4A9EFF).opacity(0.15)
-        static let accentHover = SwiftUI.Color(hex: 0x6BB3FF)
+        // MARK: - Accent (cyan-teal, distinct from iOS blue)
+        static let accent      = SwiftUI.Color(hex: 0x5AC8D6)
+        static let accentMuted = SwiftUI.Color(hex: 0x5AC8D6).opacity(0.15)
+        static let accentHover = SwiftUI.Color(hex: 0x7AD4DF)
 
-        // MARK: - Spark (warm secondary)
-        static let spark      = SwiftUI.Color(hex: 0xE8915A)
-        static let sparkMuted = SwiftUI.Color(hex: 0xE8915A).opacity(0.15)
+        // MARK: - Spark (warm amber, distinct from iOS orange)
+        static let spark      = SwiftUI.Color(hex: 0xD4A054)
+        static let sparkMuted = SwiftUI.Color(hex: 0xD4A054).opacity(0.15)
 
-        // MARK: - Semantic
-        static let success = SwiftUI.Color(hex: 0x34C759)
-        static let error   = SwiftUI.Color(hex: 0xFF453A)
-        static let warning = SwiftUI.Color(hex: 0xFFD60A)
+        // MARK: - Semantic (custom, not iOS stock)
+        static let success = SwiftUI.Color(hex: 0x4ECBA0)
+        static let error   = SwiftUI.Color(hex: 0xE05C4F)
+        static let warning = SwiftUI.Color(hex: 0xD4A054)
 
         // MARK: - Shimmer (Metal chrome)
         static let shimmerBase      = surface1
