@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 struct sshidoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var router = AppRouter.shared
+    @State private var showConsent = false
 
     init() {
         // Navigation bar — dark metallic, no border
@@ -80,6 +81,14 @@ struct sshidoApp: App {
         WindowGroup {
             HostListView()
                 .environmentObject(router)
+                .sheet(isPresented: $showConsent) {
+                    ConsentView { showConsent = false }
+                }
+                .onAppear {
+                    if !VoicePreferences.shared.privacyAccepted {
+                        showConsent = true
+                    }
+                }
         }
     }
 }

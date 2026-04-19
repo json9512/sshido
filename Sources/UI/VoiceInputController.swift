@@ -70,9 +70,7 @@ public final class VoiceInputController: ObservableObject {
     // MARK: - Authorization
 
     public func requestAuthorization() async -> Bool {
-        let mic = await withCheckedContinuation { cont in
-            AVAudioSession.sharedInstance().requestRecordPermission { cont.resume(returning: $0) }
-        }
+        let mic = await AVAudioApplication.requestRecordPermission()
         if !mic { error = "Microphone permission denied"; return false }
         let speech = await withCheckedContinuation { cont in
             SFSpeechRecognizer.requestAuthorization { cont.resume(returning: $0) }
@@ -240,8 +238,13 @@ public final class VoiceInputController: ObservableObject {
             return
         }
 
-        // AI translate
-        let command = await translateWithAI(raw)
+        // AI translate (if enabled)
+        let command: String
+        if VoicePreferences.shared.aiTranslate {
+            command = await translateWithAI(raw)
+        } else {
+            command = raw
+        }
         guard state != .idle else { return }
 
         // Show translated command, then send

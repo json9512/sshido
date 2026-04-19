@@ -24,6 +24,7 @@ public struct SettingsView: View {
     @State private var barItems: [BarItem] = []
     @State private var voiceLanguage: VoiceLanguage = VoicePreferences.shared.language
     @State private var voiceAutoSend: Bool = VoicePreferences.shared.autoSend
+    @State private var voiceAITranslate: Bool = VoicePreferences.shared.aiTranslate
     @State private var quickAddExpanded = false
     @State private var building: [CustomShortcut] = []
     @State private var shortcutsEditMode: EditMode = .inactive
@@ -276,6 +277,8 @@ public struct SettingsView: View {
                     .dsRow()
                     Toggle("Send Enter after voice input", isOn: $voiceAutoSend)
                         .dsRow()
+                    Toggle("AI command translation", isOn: $voiceAITranslate)
+                        .dsRow()
                 }
                 Section {
                     Picker("Return key", selection: $appearance.returnKeyStyle) {
@@ -327,6 +330,9 @@ public struct SettingsView: View {
             }
             .onChange(of: voiceAutoSend) { _, new in
                 VoicePreferences.shared.autoSend = new
+            }
+            .onChange(of: voiceAITranslate) { _, new in
+                VoicePreferences.shared.aiTranslate = new
             }
             .toast($toast)
         }

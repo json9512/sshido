@@ -84,7 +84,8 @@ func main() {
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/subscribe", s.subscribe)
 	mux.HandleFunc("/n/", s.notify)
-	mux.HandleFunc("/", s.root)
+	mux.HandleFunc("/privacy", s.privacy)
+	mux.HandleFunc("/", s.landing)
 
 	log.Printf("sshido push server on %s (storage=%s apns=%v)", cfg.addr, cfg.storage, s.apns != nil)
 	log.Fatal(http.ListenAndServe(cfg.addr, mux))

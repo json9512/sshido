@@ -46,6 +46,15 @@ public struct FAQView: View {
                     """
                 )
             }
+            Section(header: DSSectionHeader("Privacy")) {
+                NavigationLink {
+                    PrivacyPolicyView()
+                } label: {
+                    Text("Privacy Policy").font(DS.Font.callout).bold()
+                        .foregroundStyle(DS.Color.textPrimary)
+                }
+                .dsRow()
+            }
         }
         .dsFormStyle()
         .navigationTitle("Help")
