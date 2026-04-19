@@ -74,11 +74,6 @@ public final class SpritePackManager {
 
     private var builtinLoaders: [() -> SpritePack?] {
         let loaders: [() -> SpritePack?] = [
-            // Peak group (3 colors)
-            { self.loadBuiltinGIF(prefix: "peak_green", name: "Peak Green", id: "builtin-peak-green", group: "peak", variant: "Green") },
-            { self.loadBuiltinGIF(prefix: "peak_blue",  name: "Peak Blue",  id: "builtin-peak-blue",  group: "peak", variant: "Blue") },
-            { self.loadBuiltinGIF(prefix: "peak_pink",  name: "Peak Pink",  id: "builtin-peak-pink",  group: "peak", variant: "Pink") },
-
             // Otter (standalone)
             { self.loadBuiltinGIF(prefix: "otter", name: "Otter", id: "builtin-otter") },
 
