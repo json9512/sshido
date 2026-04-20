@@ -559,6 +559,7 @@ public struct SettingsView: View {
         } header: {
             DSSectionHeader("Mascot")
         }
+        .listRowBackground(DS.Color.surface1)
     }
 
     @ViewBuilder

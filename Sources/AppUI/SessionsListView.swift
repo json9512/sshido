@@ -27,6 +27,7 @@ struct SessionsListView: View {
                         .foregroundStyle(DS.Color.accent)
                 }
                 .dsRow()
+                .coachTarget(.newSession)
             }
             if !sessions.isEmpty {
                 Section(header: DSSectionHeader("Open sessions")) {
@@ -61,7 +62,7 @@ struct SessionsListView: View {
                                     await reload()
                                 }
                             } label: {
-                                Image(systemName: "trash")
+                                Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
                             }
                             .tint(DS.Color.error)
                         }
@@ -75,10 +76,14 @@ struct SessionsListView: View {
         .dsFormStyle()
         .navigationTitle(host.name)
         .navigationBarTitleDisplayMode(.inline)
-        .task { await reload() }
+        .task {
+            await reload()
+            OnboardingCoach.shared.advance(past: .tapHost)
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await reload() }
         }
+        .coachmarks()
     }
 
     private func reload() async {
@@ -103,6 +108,7 @@ struct SessionsListView: View {
             }
             let session = await SessionStore.shared.openSession(for: host, auth: auth)
             await reload()
+            OnboardingCoach.shared.advance(past: .newSession)
             router.push(.session(session))
         } catch {
             self.error = String(describing: error)

@@ -14,6 +14,7 @@ import UIKit
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        SentryBootstrap.start()
         UNUserNotificationCenter.current().delegate = self
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             DispatchQueue.main.async { application.registerForRemoteNotifications() }
@@ -81,6 +82,7 @@ struct sshidoApp: App {
         WindowGroup {
             HostListView()
                 .environmentObject(router)
+                .preferredColorScheme(.dark)
                 .sheet(isPresented: $showConsent) {
                     ConsentView { showConsent = false }
                 }

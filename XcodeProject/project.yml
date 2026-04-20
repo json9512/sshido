@@ -26,6 +26,9 @@ packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
     from: 1.2.0
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: 8.0.0
 
 targets:
   sshido:
@@ -45,6 +48,8 @@ targets:
         product: Citadel
       - package: SwiftTerm
         product: SwiftTerm
+      - package: Sentry
+        product: Sentry
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID)

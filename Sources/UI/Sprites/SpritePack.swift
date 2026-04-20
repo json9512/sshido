@@ -112,8 +112,10 @@ public final class SpritePack {
     public var name: String { manifest.name }
     public var author: String { manifest.author }
 
-    /// Display size in points. All mascots render at 80pt for visibility on phone screens.
-    public var displaySize: CGFloat { 80 }
+    /// Display size in points. Larger on iPad for visibility.
+    public var displaySize: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 120 : 80
+    }
 
     public init(manifest: SpriteManifest, id: String, directory: URL?, sheets: [MascotMood: SpriteSheet], preview: UIImage?, group: String? = nil, variant: String? = nil, extras: [String: SpriteSheet] = [:]) {
         self.manifest = manifest

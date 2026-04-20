@@ -30,7 +30,9 @@ public struct HostListView: View {
                         detailRoot
                             .navigationDestination(for: AppRouter.Destination.self, destination: destination)
                     }
+                    .background(DS.Color.surface0)
                 }
+                .navigationSplitViewStyle(.balanced)
             } else {
                 NavigationStack(path: $router.path) {
                     sidebar
@@ -48,16 +50,28 @@ public struct HostListView: View {
         .onChange(of: deepLinks.pendingSessionRef) { _, _ in
             Task { await handleDeepLink() }
         }
-        .sheet(item: $router.sheet) { sheet in
+        .modifier(SheetOrFullScreen(item: $router.sheet, sizeClass: sizeClass) { sheet in
             switch sheet {
             case .settings:
-                NavigationStack { SettingsView() }
+                NavigationStack {
+                    SettingsView()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { router.sheet = nil }
+                                    .foregroundStyle(DS.Color.accent)
+                            }
+                        }
+                }
             case .addHost:
-                AddHostView { _ in Task { await reload() } }
+                AddHostView { _ in
+                    OnboardingCoach.shared.advance(past: .save)
+                    Task { await reload() }
+                }
             case .editHost(let host):
                 AddHostView(existing: host) { _ in Task { await reload() } }
             }
-        }
+        })
+        .coachmarks()
     }
 
     @ViewBuilder
@@ -79,7 +93,9 @@ public struct HostListView: View {
         if let host = router.selectedHost {
             SessionsListView(host: host)
         } else {
-            ContentUnavailableView("Select a server", systemImage: "server.rack")
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(DS.Color.surface0)
         }
     }
 
@@ -102,6 +118,7 @@ public struct HostListView: View {
                         Label("Add server", systemImage: "plus")
                     }
                     .buttonStyle(DSPrimaryButtonStyle())
+                    .coachTarget(.addHost)
                 })
             } else if sizeClass == .regular {
                 List(selection: Binding(
@@ -120,7 +137,7 @@ public struct HostListView: View {
                 }
             } else {
                 List {
-                    ForEach(hosts) { host in
+                    ForEach(Array(hosts.enumerated()), id: \.element.id) { index, host in
                         Button {
                             router.push(.host(host))
                         } label: {
@@ -129,6 +146,7 @@ public struct HostListView: View {
                         .buttonStyle(.plain)
                         .contentShape(Rectangle())
                         .dsRow()
+                        .coachTarget(index == 0 ? .tapHost : nil)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button {
                                 Task {
@@ -136,11 +154,11 @@ public struct HostListView: View {
                                     KeychainKeyStore().deletePassword(hostID: host.id)
                                     await reload()
                                 }
-                            } label: { Image(systemName: "trash") }
+                            } label: { Label("Delete", systemImage: "trash").labelStyle(.iconOnly) }
                             .tint(DS.Color.error)
                             Button {
                                 router.sheet = .editHost(host)
-                            } label: { Image(systemName: "pencil") }
+                            } label: { Label("Edit", systemImage: "pencil").labelStyle(.iconOnly) }
                             .tint(DS.Color.accent)
                         }
                     }
@@ -150,12 +168,19 @@ public struct HostListView: View {
         .dsFormStyle()
         .navigationTitle("")
         .toolbarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button { router.sheet = .settings } label: { Image(systemName: "gearshape") }
+                Button { router.sheet = .settings } label: {
+                    Image(systemName: "gearshape")
+                }
+                .tint(DS.Color.titaniumLight)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { router.sheet = .addHost } label: { Image(systemName: "plus") }
+                Button { router.sheet = .addHost } label: {
+                    Image(systemName: "plus")
+                }
+                .tint(DS.Color.titaniumLight)
             }
         }
     }
@@ -192,6 +217,7 @@ public struct HostListView: View {
 
     private func reload() async {
         hosts = await HostStore.shared.all()
+        OnboardingCoach.shared.startIfNeeded(hostCount: hosts.count)
         await refreshConnections()
         await handleDeepLink()
     }
@@ -206,6 +232,26 @@ public struct HostListView: View {
         if let (host, session) = deepLinks.resolve(sessions: allSessions, hosts: hosts) {
             _ = deepLinks.consume()
             router.openSession(session, host: host)
+        }
+    }
+}
+
+/// Uses fullScreenCover on iPad (regular width) and sheet on iPhone (compact width).
+private struct SheetOrFullScreen<Item: Identifiable, SheetContent: View>: ViewModifier {
+    @Binding var item: Item?
+    let sizeClass: UserInterfaceSizeClass?
+    @ViewBuilder let content: (Item) -> SheetContent
+
+    func body(content parent: Content) -> some View {
+        if sizeClass == .regular {
+            parent.fullScreenCover(item: $item) { it in
+                content(it)
+                    .background(DS.Color.surface0)
+            }
+        } else {
+            parent.sheet(item: $item) { it in
+                content(it)
+            }
         }
     }
 }

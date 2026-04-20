@@ -98,6 +98,7 @@ struct AddHostView: View {
                         if working { ProgressView() } else { Text("Save") }
                     }
                     .disabled(!isValid || working)
+                    .coachTarget(.save)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -107,7 +108,9 @@ struct AddHostView: View {
             .task {
                 identities = await IdentityStore.shared.all()
                 hydrateFromExisting()
+                OnboardingCoach.shared.advance(past: .addHost)
             }
+            .coachmarks()
             .sheet(isPresented: $showAddIdentity) {
                 AddIdentityView { added in
                     identities.append(added)

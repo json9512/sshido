@@ -3,3 +3,7 @@
 BUNDLE_ID        = com.yourname.sshido
 DEVELOPMENT_TEAM = ABCDE12345
 CODE_SIGN_STYLE  = Automatic
+
+// Sentry DSN path — strip the `https://` prefix (xcconfig treats `//` as a comment).
+// Example: https://abc@o0.ingest.sentry.io/1 → abc@o0.ingest.sentry.io/1
+SENTRY_DSN_HOSTPATH =

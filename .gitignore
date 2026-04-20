@@ -17,3 +17,5 @@ fastlane/Appfile.local
 fastlane/report.xml
 fastlane/README.md
 vendor/
+sentry-wizard
+.sentryclirc
