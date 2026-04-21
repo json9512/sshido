@@ -18,8 +18,6 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
 
     private let channel: SSHChannel
     private var readerTask: Task<Void, Never>?
-    private var pendingFeeds: [Data] = []
-    private var ready = false
     private var hasStartedConnect = false
     private var lastReportedSize: (cols: Int, rows: Int) = (0, 0)
     private let delegateRelay = TerminalDelegateRelay()
@@ -41,9 +39,9 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         super.init()
         self.terminal = SwiftTerm.Terminal(delegate: delegateRelay, options: opts)
         self.delegateRelay.owner = self
+        self.delegateRelay.channel = channel
         renderer.source = self
         v.bridge = self
-        ready = true
         renderer.start()
         startReader()
         appearanceObserver = NotificationCenter.default.addObserver(
@@ -100,10 +98,6 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     }
 
     public func feed(_ data: Data) {
-        if !ready {
-            pendingFeeds.append(data)
-            return
-        }
         terminal.feed(byteArray: Array(data))
         renderer.setNeedsRender()
         activityTracker.onDataReceived(byteCount: data.count)
@@ -204,7 +198,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     }
 
     public func sendBytes(_ bytes: [UInt8]) {
-        Task { try? await channel.send(bytes) }
+        channel.enqueueInput(bytes)
     }
 
     public func resizeIfChanged(cols: Int, rows: Int) {
@@ -225,7 +219,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     }
 
     public func requestServerRedraw() {
-        Task { try? await channel.send(Array("\u{0c}".utf8)) }
+        channel.enqueueInput(Array("\u{0c}".utf8))
     }
 
     public func invalidateReportedSize() {
@@ -292,9 +286,9 @@ private extension CharData {
 
 private final class TerminalDelegateRelay: TerminalDelegate {
     weak var owner: MetalTerminalBridge?
+    var channel: SSHChannel?
     func send(source: SwiftTerm.Terminal, data: ArraySlice<UInt8>) {
-        let bytes = Array(data)
-        Task { @MainActor in self.owner?.sendBytes(bytes) }
+        channel?.enqueueInput(Array(data))
     }
     func showCursor(source: SwiftTerm.Terminal) {
         Task { @MainActor in self.owner?.renderer.setNeedsRender() }

@@ -7,6 +7,7 @@ public protocol SSHChannel: AnyObject, Sendable {
     func connect() async throws
     func disconnect() async
     func send(_ bytes: [UInt8]) async throws
+    func enqueueInput(_ bytes: [UInt8])
     func resize(cols: Int, rows: Int) async throws
     func uploadFile(data: Data, remotePath: String) async throws
     func openForwardedChannel(host: String, port: Int) async throws -> SSHForwardedChannel
@@ -21,6 +22,10 @@ public extension SSHChannel {
 
     func openForwardedChannel(host: String, port: Int) async throws -> SSHForwardedChannel {
         throw SSHError.transport("port forwarding not supported on this channel")
+    }
+
+    func enqueueInput(_ bytes: [UInt8]) {
+        Task { try? await self.send(bytes) }
     }
 }
 

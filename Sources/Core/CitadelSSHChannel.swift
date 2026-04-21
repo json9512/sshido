@@ -29,8 +29,9 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     private var stdin: TTYStdinWriter?
     private var ttyTask: Task<Void, Error>?
     private var connected = false
-    private var pendingInput: [[UInt8]] = []
-    private let pendingByteLimit = 4096
+
+    private let writeQueue: AsyncStream<[UInt8]>
+    private let writeContinuation: AsyncStream<[UInt8]>.Continuation
 
     public init(host: String, port: Int, user: String, auth: SSHAuth,
                 cols: Int = 80, rows: Int = 24,
@@ -47,6 +48,9 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         var cont: AsyncStream<Data>.Continuation!
         self.output = AsyncStream(bufferingPolicy: .unbounded) { cont = $0 }
         self.continuation = cont
+        var writeCont: AsyncStream<[UInt8]>.Continuation!
+        self.writeQueue = AsyncStream(bufferingPolicy: .unbounded) { writeCont = $0 }
+        self.writeContinuation = writeCont
     }
 
     public var isConnected: Bool { get async { connected } }
@@ -68,24 +72,13 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
 
         let sshClient: SSHClient
         do {
-            sshClient = try await withThrowingTaskGroup(of: SSHClient.self) { group in
-                group.addTask {
-                    try await SSHClient.connect(
-                        host: self.host,
-                        port: self.port,
-                        authenticationMethod: method,
-                        hostKeyValidator: .acceptAnything(),
-                        reconnect: .never
-                    )
-                }
-                group.addTask {
-                    try await Task.sleep(nanoseconds: 15_000_000_000)
-                    throw SSHError.transport("connection timed out after 15s (host unreachable or blocked)")
-                }
-                let first = try await group.next()!
-                group.cancelAll()
-                return first
-            }
+            sshClient = try await SSHClient.connect(
+                host: self.host,
+                port: self.port,
+                authenticationMethod: method,
+                hostKeyValidator: .acceptAnything(),
+                reconnect: .never
+            )
         } catch let e as SSHError {
             throw e
         } catch {
@@ -115,7 +108,6 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
                 )
                 try await sshClient.withPTY(ptyRequest) { inbound, outbound in
                     self.stdin = outbound
-                    await self.flushPendingInput()
                     var bootstrapPieces: [String] = []
                     for (k, v) in self.environment {
                         bootstrapPieces.append("export \(k)=\(Self.shellQuote(v))")
@@ -125,10 +117,16 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
                     }
                     if !bootstrapPieces.isEmpty {
                         let line = bootstrapPieces.joined(separator: "; ") + "\r"
-                        var buf = ByteBufferAllocator().buffer(capacity: line.utf8.count)
-                        buf.writeString(line)
-                        try await outbound.write(buf)
+                        self.enqueueInput(Array(line.utf8))
                     }
+                    let drainTask = Task { [writeQueue = self.writeQueue, outbound] in
+                        for await chunk in writeQueue {
+                            var buf = ByteBufferAllocator().buffer(capacity: chunk.count)
+                            buf.writeBytes(chunk)
+                            try? await outbound.write(buf)
+                        }
+                    }
+                    defer { drainTask.cancel() }
                     for try await chunk in inbound {
                         switch chunk {
                         case .stdout(let buf):
@@ -150,6 +148,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         ttyTask?.cancel()
         ttyTask = nil
         stdin = nil
+        writeContinuation.finish()
         if let c = client { try? await c.close() }
         client = nil
         connected = false
@@ -157,30 +156,11 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     }
 
     public func send(_ bytes: [UInt8]) async throws {
-        guard let w = stdin else {
-            queueInput(bytes)
-            return
-        }
-        var buf = ByteBufferAllocator().buffer(capacity: bytes.count)
-        buf.writeBytes(bytes)
-        try await w.write(buf)
+        enqueueInput(bytes)
     }
 
-    private func queueInput(_ bytes: [UInt8]) {
-        let totalPending = pendingInput.reduce(0) { $0 + $1.count }
-        if totalPending + bytes.count > pendingByteLimit { return }
-        pendingInput.append(bytes)
-    }
-
-    private func flushPendingInput() async {
-        guard let w = stdin, !pendingInput.isEmpty else { return }
-        let drained = pendingInput
-        pendingInput.removeAll(keepingCapacity: false)
-        for chunk in drained {
-            var buf = ByteBufferAllocator().buffer(capacity: chunk.count)
-            buf.writeBytes(chunk)
-            try? await w.write(buf)
-        }
+    public func enqueueInput(_ bytes: [UInt8]) {
+        writeContinuation.yield(bytes)
     }
 
     public func resize(cols: Int, rows: Int) async throws {

@@ -7,9 +7,12 @@ import sshidoCore
 #endif
 
 @MainActor
-public final class MetalTerminalView: UIView, UIKeyInput, UITextInputTraits {
+public final class MetalTerminalView: UIView, UITextInput, UITextInputTraits {
     public let renderer: MetalTerminalRenderer
     public weak var bridge: MetalTerminalBridge?
+
+    private var markedTextValue: String = ""
+    public var inputDelegate: UITextInputDelegate?
 
     public var autocorrectionType: UITextAutocorrectionType = .no
     public var autocapitalizationType: UITextAutocapitalizationType = .none
@@ -72,6 +75,7 @@ public final class MetalTerminalView: UIView, UIKeyInput, UITextInputTraits {
 
     public func insertText(_ text: String) {
         deleteRepeatCount = 0
+        markedTextValue = ""
         bridge?.activityTracker.onUserInput()
         if text == "\n" || text == "\r" || text == "\r\n" {
             bridge?.sendBytes([0x0d])
@@ -289,5 +293,67 @@ public final class MetalTerminalView: UIView, UIKeyInput, UITextInputTraits {
         let rows = max(1, Int(availableHeight / cellH))
         bridge?.resizeIfChanged(cols: cols, rows: rows)
     }
+
+    // MARK: - UITextInput (minimal: swallow IME composition, commit on unmark)
+
+    public func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
+        markedTextValue = markedText ?? ""
+    }
+
+    public func unmarkText() {
+        if !markedTextValue.isEmpty {
+            bridge?.activityTracker.onUserInput()
+            bridge?.sendBytes(Array(markedTextValue.utf8))
+            markedTextValue = ""
+        }
+    }
+
+    public var markedTextRange: UITextRange? {
+        markedTextValue.isEmpty ? nil : TermTextRange.shared
+    }
+    public var markedTextStyle: [NSAttributedString.Key: Any]? {
+        get { nil } set { }
+    }
+    public var selectedTextRange: UITextRange? {
+        get { TermTextRange.shared } set { }
+    }
+    public var beginningOfDocument: UITextPosition { TermTextPosition.shared }
+    public var endOfDocument: UITextPosition { TermTextPosition.shared }
+
+    public func text(in range: UITextRange) -> String? { nil }
+    public func replace(_ range: UITextRange, withText text: String) {}
+    public func textRange(from fromPosition: UITextPosition, to toPosition: UITextPosition) -> UITextRange? { TermTextRange.shared }
+
+    public func position(from position: UITextPosition, offset: Int) -> UITextPosition? { position }
+    public func position(from position: UITextPosition, in direction: UITextLayoutDirection, offset: Int) -> UITextPosition? { position }
+    public func compare(_ position: UITextPosition, to other: UITextPosition) -> ComparisonResult { .orderedSame }
+    public func offset(from: UITextPosition, to: UITextPosition) -> Int { 0 }
+
+    public var tokenizer: UITextInputTokenizer { UITextInputStringTokenizer(textInput: self) }
+
+    public func position(within range: UITextRange, farthestIn direction: UITextLayoutDirection) -> UITextPosition? { nil }
+    public func characterRange(byExtending position: UITextPosition, in direction: UITextLayoutDirection) -> UITextRange? { nil }
+
+    public func baseWritingDirection(for position: UITextPosition, in direction: UITextStorageDirection) -> NSWritingDirection { .natural }
+    public func setBaseWritingDirection(_ writingDirection: NSWritingDirection, for range: UITextRange) {}
+
+    public func firstRect(for range: UITextRange) -> CGRect { .zero }
+    public func caretRect(for position: UITextPosition) -> CGRect { .zero }
+    public func selectionRects(for range: UITextRange) -> [UITextSelectionRect] { [] }
+
+    public func closestPosition(to point: CGPoint) -> UITextPosition? { TermTextPosition.shared }
+    public func closestPosition(to point: CGPoint, within range: UITextRange) -> UITextPosition? { TermTextPosition.shared }
+    public func characterRange(at point: CGPoint) -> UITextRange? { nil }
+}
+
+private final class TermTextPosition: UITextPosition {
+    static let shared = TermTextPosition()
+}
+
+private final class TermTextRange: UITextRange {
+    static let shared = TermTextRange()
+    override var isEmpty: Bool { true }
+    override var start: UITextPosition { TermTextPosition.shared }
+    override var end: UITextPosition { TermTextPosition.shared }
 }
 #endif

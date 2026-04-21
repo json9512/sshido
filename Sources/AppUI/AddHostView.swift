@@ -46,7 +46,7 @@ struct AddHostView: View {
                 } header: {
                     DSSectionHeader("Connection")
                 } footer: {
-                    Text("Different networks? Install Tailscale on both devices, then use the Tailscale hostname (e.g. mac.tail-scale.ts.net) as Host.")
+                    Text("Different networks? Install Tailscale on both devices, then use the peer's MagicDNS name as Host (shape: <host>.<tailnet>.ts.net — find your tailnet in the Tailscale app).")
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Section(header: DSSectionHeader("Authentication")) {
@@ -255,7 +255,13 @@ struct AddHostView: View {
         case .authFailed(let m):
             return "Authentication failed — \(m)"
         case .transport(let m):
-            if m.contains("timed out") { return "Couldn't reach \(hostname):\(port) — host unreachable or blocked" }
+            let lower = m.lowercased()
+            if lower.contains("timed out") || lower.contains("connect timeout") || lower.contains("connection timed out") {
+                if hostname.lowercased().hasSuffix(".ts.net") {
+                    return "Couldn't reach \(hostname):\(port) — check that Tailscale is connected on this device and the peer is online"
+                }
+                return "Couldn't reach \(hostname):\(port) — host unreachable or blocked"
+            }
             if m.contains("NIOConnectionError") || m.contains("refused") {
                 return "Connection refused at \(hostname):\(port) — is SSH running on that port?"
             }
