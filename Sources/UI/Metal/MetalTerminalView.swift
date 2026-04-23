@@ -7,23 +7,65 @@ import sshidoCore
 #endif
 
 @MainActor
-public final class MetalTerminalView: UIView, UITextInput, UITextInputTraits {
+final class TerminalInputProxy: UITextView {
+    weak var bridge: MetalTerminalBridge?
+
+    override func deleteBackward() {
+        if (text ?? "").isEmpty && markedTextRange == nil {
+            bridge?.activityTracker.onUserInput()
+            bridge?.sendBytes([0x7f])
+            return
+        }
+        super.deleteBackward()
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        [
+            UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(kEsc)),
+            UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: [], action: #selector(kUp)),
+            UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(kDown)),
+            UIKeyCommand(input: UIKeyCommand.inputLeftArrow, modifierFlags: [], action: #selector(kLeft)),
+            UIKeyCommand(input: UIKeyCommand.inputRightArrow, modifierFlags: [], action: #selector(kRight)),
+            UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(kTab)),
+            UIKeyCommand(input: "c", modifierFlags: .control, action: #selector(kCtrlC)),
+            UIKeyCommand(input: "d", modifierFlags: .control, action: #selector(kCtrlD)),
+            UIKeyCommand(input: "z", modifierFlags: .control, action: #selector(kCtrlZ)),
+            UIKeyCommand(input: "l", modifierFlags: .control, action: #selector(kCtrlL))
+        ]
+    }
+    @objc private func kEsc()   { bridge?.sendBytes([0x1b]) }
+    @objc private func kUp()    { bridge?.sendBytes([0x1b, 0x5b, 0x41]) }
+    @objc private func kDown()  { bridge?.sendBytes([0x1b, 0x5b, 0x42]) }
+    @objc private func kRight() { bridge?.sendBytes([0x1b, 0x5b, 0x43]) }
+    @objc private func kLeft()  { bridge?.sendBytes([0x1b, 0x5b, 0x44]) }
+    @objc private func kTab()   { bridge?.sendBytes([0x09]) }
+    @objc private func kCtrlC() { bridge?.sendBytes([0x03]) }
+    @objc private func kCtrlD() { bridge?.sendBytes([0x04]) }
+    @objc private func kCtrlZ() { bridge?.sendBytes([0x1a]) }
+    @objc private func kCtrlL() { bridge?.sendBytes([0x0c]) }
+}
+
+// Container that swallows Metal output visually on top of the UITextView input
+// proxy. Pass-through so touches reach the proxy underneath.
+final class MetalOverlayView: UIView {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool { false }
+}
+
+@MainActor
+public final class MetalTerminalView: UIView, UITextViewDelegate {
     public let renderer: MetalTerminalRenderer
-    public weak var bridge: MetalTerminalBridge?
+    public weak var bridge: MetalTerminalBridge? {
+        didSet { inputProxy.bridge = bridge }
+    }
 
-    private var markedTextValue: String = ""
-    public var inputDelegate: UITextInputDelegate?
+    private let inputProxy = TerminalInputProxy()
+    private let metalOverlay = MetalOverlayView()
 
-    public var autocorrectionType: UITextAutocorrectionType = .no
-    public var autocapitalizationType: UITextAutocapitalizationType = .none
-    public var smartDashesType: UITextSmartDashesType = .no
-    public var smartQuotesType: UITextSmartQuotesType = .no
-    public var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
-    public var spellCheckingType: UITextSpellCheckingType = .no
-    public var keyboardAppearance: UIKeyboardAppearance = .dark
-    public var returnKeyType: UIReturnKeyType = .default {
-        didSet {
-            if isFirstResponder { reloadInputViews() }
+    public var returnKeyType: UIReturnKeyType {
+        get { inputProxy.returnKeyType }
+        set {
+            inputProxy.returnKeyType = newValue
+            if inputProxy.isFirstResponder { inputProxy.reloadInputViews() }
         }
     }
 
@@ -34,9 +76,22 @@ public final class MetalTerminalView: UIView, UITextInput, UITextInputTraits {
     public init(renderer: MetalTerminalRenderer) {
         self.renderer = renderer
         super.init(frame: .zero)
-        backgroundColor = UIColor(red: 0.137, green: 0.137, blue: 0.145, alpha: 1) // #232325
-        layer.addSublayer(renderer.metalLayer)
-        renderer.metalLayer.frame = bounds
+        backgroundColor = UIColor(red: 0.137, green: 0.137, blue: 0.145, alpha: 1)
+
+        inputProxy.autocorrectionType = .no
+        inputProxy.autocapitalizationType = .none
+        inputProxy.spellCheckingType = .no
+        inputProxy.keyboardAppearance = .dark
+        inputProxy.textColor = .clear
+        inputProxy.tintColor = .clear
+        inputProxy.backgroundColor = .clear
+        inputProxy.text = ""
+        inputProxy.delegate = self
+        addSubview(inputProxy)
+
+        metalOverlay.backgroundColor = .clear
+        metalOverlay.layer.addSublayer(renderer.metalLayer)
+        addSubview(metalOverlay)
 
         let pan = UIPanGestureRecognizer(target: self, action: #selector(didPan(_:)))
         pan.maximumNumberOfTouches = 1
@@ -65,73 +120,66 @@ public final class MetalTerminalView: UIView, UITextInput, UITextInputTraits {
     required init?(coder: NSCoder) { fatalError() }
 
     public override var canBecomeFirstResponder: Bool { true }
-    public var hasText: Bool { true }
+
+    @discardableResult
+    public override func becomeFirstResponder() -> Bool {
+        inputProxy.becomeFirstResponder()
+    }
+
+    @discardableResult
+    public override func resignFirstResponder() -> Bool {
+        inputProxy.resignFirstResponder()
+    }
+
     public override var inputAssistantItem: UITextInputAssistantItem {
-        let item = super.inputAssistantItem
+        let item = inputProxy.inputAssistantItem
         item.leadingBarButtonGroups = []
         item.trailingBarButtonGroups = []
         return item
     }
 
-    public func insertText(_ text: String) {
-        deleteRepeatCount = 0
-        markedTextValue = ""
+    // shouldChangeTextIn fires only for commits (ASCII typing, IME syllable
+    // commits, and deletions). It does NOT fire during IME marked-text
+    // composition. Do not mutate textView.text here during composition — it
+    // destroys the IME context.
+    public func textView(_ textView: UITextView,
+                         shouldChangeTextIn range: NSRange,
+                         replacementText text: String) -> Bool {
         bridge?.activityTracker.onUserInput()
+
+        if text.isEmpty {
+            let tail = hangul.flush()
+            if !tail.isEmpty { bridge?.sendBytes(Array(tail.utf8)) }
+            if range.length > 0 {
+                bridge?.sendBytes(Array(repeating: 0x7f, count: range.length))
+            }
+            return true
+        }
+
         if text == "\n" || text == "\r" || text == "\r\n" {
+            let tail = hangul.flush()
+            if !tail.isEmpty { bridge?.sendBytes(Array(tail.utf8)) }
             bridge?.sendBytes([0x0d])
-            return
+            textView.text = ""
+            return false
         }
-        bridge?.sendBytes(Array(text.utf8))
+
+        // iOS gives us compatibility jamo (U+3131–U+318E) one at a time when
+        // committing from Korean IME. Route through a Hangul composer that
+        // builds syllables via state machine (choseong/jungseong/jongseong) and
+        // emits composed Hangul (U+AC00–U+D7A3) on commit boundaries.
+        let emitted = hangul.feed(text)
+        if !emitted.isEmpty {
+            bridge?.sendBytes(Array(emitted.utf8))
+        }
+
+        if (textView.text?.count ?? 0) > 1000 && textView.markedTextRange == nil {
+            textView.text = ""
+        }
+        return true
     }
 
-    private var lastDeleteAt: CFTimeInterval = 0
-    private var deleteRepeatCount: Int = 0
-
-    public func deleteBackward() {
-        let now = CACurrentMediaTime()
-        if now - lastDeleteAt < 0.4 {
-            deleteRepeatCount = min(deleteRepeatCount + 1, 20)
-        } else {
-            deleteRepeatCount = 0
-        }
-        lastDeleteAt = now
-        let n: Int
-        switch deleteRepeatCount {
-        case 0: n = 1
-        case 1: n = 1
-        case 2: n = 2
-        case 3: n = 3
-        case 4: n = 5
-        case 5: n = 8
-        default: n = 12
-        }
-        bridge?.sendBytes(Array(repeating: 0x7f, count: n))
-    }
-
-    public override var keyCommands: [UIKeyCommand]? {
-        [
-            UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(kEsc)),
-            UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: [], action: #selector(kUp)),
-            UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(kDown)),
-            UIKeyCommand(input: UIKeyCommand.inputLeftArrow, modifierFlags: [], action: #selector(kLeft)),
-            UIKeyCommand(input: UIKeyCommand.inputRightArrow, modifierFlags: [], action: #selector(kRight)),
-            UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(kTab)),
-            UIKeyCommand(input: "c", modifierFlags: .control, action: #selector(kCtrlC)),
-            UIKeyCommand(input: "d", modifierFlags: .control, action: #selector(kCtrlD)),
-            UIKeyCommand(input: "z", modifierFlags: .control, action: #selector(kCtrlZ)),
-            UIKeyCommand(input: "l", modifierFlags: .control, action: #selector(kCtrlL))
-        ]
-    }
-    @objc private func kEsc()   { bridge?.sendBytes([0x1b]) }
-    @objc private func kUp()    { bridge?.sendBytes([0x1b, 0x5b, 0x41]) }
-    @objc private func kDown()  { bridge?.sendBytes([0x1b, 0x5b, 0x42]) }
-    @objc private func kRight() { bridge?.sendBytes([0x1b, 0x5b, 0x43]) }
-    @objc private func kLeft()  { bridge?.sendBytes([0x1b, 0x5b, 0x44]) }
-    @objc private func kTab()   { bridge?.sendBytes([0x09]) }
-    @objc private func kCtrlC() { bridge?.sendBytes([0x03]) }
-    @objc private func kCtrlD() { bridge?.sendBytes([0x04]) }
-    @objc private func kCtrlZ() { bridge?.sendBytes([0x1a]) }
-    @objc private func kCtrlL() { bridge?.sendBytes([0x0c]) }
+    private let hangul = HangulComposer()
 
     private var panAccum: CGFloat = 0
     @objc private func didPan(_ g: UIPanGestureRecognizer) {
@@ -183,8 +231,8 @@ public final class MetalTerminalView: UIView, UITextInput, UITextInputTraits {
     }
 
     @objc private func didTap(_ g: UITapGestureRecognizer) {
-        if !isFirstResponder {
-            _ = becomeFirstResponder()
+        if !inputProxy.isFirstResponder {
+            _ = inputProxy.becomeFirstResponder()
         }
         selectionStart = nil
         selectionEnd = nil
@@ -266,7 +314,9 @@ public final class MetalTerminalView: UIView, UITextInput, UITextInputTraits {
         super.layoutSubviews()
         let availableHeight = max(1, bounds.height - keyboardOverlap)
         let f = CGRect(x: 0, y: 0, width: bounds.width, height: availableHeight)
-        renderer.metalLayer.frame = f
+        inputProxy.frame = f
+        metalOverlay.frame = f
+        renderer.metalLayer.frame = metalOverlay.bounds
         let scale = renderer.metalLayer.contentsScale
         renderer.metalLayer.drawableSize = CGSize(
             width: max(1, f.width * scale),
@@ -293,67 +343,155 @@ public final class MetalTerminalView: UIView, UITextInput, UITextInputTraits {
         let rows = max(1, Int(availableHeight / cellH))
         bridge?.resizeIfChanged(cols: cols, rows: rows)
     }
+}
 
-    // MARK: - UITextInput (minimal: swallow IME composition, commit on unmark)
+// Hangul syllable composer. Accepts a stream of compatibility jamo (U+3131–U+318E)
+// interleaved with non-Hangul characters, and emits composed Hangul syllables
+// (U+AC00–U+D7A3) plus pass-through for non-Hangul. Maintains one in-progress
+// syllable state (choseong/jungseong/jongseong) across calls.
+@MainActor
+final class HangulComposer {
+    private var cho: Int? = nil   // 0..18
+    private var jung: Int? = nil  // 0..20
+    private var jong: Int = 0     // 0=none, 1..27
 
-    public func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
-        markedTextValue = markedText ?? ""
-    }
-
-    public func unmarkText() {
-        if !markedTextValue.isEmpty {
-            bridge?.activityTracker.onUserInput()
-            bridge?.sendBytes(Array(markedTextValue.utf8))
-            markedTextValue = ""
+    func feed(_ s: String) -> String {
+        var out = ""
+        for sc in s.unicodeScalars {
+            let v = sc.value
+            if let choIdx = choIndex[v], let jongIdx = jongIndex[v] {
+                out += handleConsonant(choIdx: choIdx, jongIdx: jongIdx, raw: sc)
+            } else if let choIdx = choIndex[v] {
+                out += handleConsonant(choIdx: choIdx, jongIdx: nil, raw: sc)
+            } else if let jongIdx = jongIndex[v] {
+                out += handleConsonant(choIdx: nil, jongIdx: jongIdx, raw: sc)
+            } else if let jungIdx = jungIndex[v] {
+                out += handleVowel(jungIdx: jungIdx, raw: sc)
+            } else {
+                out += flush()
+                out.unicodeScalars.append(sc)
+            }
         }
+        return out
     }
 
-    public var markedTextRange: UITextRange? {
-        markedTextValue.isEmpty ? nil : TermTextRange.shared
+    func flush() -> String {
+        guard cho != nil || jung != nil || jong != 0 else { return "" }
+        let result = currentSyllable()
+        cho = nil; jung = nil; jong = 0
+        return result
     }
-    public var markedTextStyle: [NSAttributedString.Key: Any]? {
-        get { nil } set { }
+
+    private func currentSyllable() -> String {
+        if let c = cho, let j = jung {
+            let code = 0xAC00 + c * 21 * 28 + j * 28 + jong
+            return String(Unicode.Scalar(code)!)
+        }
+        if let c = cho, let code = compatFromCho[c] {
+            return String(Unicode.Scalar(code)!)
+        }
+        if let j = jung, let code = compatFromJung[j] {
+            return String(Unicode.Scalar(code)!)
+        }
+        if jong != 0, let code = compatFromJong[jong] {
+            return String(Unicode.Scalar(code)!)
+        }
+        return ""
     }
-    public var selectedTextRange: UITextRange? {
-        get { TermTextRange.shared } set { }
+
+    private func handleConsonant(choIdx: Int?, jongIdx: Int?, raw: Unicode.Scalar) -> String {
+        if cho == nil {
+            if let c = choIdx { cho = c; return "" }
+            return flush() + String(raw)
+        }
+        if jung == nil {
+            let prev = flush()
+            if let c = choIdx { cho = c; return prev }
+            return prev + String(raw)
+        }
+        if jong == 0, let jIdx = jongIdx {
+            jong = jIdx
+            return ""
+        }
+        let prev = flush()
+        if let c = choIdx { cho = c; return prev }
+        return prev + String(raw)
     }
-    public var beginningOfDocument: UITextPosition { TermTextPosition.shared }
-    public var endOfDocument: UITextPosition { TermTextPosition.shared }
 
-    public func text(in range: UITextRange) -> String? { nil }
-    public func replace(_ range: UITextRange, withText text: String) {}
-    public func textRange(from fromPosition: UITextPosition, to toPosition: UITextPosition) -> UITextRange? { TermTextRange.shared }
+    private func handleVowel(jungIdx: Int, raw: Unicode.Scalar) -> String {
+        if cho == nil {
+            let prev = flush()
+            return prev + String(raw)
+        }
+        if jung == nil {
+            jung = jungIdx
+            return ""
+        }
+        if jong != 0 {
+            // Jong becomes initial of new syllable with this vowel.
+            if let newCho = jongToCho[jong] {
+                let oldJong = jong
+                jong = 0
+                let prev = currentSyllable()
+                cho = newCho; jung = jungIdx; _ = oldJong
+                return prev
+            }
+            let prev = flush()
+            return prev + String(raw)
+        }
+        let prev = flush()
+        return prev + String(raw)
+    }
 
-    public func position(from position: UITextPosition, offset: Int) -> UITextPosition? { position }
-    public func position(from position: UITextPosition, in direction: UITextLayoutDirection, offset: Int) -> UITextPosition? { position }
-    public func compare(_ position: UITextPosition, to other: UITextPosition) -> ComparisonResult { .orderedSame }
-    public func offset(from: UITextPosition, to: UITextPosition) -> Int { 0 }
+    private let choIndex: [UInt32: Int] = [
+        0x3131: 0, 0x3132: 1, 0x3134: 2, 0x3137: 3, 0x3138: 4, 0x3139: 5,
+        0x3141: 6, 0x3142: 7, 0x3143: 8, 0x3145: 9, 0x3146: 10, 0x3147: 11,
+        0x3148: 12, 0x3149: 13, 0x314A: 14, 0x314B: 15, 0x314C: 16,
+        0x314D: 17, 0x314E: 18
+    ]
 
-    public var tokenizer: UITextInputTokenizer { UITextInputStringTokenizer(textInput: self) }
+    private let jungIndex: [UInt32: Int] = [
+        0x314F: 0, 0x3150: 1, 0x3151: 2, 0x3152: 3, 0x3153: 4, 0x3154: 5,
+        0x3155: 6, 0x3156: 7, 0x3157: 8, 0x3158: 9, 0x3159: 10, 0x315A: 11,
+        0x315B: 12, 0x315C: 13, 0x315D: 14, 0x315E: 15, 0x315F: 16,
+        0x3160: 17, 0x3161: 18, 0x3162: 19, 0x3163: 20
+    ]
 
-    public func position(within range: UITextRange, farthestIn direction: UITextLayoutDirection) -> UITextPosition? { nil }
-    public func characterRange(byExtending position: UITextPosition, in direction: UITextLayoutDirection) -> UITextRange? { nil }
+    private let jongIndex: [UInt32: Int] = [
+        0x3131: 1, 0x3132: 2, 0x3133: 3, 0x3134: 4, 0x3135: 5, 0x3136: 6,
+        0x3137: 7, 0x3139: 8, 0x313A: 9, 0x313B: 10, 0x313C: 11, 0x313D: 12,
+        0x313E: 13, 0x313F: 14, 0x3140: 15, 0x3141: 16, 0x3142: 17, 0x3144: 18,
+        0x3145: 19, 0x3146: 20, 0x3147: 21, 0x3148: 22, 0x314A: 23, 0x314B: 24,
+        0x314C: 25, 0x314D: 26, 0x314E: 27
+    ]
 
-    public func baseWritingDirection(for position: UITextPosition, in direction: UITextStorageDirection) -> NSWritingDirection { .natural }
-    public func setBaseWritingDirection(_ writingDirection: NSWritingDirection, for range: UITextRange) {}
+    // Reverse lookup: which choseong does this jongseong convert to when
+    // forming the initial of the next syllable?
+    private let jongToCho: [Int: Int] = [
+        1: 0, 2: 1, 4: 2, 7: 3, 8: 5, 16: 6, 17: 7, 19: 9, 20: 10, 21: 11,
+        22: 12, 23: 14, 24: 15, 25: 16, 26: 17, 27: 18
+    ]
 
-    public func firstRect(for range: UITextRange) -> CGRect { .zero }
-    public func caretRect(for position: UITextPosition) -> CGRect { .zero }
-    public func selectionRects(for range: UITextRange) -> [UITextSelectionRect] { [] }
+    private let compatFromCho: [Int: UInt32] = [
+        0: 0x3131, 1: 0x3132, 2: 0x3134, 3: 0x3137, 4: 0x3138, 5: 0x3139,
+        6: 0x3141, 7: 0x3142, 8: 0x3143, 9: 0x3145, 10: 0x3146, 11: 0x3147,
+        12: 0x3148, 13: 0x3149, 14: 0x314A, 15: 0x314B, 16: 0x314C,
+        17: 0x314D, 18: 0x314E
+    ]
 
-    public func closestPosition(to point: CGPoint) -> UITextPosition? { TermTextPosition.shared }
-    public func closestPosition(to point: CGPoint, within range: UITextRange) -> UITextPosition? { TermTextPosition.shared }
-    public func characterRange(at point: CGPoint) -> UITextRange? { nil }
-}
+    private let compatFromJung: [Int: UInt32] = [
+        0: 0x314F, 1: 0x3150, 2: 0x3151, 3: 0x3152, 4: 0x3153, 5: 0x3154,
+        6: 0x3155, 7: 0x3156, 8: 0x3157, 9: 0x3158, 10: 0x3159, 11: 0x315A,
+        12: 0x315B, 13: 0x315C, 14: 0x315D, 15: 0x315E, 16: 0x315F,
+        17: 0x3160, 18: 0x3161, 19: 0x3162, 20: 0x3163
+    ]
 
-private final class TermTextPosition: UITextPosition {
-    static let shared = TermTextPosition()
-}
-
-private final class TermTextRange: UITextRange {
-    static let shared = TermTextRange()
-    override var isEmpty: Bool { true }
-    override var start: UITextPosition { TermTextPosition.shared }
-    override var end: UITextPosition { TermTextPosition.shared }
+    private let compatFromJong: [Int: UInt32] = [
+        1: 0x3131, 2: 0x3132, 3: 0x3133, 4: 0x3134, 5: 0x3135, 6: 0x3136,
+        7: 0x3137, 8: 0x3139, 9: 0x313A, 10: 0x313B, 11: 0x313C, 12: 0x313D,
+        13: 0x313E, 14: 0x313F, 15: 0x3140, 16: 0x3141, 17: 0x3142, 18: 0x3144,
+        19: 0x3145, 20: 0x3146, 21: 0x3147, 22: 0x3148, 23: 0x314A, 24: 0x314B,
+        25: 0x314C, 26: 0x314D, 27: 0x314E
+    ]
 }
 #endif
