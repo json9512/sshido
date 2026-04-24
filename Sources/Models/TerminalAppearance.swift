@@ -37,13 +37,18 @@ public struct TerminalAppearance: Codable, Hashable, Sendable {
     public var fontSize: Int
     public var returnKeyStyle: ReturnKeyStyle
     public var showMascotCompanion: Bool
+    /// ID of the active terminal theme from `TerminalThemes`. Stored as
+    /// a string so the catalog can grow without migration.
+    public var themeID: String
 
     public init(fontSize: Int = 12,
                 returnKeyStyle: ReturnKeyStyle = .defaultReturn,
-                showMascotCompanion: Bool = true) {
+                showMascotCompanion: Bool = true,
+                themeID: String = TerminalThemes.defaultID) {
         self.fontSize = fontSize
         self.returnKeyStyle = returnKeyStyle
         self.showMascotCompanion = showMascotCompanion
+        self.themeID = themeID
     }
 
     public init(from decoder: Decoder) throws {
@@ -51,10 +56,15 @@ public struct TerminalAppearance: Codable, Hashable, Sendable {
         self.fontSize = try c.decodeIfPresent(Int.self, forKey: .fontSize) ?? 12
         self.returnKeyStyle = try c.decodeIfPresent(ReturnKeyStyle.self, forKey: .returnKeyStyle) ?? .defaultReturn
         self.showMascotCompanion = try c.decodeIfPresent(Bool.self, forKey: .showMascotCompanion) ?? true
+        self.themeID = try c.decodeIfPresent(String.self, forKey: .themeID) ?? TerminalThemes.defaultID
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fontSize, returnKeyStyle, showMascotCompanion
+        case fontSize, returnKeyStyle, showMascotCompanion, themeID
+    }
+
+    public var theme: TerminalTheme {
+        TerminalThemes.theme(for: themeID) ?? TerminalThemes.classicDark
     }
 
     public static let `default` = TerminalAppearance()

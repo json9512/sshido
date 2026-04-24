@@ -98,8 +98,11 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         return (loc.x, loc.y)
     }
 
-    public var defaultBackground: SIMD4<Float> { SIMD4(0.137, 0.137, 0.145, 1) } // #232325
-    public var defaultForeground: SIMD4<Float> { SIMD4(0.88, 0.88, 0.88, 1) }
+    private var cachedBackground: SIMD4<Float> = SIMD4(0.137, 0.137, 0.145, 1)
+    private var cachedForeground: SIMD4<Float> = SIMD4(0.88, 0.88, 0.88, 1)
+
+    public var defaultBackground: SIMD4<Float> { cachedBackground }
+    public var defaultForeground: SIMD4<Float> { cachedForeground }
 
     public func isSelected(col: Int, row: Int) -> Bool {
         view.isCellSelected(col: col, row: row)
@@ -122,6 +125,22 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     public func applyAppearance() async {
         let appearance = await AppearanceStore.shared.appearance
         renderer.updateFontSize(CGFloat(appearance.fontSize))
+        // Defensive fallback: if the saved theme is premium but entitlement
+        // has lapsed (cancelled subscription, refunded purchase), revert to
+        // Classic Dark instead of continuing to render paid content.
+        let resolved: TerminalTheme = {
+            let raw = appearance.theme
+            if raw.isPremium && !Entitlements.shared.hasPlus {
+                return TerminalThemes.classicDark
+            }
+            return raw
+        }()
+        if let bg = TerminalTheme.rgb(fromHex: resolved.bgHex) {
+            cachedBackground = SIMD4(bg.r, bg.g, bg.b, 1)
+        }
+        if let fg = TerminalTheme.rgb(fromHex: resolved.fgHex) {
+            cachedForeground = SIMD4(fg.r, fg.g, fg.b, 1)
+        }
         view.returnKeyType = {
             switch appearance.returnKeyStyle {
             case .defaultReturn: return .default

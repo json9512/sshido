@@ -201,6 +201,7 @@ public struct SettingsView: View {
                     }
                     .dsRow()
                 }
+                ThemesSettingsSection(appearance: $appearance, toast: $toast)
                 if appearance.showMascotCompanion {
                     MascotSettingsSection(toast: $toast)
                 }
