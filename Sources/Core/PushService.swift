@@ -8,11 +8,13 @@ public actor PushService {
 
     private let stateURL: URL
     private let settingsURL: URL
+    private let session: URLSession
     public private(set) var deviceToken: String?
     public private(set) var subscription: PushSubscription?
     public private(set) var settings: PushSettings
 
-    public init() {
+    public init(session: URLSession = .shared) {
+        self.session = session
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("sshido", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -34,7 +36,11 @@ public actor PushService {
         let isNew = deviceToken != self.deviceToken
         self.deviceToken = deviceToken
         if isNew {
-            try? await syncSubscription()
+            do {
+                try await syncSubscription()
+            } catch {
+                Log.push.error("syncSubscription on token update failed: \(String(describing: error), privacy: .public)")
+            }
         }
     }
 
@@ -45,7 +51,13 @@ public actor PushService {
         self.settings = PushSettings(serverURL: trimmed)
         try persistSettings()
         self.subscription = nil
-        try? FileManager.default.removeItem(at: stateURL)
+        do {
+            try FileManager.default.removeItem(at: stateURL)
+        } catch CocoaError.fileNoSuchFile {
+            // First-time setup: no existing file to remove.
+        } catch {
+            Log.push.error("remove stale push-subscription.json failed: \(String(describing: error), privacy: .public)")
+        }
         try await syncSubscription()
     }
 
@@ -55,7 +67,13 @@ public actor PushService {
 
     public func clearSubscription() throws {
         self.subscription = nil
-        try? FileManager.default.removeItem(at: stateURL)
+        do {
+            try FileManager.default.removeItem(at: stateURL)
+        } catch CocoaError.fileNoSuchFile {
+            // Already gone.
+        } catch {
+            Log.push.error("clearSubscription remove failed: \(String(describing: error), privacy: .public)")
+        }
     }
 
     private func syncSubscription() async throws {
@@ -68,7 +86,7 @@ public actor PushService {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 10
         req.httpBody = try JSONSerialization.data(withJSONObject: ["deviceToken": token])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PushError.serverRejected
         }

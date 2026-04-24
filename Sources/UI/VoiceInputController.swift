@@ -175,8 +175,8 @@ public final class VoiceInputController: ObservableObject {
         let input = audio.inputNode
         let format = input.outputFormat(forBus: 0)
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-            req.append(buffer)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak req] buffer, _ in
+            req?.append(buffer)
         }
 
         audio.prepare()

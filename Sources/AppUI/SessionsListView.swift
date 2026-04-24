@@ -15,6 +15,7 @@ struct SessionsListView: View {
     @State private var sessions: [Session] = []
     @State private var connectedIDs: Set<UUID> = []
     @State private var error: String?
+    @State private var pendingSessionDelete: Session?
     @EnvironmentObject private var router: AppRouter
 
     var body: some View {
@@ -53,14 +54,9 @@ struct SessionsListView: View {
                             }
                         }
                         .dsRow()
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button {
-                                let sid = session.id
-                                Task {
-                                    await SessionStore.shared.close(sessionID: sid)
-                                    await MainActor.run { BridgeStore.shared.remove(sessionID: sid) }
-                                    await reload()
-                                }
+                                pendingSessionDelete = session
                             } label: {
                                 Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
                             }
@@ -84,6 +80,28 @@ struct SessionsListView: View {
             Task { await reload() }
         }
         .coachmarks()
+        .confirmationDialog(
+            pendingSessionDelete.map { "Close \($0.title)?" } ?? "Close session?",
+            isPresented: Binding(
+                get: { pendingSessionDelete != nil },
+                set: { if !$0 { pendingSessionDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingSessionDelete
+        ) { session in
+            Button("Close session", role: .destructive) {
+                let sid = session.id
+                Task {
+                    await SessionStore.shared.close(sessionID: sid)
+                    await MainActor.run { BridgeStore.shared.remove(sessionID: sid) }
+                    await reload()
+                }
+                pendingSessionDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingSessionDelete = nil }
+        } message: { _ in
+            Text("Disconnects this session. The tmux window on the server remains and can be reopened.")
+        }
     }
 
     private func reload() async {

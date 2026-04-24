@@ -8,20 +8,24 @@ import sshidoModels
 import sshidoCore
 #endif
 
+struct HostFormData {
+    var name = ""
+    var hostname = ""
+    var port = "22"
+    var username = ""
+    var authMethod: HostAuthMethod = .key
+    var password = ""
+    var passwordTouched = false
+    var selectedIdentityID: UUID?
+}
+
 struct AddHostView: View {
     var existing: RemoteHost?
     var onSaved: (RemoteHost) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name = ""
-    @State private var hostname = ""
-    @State private var port = "22"
-    @State private var username = ""
-    @State private var authMethod: HostAuthMethod = .key
-    @State private var password = ""
-    @State private var passwordTouched = false
+    @State private var form = HostFormData()
     @State private var identities: [Identity] = []
-    @State private var selectedIdentityID: UUID?
     @State private var showAddIdentity = false
     @State private var showManageKeys = false
     @State private var error: String?
@@ -37,11 +41,11 @@ struct AddHostView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Name", text: $name).autocorrectionDisabled().dsRow()
-                    TextField("Host", text: $hostname)
+                    TextField("Name", text: $form.name).autocorrectionDisabled().dsRow()
+                    TextField("Host", text: $form.hostname)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().dsRow()
-                    TextField("Port", text: $port).keyboardType(.numberPad).dsRow()
-                    TextField("Username", text: $username)
+                    TextField("Port", text: $form.port).keyboardType(.numberPad).dsRow()
+                    TextField("Username", text: $form.username)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().dsRow()
                 } header: {
                     DSSectionHeader("Connection")
@@ -50,14 +54,14 @@ struct AddHostView: View {
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Section(header: DSSectionHeader("Authentication")) {
-                    Picker("Method", selection: $authMethod) {
+                    Picker("Method", selection: $form.authMethod) {
                         Text("Key").tag(HostAuthMethod.key)
                         Text("Password").tag(HostAuthMethod.password)
                     }
                     .pickerStyle(.segmented)
                     .dsRow()
-                    if authMethod == .key {
-                        Picker("Key", selection: $selectedIdentityID) {
+                    if form.authMethod == .key {
+                        Picker("Key", selection: $form.selectedIdentityID) {
                             Text("— none —").tag(Optional<UUID>.none)
                             ForEach(identities) { id in
                                 Text(id.label).tag(Optional(id.id))
@@ -72,9 +76,9 @@ struct AddHostView: View {
                         }
                     } else {
                         SecureField(existing != nil ? "Password (unchanged if blank)" : "Password",
-                                    text: $password)
+                                    text: $form.password)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .onChange(of: password) { _, _ in passwordTouched = true }
+                            .onChange(of: form.password) { _, _ in form.passwordTouched = true }
                             .dsRow()
                     }
                 }
@@ -100,11 +104,8 @@ struct AddHostView: View {
                     .disabled(!isValid || working)
                     .coachTarget(.save)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { dismissKeyboard() }
-                }
             }
+            .dsKeyboardDismissToolbar()
             .task {
                 identities = await IdentityStore.shared.all()
                 hydrateFromExisting()
@@ -114,7 +115,7 @@ struct AddHostView: View {
             .sheet(isPresented: $showAddIdentity) {
                 AddIdentityView { added in
                     identities.append(added)
-                    selectedIdentityID = added.id
+                    form.selectedIdentityID = added.id
                 }
             }
             .sheet(isPresented: $showManageKeys) {
@@ -123,9 +124,9 @@ struct AddHostView: View {
                         Task {
                             let fresh = await IdentityStore.shared.all()
                             identities = fresh
-                            if let sel = selectedIdentityID,
+                            if let sel = form.selectedIdentityID,
                                !fresh.contains(where: { $0.id == sel }) {
-                                selectedIdentityID = nil
+                                form.selectedIdentityID = nil
                             }
                         }
                     }
@@ -135,13 +136,13 @@ struct AddHostView: View {
     }
 
     private func hydrateFromExisting() {
-        guard let h = existing, name.isEmpty else { return }
-        name = h.name
-        hostname = h.hostname
-        port = String(h.port)
-        username = h.username
-        authMethod = h.authMethod
-        selectedIdentityID = h.identityID
+        guard let h = existing, form.name.isEmpty else { return }
+        form.name = h.name
+        form.hostname = h.hostname
+        form.port = String(h.port)
+        form.username = h.username
+        form.authMethod = h.authMethod
+        form.selectedIdentityID = h.identityID
     }
 
     private func normalizedHostname(_ s: String) -> String {
@@ -154,12 +155,12 @@ struct AddHostView: View {
     }
 
     private var isValid: Bool {
-        guard !name.isEmpty, !hostname.isEmpty, !username.isEmpty, Int(port) != nil else { return false }
-        switch authMethod {
-        case .key: return selectedIdentityID != nil
+        guard !form.name.isEmpty, !form.hostname.isEmpty, !form.username.isEmpty, Int(form.port) != nil else { return false }
+        switch form.authMethod {
+        case .key: return form.selectedIdentityID != nil
         case .password:
             if existing != nil { return true }
-            return !password.isEmpty
+            return !form.password.isEmpty
         }
     }
 
@@ -169,15 +170,15 @@ struct AddHostView: View {
         defer { working = false }
 
         let hostID = existing?.id ?? UUID()
-        let cleanedHost = normalizedHostname(hostname)
+        let cleanedHost = normalizedHostname(form.hostname)
         let host = RemoteHost(
             id: hostID,
-            name: name,
+            name: form.name,
             hostname: cleanedHost,
-            port: Int(port) ?? 22,
-            username: username,
-            identityID: authMethod == .key ? selectedIdentityID : nil,
-            authMethod: authMethod,
+            port: Int(form.port) ?? 22,
+            username: form.username,
+            identityID: form.authMethod == .key ? form.selectedIdentityID : nil,
+            authMethod: form.authMethod,
             useMosh: false,
             useTmux: true,
             tmuxSession: existing?.tmuxSession ?? "sshido",
@@ -217,10 +218,10 @@ struct AddHostView: View {
         }
 
         do {
-            if authMethod == .password, passwordTouched, !password.isEmpty {
-                try KeychainKeyStore().storePassword(password, hostID: host.id)
+            if form.authMethod == .password, form.passwordTouched, !form.password.isEmpty {
+                try KeychainKeyStore().storePassword(form.password, hostID: host.id)
             }
-            if authMethod == .key {
+            if form.authMethod == .key {
                 KeychainKeyStore().deletePassword(hostID: host.id)
             }
             try await HostStore.shared.upsert(host)
@@ -234,15 +235,15 @@ struct AddHostView: View {
     }
 
     private func resolveAuth(for host: RemoteHost) async throws -> SSHAuth {
-        switch authMethod {
+        switch form.authMethod {
         case .password:
-            if passwordTouched, !password.isEmpty {
-                return .password(password)
+            if form.passwordTouched, !form.password.isEmpty {
+                return .password(form.password)
             }
             let existing = try KeychainKeyStore().loadPassword(hostID: host.id)
             return .password(existing)
         case .key:
-            guard let identityID = selectedIdentityID else {
+            guard let identityID = form.selectedIdentityID else {
                 throw SSHError.invalidKey("no key selected")
             }
             let pem = try await IdentityStore.shared.loadPEM(for: identityID)
@@ -257,13 +258,13 @@ struct AddHostView: View {
         case .transport(let m):
             let lower = m.lowercased()
             if lower.contains("timed out") || lower.contains("connect timeout") || lower.contains("connection timed out") {
-                if hostname.lowercased().hasSuffix(".ts.net") {
-                    return "Couldn't reach \(hostname):\(port) — check that Tailscale is connected on this device and the peer is online"
+                if form.hostname.lowercased().hasSuffix(".ts.net") {
+                    return "Couldn't reach \(form.hostname):\(form.port) — check that Tailscale is connected on this device and the peer is online"
                 }
-                return "Couldn't reach \(hostname):\(port) — host unreachable or blocked"
+                return "Couldn't reach \(form.hostname):\(form.port) — host unreachable or blocked"
             }
             if m.contains("NIOConnectionError") || m.contains("refused") {
-                return "Connection refused at \(hostname):\(port) — is SSH running on that port?"
+                return "Connection refused at \(form.hostname):\(form.port) — is SSH running on that port?"
             }
             return "Transport error: \(m)"
         case .invalidKey(let m):
@@ -273,9 +274,5 @@ struct AddHostView: View {
         }
     }
 
-    private func dismissKeyboard() {
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-    }
 }
 #endif

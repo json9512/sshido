@@ -71,9 +71,9 @@ struct SafariSheet: UIViewControllerRepresentable {
 }
 
 struct PasteCallbackSheet: View {
-    @Binding var isPresented: Bool
     let onSubmit: (String) -> Void
 
+    @Environment(\.dismiss) private var dismiss
     @State private var text: String = ""
 
     var body: some View {
@@ -99,16 +99,17 @@ struct PasteCallbackSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { isPresented = false }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Send") {
                         onSubmit(text)
-                        isPresented = false
+                        dismiss()
                     }
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            .dsKeyboardDismissToolbar()
         }
     }
 }

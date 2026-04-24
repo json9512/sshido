@@ -22,15 +22,17 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     private var lastReportedSize: (cols: Int, rows: Int) = (0, 0)
     private let delegateRelay = TerminalDelegateRelay()
     private var appearanceObserver: NSObjectProtocol?
+    private var appearanceTask: Task<Void, Never>?
     private var lastTitle: String = ""
 
     public let activityTracker = TerminalActivityTracker()
     public var onTitleChange: ((String) -> Void)?
 
-    public init(channel: SSHChannel) {
+    public init?(channel: SSHChannel) {
         self.channel = channel
         guard let r = MetalTerminalRenderer(fontSize: 12) else {
-            fatalError("Metal device unavailable")
+            Log.ui.error("Metal device unavailable — cannot create terminal bridge")
+            return nil
         }
         self.renderer = r
         let v = MetalTerminalView(renderer: r)
@@ -47,17 +49,23 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .sshidoAppearanceChanged, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in await self?.applyAppearance() }
+            Task { @MainActor in self?.scheduleApplyAppearance() }
         }
-        Task { [weak self] in
-            await self?.applyAppearance()
-        }
+        scheduleApplyAppearance()
     }
 
     deinit {
         readerTask?.cancel()
+        appearanceTask?.cancel()
         if let appearanceObserver {
             NotificationCenter.default.removeObserver(appearanceObserver)
+        }
+    }
+
+    private func scheduleApplyAppearance() {
+        appearanceTask?.cancel()
+        appearanceTask = Task { @MainActor [weak self] in
+            await self?.applyAppearance()
         }
     }
 

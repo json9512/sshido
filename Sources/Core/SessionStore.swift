@@ -38,7 +38,7 @@ public actor SessionStore {
             title: title ?? "Session \(count)"
         )
         sessions[session.id] = session
-        try? persist()
+        persistLogged()
         channels[session.id] = makeChannel(for: host, auth: auth, sessionID: session.id)
         return session
     }
@@ -89,7 +89,7 @@ public actor SessionStore {
         guard var s = sessions[id], s.title != title else { return }
         s.title = title
         sessions[id] = s
-        try? persist()
+        persistLogged()
     }
 
     public func close(sessionID: UUID) async {
@@ -97,7 +97,7 @@ public actor SessionStore {
             await ch.disconnect()
         }
         sessions.removeValue(forKey: sessionID)
-        try? persist()
+        persistLogged()
     }
 
     public func closeAll(for hostID: UUID) async {
@@ -139,5 +139,13 @@ public actor SessionStore {
         let arr = Array(sessions.values).sorted { $0.createdAt < $1.createdAt }
         let data = try JSONEncoder().encode(arr)
         try data.write(to: url, options: .atomic)
+    }
+
+    private func persistLogged() {
+        do {
+            try persist()
+        } catch {
+            Log.store.error("SessionStore persist failed: \(String(describing: error), privacy: .public)")
+        }
     }
 }

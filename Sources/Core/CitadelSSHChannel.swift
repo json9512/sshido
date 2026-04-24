@@ -45,12 +45,12 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         self.environment = environment
         self.initialCols = cols
         self.initialRows = rows
-        var cont: AsyncStream<Data>.Continuation!
-        self.output = AsyncStream(bufferingPolicy: .unbounded) { cont = $0 }
-        self.continuation = cont
-        var writeCont: AsyncStream<[UInt8]>.Continuation!
-        self.writeQueue = AsyncStream(bufferingPolicy: .unbounded) { writeCont = $0 }
-        self.writeContinuation = writeCont
+        let outStream = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
+        self.output = outStream.stream
+        self.continuation = outStream.continuation
+        let writeStream = AsyncStream<[UInt8]>.makeStream(bufferingPolicy: .unbounded)
+        self.writeQueue = writeStream.stream
+        self.writeContinuation = writeStream.continuation
     }
 
     public var isConnected: Bool { get async { connected } }

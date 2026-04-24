@@ -3,7 +3,8 @@ import Foundation
 import sshidoModels
 #endif
 
-public final class VoicePreferences: @unchecked Sendable {
+@MainActor
+public final class VoicePreferences {
     public static let shared = VoicePreferences()
     private let key = "sshido.voice.language"
     private let autoSendKey = "sshido.voice.autoSend"

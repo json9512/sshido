@@ -75,13 +75,13 @@ public actor OAuthTunnel {
         forwarded.append(fwd)
         conn.start(queue: queue)
 
-        let uploadTask = Task { [weak self] in
+        let uploadTask = Task {
             await Self.pumpConnectionToForwarded(conn: conn, fwd: fwd)
-            await self?.closeConnection(conn, fwd: fwd)
+            await self.closeConnection(conn, fwd: fwd)
         }
-        let downloadTask = Task { [weak self] in
+        let downloadTask = Task {
             await Self.pumpForwardedToConnection(fwd: fwd, conn: conn)
-            await self?.closeConnection(conn, fwd: fwd)
+            await self.closeConnection(conn, fwd: fwd)
         }
         pumpTasks.append(uploadTask)
         pumpTasks.append(downloadTask)

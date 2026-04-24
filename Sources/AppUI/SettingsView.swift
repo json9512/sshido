@@ -24,6 +24,7 @@ public struct SettingsView: View {
     @State private var voiceLanguage: VoiceLanguage = VoicePreferences.shared.language
     @State private var voiceAutoSend: Bool = VoicePreferences.shared.autoSend
     @State private var voiceAITranslate: Bool = VoicePreferences.shared.aiTranslate
+    @State private var confirmClearSubscription = false
 
     public init() {}
 
@@ -76,11 +77,7 @@ public struct SettingsView: View {
                             .buttonStyle(.plain)
                             .help("Copy agent setup prompt")
                             Button {
-                                Task {
-                                    try? await PushService.shared.clearSubscription()
-                                    await reload()
-                                    toast = "Subscription cleared"
-                                }
+                                confirmClearSubscription = true
                             } label: {
                                 Image(systemName: "trash")
                                     .font(.system(size: 16))
@@ -159,7 +156,7 @@ public struct SettingsView: View {
                         .dsRow()
                 }
                 if appearance.showMascotCompanion {
-                    mascotSection
+                    MascotSettingsSection(toast: $toast)
                 }
                 if let error {
                     Section { InlineErrorText(error) }
@@ -168,16 +165,7 @@ public struct SettingsView: View {
             .dsFormStyle()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.sendAction(
-                            #selector(UIResponder.resignFirstResponder),
-                            to: nil, from: nil, for: nil)
-                    }
-                }
-            }
+            .dsKeyboardDismissToolbar()
             .task { await reload() }
             .onReceive(NotificationCenter.default.publisher(for: .hotkeyLayoutChanged)) { _ in
                 Task { await reload() }
@@ -195,6 +183,22 @@ public struct SettingsView: View {
                 VoicePreferences.shared.aiTranslate = new
             }
             .toast($toast)
+            .confirmationDialog(
+                "Clear push subscription?",
+                isPresented: $confirmClearSubscription,
+                titleVisibility: .visible
+            ) {
+                Button("Clear subscription", role: .destructive) {
+                    Task {
+                        try? await PushService.shared.clearSubscription()
+                        await reload()
+                        toast = "Subscription cleared"
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Stops pushes to this device. You can re-subscribe at any time.")
+            }
         }
     }
 
@@ -273,195 +277,5 @@ public struct SettingsView: View {
         }
     }
 
-    // MARK: - Mascot
-
-    @State private var showMascotGrid = false
-    @State private var expandedGroup: String?
-
-    /// Unique mascots for the grid: standalone packs + one representative per group.
-    private var mascotGridItems: [SpritePack] {
-        let manager = SpritePackManager.shared
-        var seen = Set<String>()
-        var items: [SpritePack] = []
-        for pack in manager.installedPacks {
-            if let group = pack.group {
-                if seen.contains(group) { continue }
-                seen.insert(group)
-                // Show the active variant if one is selected, otherwise first
-                if let active = manager.activePack, active.group == group {
-                    items.append(active)
-                } else {
-                    items.append(pack)
-                }
-            } else {
-                items.append(pack)
-            }
-        }
-        return items
-    }
-
-    /// All variants for a group.
-    private func variants(for group: String) -> [SpritePack] {
-        SpritePackManager.shared.installedPacks.filter { $0.group == group }
-    }
-
-    @ViewBuilder
-    private var mascotSection: some View {
-        let manager = SpritePackManager.shared
-        Section {
-            // Active mascot preview
-            if let active = manager.activePack,
-               let sheet = active.sheets[.sitting] {
-                HStack(spacing: 12) {
-                    Image(uiImage: sheet.frame(at: 0))
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 48, height: 48)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(active.name).font(DS.Font.headline)
-                            .foregroundStyle(DS.Color.textPrimary)
-                        Text("by \(active.author)").font(DS.Font.caption)
-                            .foregroundStyle(DS.Color.textSecondary)
-                    }
-                    Spacer()
-                }
-                .padding(.vertical, 4)
-            }
-
-            Button {
-                showMascotGrid.toggle()
-            } label: {
-                HStack {
-                    Text("Manage Mascot")
-                        .foregroundStyle(DS.Color.accent)
-                    Spacer()
-                    Image(systemName: showMascotGrid ? "chevron.up" : "chevron.down")
-                        .foregroundStyle(DS.Color.accent)
-                }
-            }
-            .buttonStyle(.plain)
-
-            if showMascotGrid {
-                if let group = expandedGroup {
-                    // Variant picker for expanded group
-                    let groupVariants = variants(for: group)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Button {
-                            expandedGroup = nil
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text("Back")
-                                    .font(DS.Font.callout)
-                            }
-                            .foregroundStyle(DS.Color.accent)
-                        }
-                        .buttonStyle(.plain)
-
-                        Text("Choose \(group.capitalized) style")
-                            .font(DS.Font.caption)
-                            .foregroundStyle(DS.Color.textSecondary)
-
-                        let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(groupVariants, id: \.id) { vPack in
-                                variantChip(vPack, isActive: manager.activePack?.id == vPack.id)
-                                    .onTapGesture {
-                                        manager.setActive(vPack)
-                                        toast = "Switched to \(vPack.name)"
-                                    }
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                } else {
-                    // Main mascot grid
-                    let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(mascotGridItems, id: \.id) { pack in
-                            mascotCell(pack, isActive: manager.activePack?.id == pack.id || (pack.group != nil && manager.activePack?.group == pack.group))
-                                .onTapGesture {
-                                    if let group = pack.group {
-                                        expandedGroup = group
-                                    } else {
-                                        manager.setActive(pack)
-                                        toast = "Switched to \(pack.name)"
-                                    }
-                                }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
-        } header: {
-            DSSectionHeader("Mascot")
-        }
-        .listRowBackground(DS.Color.surface1)
-    }
-
-    @ViewBuilder
-    private func mascotCell(_ pack: SpritePack, isActive: Bool) -> some View {
-        let sheet = pack.sheets[.sitting]
-        let label = pack.group?.capitalized ?? pack.name
-        VStack(spacing: 6) {
-            ZStack {
-                RoundedRectangle(cornerRadius: DS.Radius.md)
-                    .fill(isActive ? DS.Color.accent.opacity(0.15) : DS.Color.surface2)
-                    .frame(height: 72)
-                if let sheet {
-                    Image(uiImage: sheet.frame(at: 0))
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 48, height: 48)
-                }
-                if isActive {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(DS.Color.accent)
-                        .font(.system(size: 14))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(6)
-                }
-                if pack.group != nil {
-                    Image(systemName: "paintpalette.fill")
-                        .foregroundStyle(DS.Color.textTertiary)
-                        .font(.system(size: 10))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                        .padding(6)
-                }
-            }
-            Text(label)
-                .font(DS.Font.caption)
-                .foregroundStyle(isActive ? DS.Color.accent : DS.Color.textSecondary)
-                .lineLimit(1)
-        }
-    }
-
-    @ViewBuilder
-    private func variantChip(_ pack: SpritePack, isActive: Bool) -> some View {
-        let sheet = pack.sheets[.sitting]
-        VStack(spacing: 4) {
-            ZStack {
-                RoundedRectangle(cornerRadius: DS.Radius.sm)
-                    .fill(isActive ? DS.Color.accent.opacity(0.15) : DS.Color.surface2)
-                    .frame(width: 56, height: 56)
-                if let sheet {
-                    Image(uiImage: sheet.frame(at: 0))
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 36, height: 36)
-                }
-                if isActive {
-                    RoundedRectangle(cornerRadius: DS.Radius.sm)
-                        .stroke(DS.Color.accent, lineWidth: 2)
-                        .frame(width: 56, height: 56)
-                }
-            }
-            Text(pack.variant ?? "")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(isActive ? DS.Color.accent : DS.Color.textSecondary)
-                .lineLimit(1)
-        }
-    }
 }
 #endif

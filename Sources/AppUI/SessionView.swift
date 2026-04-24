@@ -117,35 +117,17 @@ public struct SessionView: View {
                     }
                 }
                 if voice.isVoiceModeActive {
-                    voiceStrip(ch)
+                    SessionVoiceStrip(voice: voice)
                 }
                 AgentBar(channel: ch, bridge: bridge, hotkeys: hotkeys) {
                     bridge?.focus()
                 }
             } else if let error {
-                VStack(spacing: DS.Spacing.lg) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 48))
-                        .foregroundStyle(DS.Color.spark)
-                    Text("Couldn't open the session")
-                        .font(DS.Font.headline)
-                        .foregroundStyle(DS.Color.textPrimary)
-                    Text(error.isEmpty ? "(no error message)" : error)
-                        .font(DS.Font.mono)
-                        .foregroundStyle(DS.Color.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, DS.Spacing.xl)
-                        .textSelection(.enabled)
-                    HStack(spacing: DS.Spacing.md) {
-                        Button("Retry") { Task { await load() } }
-                            .buttonStyle(DSPrimaryButtonStyle())
-                        Button("Back") { dismiss() }
-                            .buttonStyle(DSSecondaryButtonStyle())
-                    }
-                    .padding(.top, DS.Spacing.sm)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(DS.Color.void)
+                SessionErrorScreen(
+                    error: error,
+                    onRetry: { Task { await load() } },
+                    onBack: { dismiss() }
+                )
             } else {
                 loadingScreen
             }
@@ -259,33 +241,10 @@ public struct SessionView: View {
             }
         }
         .sheet(isPresented: $oauthFlow.pastePromptActive) {
-            PasteCallbackSheet(isPresented: $oauthFlow.pastePromptActive) { pasted in
+            PasteCallbackSheet { pasted in
                 guard let ch = channel else { return }
                 Task { await oauthFlow.finishWithPastedCallback(pasted, channel: ch) }
             }
-        }
-    }
-
-    @ViewBuilder
-    private func voiceStrip(_ ch: SSHChannel) -> some View {
-        HStack(spacing: DS.Spacing.sm) {
-            Image(systemName: voiceIcon)
-                .foregroundStyle(DS.Color.accent)
-                .font(.system(size: 14))
-            Text(voiceStatus)
-                .font(DS.Font.mono).lineLimit(2)
-                .foregroundStyle(voice.state == .sending ? DS.Color.accent : DS.Color.textPrimary)
-            Spacer()
-        }
-        .padding(DS.Spacing.sm).background(DS.Color.surface1)
-    }
-
-    private var voiceIcon: String {
-        switch voice.state {
-        case .listening:    return "waveform"
-        case .translating:  return "brain"
-        case .sending:      return "arrow.right.circle.fill"
-        default:            return "mic.fill"
         }
     }
 
@@ -374,25 +333,12 @@ public struct SessionView: View {
 
     @ViewBuilder
     private var loadingScreen: some View {
-        VStack(spacing: DS.Spacing.lg) {
-            ProgressView()
-                .controlSize(.large)
-                .tint(DS.Color.titaniumLight)
-            Text(loadingLabel)
-                .font(DS.Font.callout).foregroundStyle(DS.Color.textSecondary)
-            if showStuckRecovery {
-                Text("Taking longer than usual…")
-                    .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-                HStack(spacing: DS.Spacing.md) {
-                    Button("Retry") { Task { await load() } }
-                        .buttonStyle(DSPrimaryButtonStyle())
-                    Button("Back") { dismiss() }
-                        .buttonStyle(DSSecondaryButtonStyle())
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DS.Color.void)
+        SessionLoadingScreen(
+            label: loadingLabel,
+            showStuckRecovery: showStuckRecovery,
+            onRetry: { Task { await load() } },
+            onBack: { dismiss() }
+        )
     }
 
     private func startDisconnectWatcher() {
@@ -437,19 +383,6 @@ public struct SessionView: View {
         case .online:  return .online
         case .offline: return .offline
         case .unknown: return .connecting
-        }
-    }
-
-    private var voiceStatus: String {
-        switch voice.state {
-        case .idle:        return ""
-        case .voiceActive: return "Voice mode"
-        case .listening:
-            return voice.transcript.isEmpty ? "Listening…" : voice.transcript
-        case .translating:
-            return voice.aiStatus.isEmpty ? voice.transcript : voice.aiStatus
-        case .sending:
-            return voice.translatedCommand.isEmpty ? voice.transcript : voice.translatedCommand
         }
     }
 

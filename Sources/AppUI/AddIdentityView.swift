@@ -87,25 +87,22 @@ struct AddIdentityView: View {
             .navigationTitle(installCommand == nil ? "Add key" : "Install on server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(installCommand == nil ? "Cancel" : "Done") { dismiss() }
-                        .foregroundStyle(DS.Color.textSecondary)
-                }
                 if installCommand == nil {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                            .foregroundStyle(DS.Color.textSecondary)
+                    }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Import") { Task { await save() } }
                             .disabled(label.isEmpty || pem.isEmpty)
                     }
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.sendAction(
-                            #selector(UIResponder.resignFirstResponder),
-                            to: nil, from: nil, for: nil)
+                } else {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
                     }
                 }
             }
+            .dsKeyboardDismissToolbar()
             .toast($toast)
         }
     }

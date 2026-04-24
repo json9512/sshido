@@ -23,11 +23,12 @@ struct ShortcutGroupsListView: View {
                     }
                     .dsRow()
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
+                        Button {
                             pendingDelete = group
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
                         }
+                        .tint(DS.Color.error)
                     }
                 }
                 .onMove { source, destination in

@@ -68,11 +68,12 @@ struct ShortcutGroupEditorView: View {
                         }
                         .dsRow()
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
+                            Button {
                                 pendingDelete = sc
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
                             }
+                            .tint(DS.Color.error)
                         }
                     }
                     .onMove { source, destination in

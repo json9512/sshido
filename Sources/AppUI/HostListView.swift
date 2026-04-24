@@ -13,6 +13,7 @@ import sshidoUI
 public struct HostListView: View {
     @State private var hosts: [RemoteHost] = []
     @State private var connectedHosts: Set<UUID> = []
+    @State private var pendingHostDelete: RemoteHost?
     @EnvironmentObject private var router: AppRouter
     @StateObject private var deepLinks = DeepLinkRouter.shared
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -56,9 +57,8 @@ public struct HostListView: View {
                 NavigationStack {
                     SettingsView()
                         .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
+                            ToolbarItem(placement: .confirmationAction) {
                                 Button("Done") { router.sheet = nil }
-                                    .foregroundStyle(DS.Color.accent)
                             }
                         }
                 }
@@ -72,6 +72,28 @@ public struct HostListView: View {
             }
         })
         .coachmarks()
+        .confirmationDialog(
+            pendingHostDelete.map { "Delete \($0.name)?" } ?? "Delete server?",
+            isPresented: Binding(
+                get: { pendingHostDelete != nil },
+                set: { if !$0 { pendingHostDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingHostDelete
+        ) { host in
+            Button("Delete", role: .destructive) {
+                let hostID = host.id
+                Task {
+                    try? await HostStore.shared.remove(id: hostID)
+                    KeychainKeyStore().deletePassword(hostID: hostID)
+                    await reload()
+                }
+                pendingHostDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingHostDelete = nil }
+        } message: { _ in
+            Text("This removes the server from this device and deletes any saved password. This cannot be undone.")
+        }
     }
 
     @ViewBuilder
@@ -129,10 +151,8 @@ public struct HostListView: View {
                         hostRow(host).tag(host).dsRow()
                     }
                     .onDelete { offsets in
-                        Task {
-                            for i in offsets { try? await HostStore.shared.remove(id: hosts[i].id) }
-                            await reload()
-                        }
+                        guard let idx = offsets.first else { return }
+                        pendingHostDelete = hosts[idx]
                     }
                 }
             } else {
@@ -149,11 +169,7 @@ public struct HostListView: View {
                         .coachTarget(index == 0 ? .tapHost : nil)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button {
-                                Task {
-                                    try? await HostStore.shared.remove(id: host.id)
-                                    KeychainKeyStore().deletePassword(hostID: host.id)
-                                    await reload()
-                                }
+                                pendingHostDelete = host
                             } label: { Label("Delete", systemImage: "trash").labelStyle(.iconOnly) }
                             .tint(DS.Color.error)
                             Button {
