@@ -76,6 +76,10 @@ struct sshidoApp: App {
 
         // Switch/Toggle tint
         UISwitch.appearance().onTintColor = UIColor(DS.Color.accent)
+
+        // StoreKit: start observing transaction updates before the first UI
+        // that could trigger a purchase. Safe to call once per launch.
+        Entitlements.shared.startObservingTransactionUpdates()
     }
 
     var body: some Scene {

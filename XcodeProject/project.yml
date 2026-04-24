@@ -68,3 +68,20 @@ targets:
     configFiles:
       Debug: Signing.xcconfig
       Release: Signing.xcconfig
+
+schemes:
+  sshido:
+    build:
+      targets:
+        sshido: all
+    run:
+      config: Debug
+      storeKitConfiguration: sshido.storekit
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

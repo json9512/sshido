@@ -21,13 +21,33 @@ public final class AppRouter: ObservableObject {
         case settings
         case addHost
         case editHost(RemoteHost)
+        case paywall(PaywallContext)
 
         public var id: String {
             switch self {
             case .settings: return "settings"
             case .addHost: return "addHost"
             case .editHost(let h): return "editHost-\(h.id.uuidString)"
+            case .paywall(let ctx): return "paywall-\(ctx)"
             }
+        }
+    }
+
+    /// Present the paywall if the user lacks sshido+; otherwise run `action`.
+    public func requirePlus(_ ctx: PaywallContext, action: () -> Void = {}) {
+        if Entitlements.shared.hasPlus {
+            action()
+        } else {
+            sheet = .paywall(ctx)
+        }
+    }
+
+    /// Present the paywall if the user lacks Cloud Pro; otherwise run `action`.
+    public func requireCloudPro(_ ctx: PaywallContext, action: () -> Void = {}) {
+        if Entitlements.shared.hasCloudPro {
+            action()
+        } else {
+            sheet = .paywall(ctx)
         }
     }
 

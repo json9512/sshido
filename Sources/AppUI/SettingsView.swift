@@ -12,6 +12,8 @@ import sshidoUI
 #endif
 
 public struct SettingsView: View {
+    @ObservedObject private var entitlements = Entitlements.shared
+    @EnvironmentObject private var router: AppRouter
     @State private var settings = PushSettings.default
     @State private var subscription: PushSubscription?
     @State private var deviceToken: String?
@@ -38,6 +40,29 @@ public struct SettingsView: View {
                         Label("Help & FAQ", systemImage: "questionmark.circle")
                             .foregroundStyle(DS.Color.textPrimary)
                     }
+                    .dsRow()
+                    Button {
+                        router.sheet = .paywall(.upgrade)
+                    } label: {
+                        HStack(spacing: DS.Spacing.md) {
+                            Image(systemName: "sparkles")
+                                .foregroundStyle(DS.Color.accent)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                                Text(entitlementsSummary)
+                                    .font(DS.Font.headline)
+                                    .foregroundStyle(DS.Color.textPrimary)
+                                Text(entitlementsSubtitle)
+                                    .font(DS.Font.caption)
+                                    .foregroundStyle(DS.Color.textSecondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundStyle(DS.Color.textTertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
                     .dsRow()
                 }
                 Section {
@@ -243,6 +268,22 @@ public struct SettingsView: View {
     private var subscribeActionLabel: String {
         guard let sub = subscription else { return "Subscribe" }
         return sub.serverURL == trimmedServerURLInput ? "Update subscription" : "Change server"
+    }
+
+    private var entitlementsSummary: String {
+        switch (entitlements.hasPlus, entitlements.hasCloudPro) {
+        case (true, true):   return "sshido+ and Cloud Pro active"
+        case (true, false):  return "sshido+ active"
+        case (false, true):  return "Cloud Pro active"
+        case (false, false): return "Upgrade sshido"
+        }
+    }
+
+    private var entitlementsSubtitle: String {
+        if entitlements.hasPlus || entitlements.hasCloudPro {
+            return "Manage subscriptions in iOS Settings → Apple ID"
+        }
+        return "See what's available"
     }
 
     private func reload() async {
