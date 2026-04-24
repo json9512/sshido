@@ -10,11 +10,18 @@ struct FeedbackSettingsSection: View {
     @EnvironmentObject private var router: AppRouter
     @ObservedObject private var entitlements = Entitlements.shared
     @State private var themeID: String = FeedbackPreferences.shared.themeID
+    @State private var expanded = false
+
+    private var active: FeedbackTheme {
+        FeedbackThemes.theme(for: themeID) ?? FeedbackThemes.subtle
+    }
 
     var body: some View {
         Section {
-            ForEach(FeedbackThemes.all) { theme in
-                themeRow(theme)
+            activePreview
+            expandToggle
+            if expanded {
+                themeList
             }
         } header: {
             DSSectionHeader("Agent event feedback")
@@ -22,6 +29,59 @@ struct FeedbackSettingsSection: View {
             Text("Fires haptics when pushes arrive in the foreground. Background pushes use the system notification sound set in iOS Settings.")
                 .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
         }
+        .listRowBackground(DS.Color.surface1)
+    }
+
+    @ViewBuilder
+    private var activePreview: some View {
+        HStack(spacing: DS.Spacing.md) {
+            Image(systemName: active.isPremium ? "waveform.circle.fill" : "waveform")
+                .foregroundStyle(DS.Color.accent)
+                .font(.system(size: 22))
+                .frame(width: 44, height: 30)
+            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                Text(active.name)
+                    .font(DS.Font.rowTitle)
+                    .foregroundStyle(DS.Color.textPrimary)
+                Text(active.description)
+                    .font(DS.Font.caption)
+                    .foregroundStyle(DS.Color.textSecondary)
+                    .lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var expandToggle: some View {
+        Button {
+            withAnimation(DS.Animation.quick) { expanded.toggle() }
+        } label: {
+            HStack {
+                Text(expanded ? "Hide feedback themes" : "Change feedback")
+                    .foregroundStyle(DS.Color.accent)
+                Spacer()
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .foregroundStyle(DS.Color.accent)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var themeList: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(FeedbackThemes.all.enumerated()), id: \.element.id) { idx, theme in
+                themeRow(theme)
+                if idx < FeedbackThemes.all.count - 1 {
+                    Divider()
+                        .background(DS.Color.titaniumDark.opacity(0.3))
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -35,21 +95,22 @@ struct FeedbackSettingsSection: View {
                 themeID = theme.id
                 FeedbackPreferences.shared.themeID = theme.id
                 toast = "Feedback: \(theme.name)"
-                // Play a preview haptic so the user can feel what they picked.
                 AgentEventFeedback.shared.fire(.needsInput)
             }
         } label: {
             HStack(spacing: DS.Spacing.md) {
                 Image(systemName: theme.isPremium ? "waveform.circle.fill" : "waveform")
-                    .foregroundStyle(DS.Color.accent)
-                    .frame(width: 24)
+                    .foregroundStyle(locked ? DS.Color.textTertiary : DS.Color.accent)
+                    .font(.system(size: 20))
+                    .frame(width: 44, height: 30)
                 VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
                     Text(theme.name)
-                        .font(DS.Font.rowTitle)
+                        .font(DS.Font.body)
                         .foregroundStyle(DS.Color.textPrimary)
-                    Text(theme.isPremium ? "sshido+" : "Free")
+                    Text(theme.description)
                         .font(DS.Font.caption)
-                        .foregroundStyle(theme.isPremium ? DS.Color.accent : DS.Color.textTertiary)
+                        .foregroundStyle(DS.Color.textTertiary)
+                        .lineLimit(2)
                 }
                 Spacer()
                 if isActive && !locked {
@@ -58,12 +119,13 @@ struct FeedbackSettingsSection: View {
                 } else if locked {
                     Image(systemName: "lock.fill")
                         .foregroundStyle(DS.Color.accent)
+                        .font(.system(size: 12))
                 }
             }
+            .padding(.vertical, DS.Spacing.xs)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .dsRow()
     }
 }
 #endif

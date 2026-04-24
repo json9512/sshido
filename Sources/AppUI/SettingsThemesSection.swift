@@ -13,11 +13,14 @@ struct ThemesSettingsSection: View {
 
     @EnvironmentObject private var router: AppRouter
     @ObservedObject private var entitlements = Entitlements.shared
+    @State private var expanded = false
 
     var body: some View {
         Section {
-            ForEach(TerminalThemes.all) { theme in
-                themeRow(theme)
+            activePreview
+            expandToggle
+            if expanded {
+                themeList
             }
         } header: {
             DSSectionHeader("Theme")
@@ -25,6 +28,56 @@ struct ThemesSettingsSection: View {
             Text("Changes the terminal background and default text color. ANSI colors (ls output, prompt colors) are controlled by your shell and stay unchanged.")
                 .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
         }
+        .listRowBackground(DS.Color.surface1)
+    }
+
+    @ViewBuilder
+    private var activePreview: some View {
+        let theme = appearance.theme
+        HStack(spacing: DS.Spacing.md) {
+            swatch(theme, locked: false)
+            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                Text(theme.name)
+                    .font(DS.Font.rowTitle)
+                    .foregroundStyle(DS.Color.textPrimary)
+                Text(theme.isPremium ? "sshido+" : "Free")
+                    .font(DS.Font.caption)
+                    .foregroundStyle(theme.isPremium ? DS.Color.accent : DS.Color.textSecondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var expandToggle: some View {
+        Button {
+            withAnimation(DS.Animation.quick) { expanded.toggle() }
+        } label: {
+            HStack {
+                Text(expanded ? "Hide themes" : "Change theme")
+                    .foregroundStyle(DS.Color.accent)
+                Spacer()
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .foregroundStyle(DS.Color.accent)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var themeList: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(TerminalThemes.all.enumerated()), id: \.element.id) { idx, theme in
+                themeRow(theme)
+                if idx < TerminalThemes.all.count - 1 {
+                    Divider()
+                        .background(DS.Color.titaniumDark.opacity(0.3))
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -43,7 +96,7 @@ struct ThemesSettingsSection: View {
                 swatch(theme, locked: locked)
                 VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
                     Text(theme.name)
-                        .font(DS.Font.rowTitle)
+                        .font(DS.Font.body)
                         .foregroundStyle(DS.Color.textPrimary)
                     Text(theme.isPremium ? "sshido+" : "Free")
                         .font(DS.Font.caption)
@@ -56,12 +109,13 @@ struct ThemesSettingsSection: View {
                 } else if locked {
                     Image(systemName: "lock.fill")
                         .foregroundStyle(DS.Color.accent)
+                        .font(.system(size: 12))
                 }
             }
+            .padding(.vertical, DS.Spacing.xs)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .dsRow()
     }
 
     @ViewBuilder
@@ -71,12 +125,12 @@ struct ThemesSettingsSection: View {
         ZStack {
             RoundedRectangle(cornerRadius: DS.Radius.sm)
                 .fill(bg)
-                .frame(width: 40, height: 28)
+                .frame(width: 44, height: 30)
             Text("Aa")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(fg)
         }
-        .opacity(locked ? 0.6 : 1)
+        .opacity(locked ? 0.5 : 1)
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.sm)
                 .stroke(DS.Color.titaniumDark, lineWidth: 1)
