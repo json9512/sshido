@@ -1,0 +1,58 @@
+name: Static Site CI
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  repository_dispatch:
+    types:
+      - static_site
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".upptimerc.yml"
+      - "history/**"
+      - "summary.json"
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: upptime/uptime-monitor@master
+        with:
+          command: "site"
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+      - name: Locate built site
+        id: site
+        run: |
+          # Upptime's `site` command builds the Sapper static export; the
+          # exact location varies between versions, so probe for index.html.
+          candidate=$(find "$GITHUB_WORKSPACE" -path '*/__sapper__/export/index.html' -print -quit 2>/dev/null || true)
+          if [ -z "$candidate" ]; then
+            echo "No __sapper__/export/index.html found anywhere." >&2
+            echo "Dumping directory tree for diagnosis:" >&2
+            find "$GITHUB_WORKSPACE" -maxdepth 4 -type d | head -80 >&2
+            exit 1
+          fi
+          site_dir=$(dirname "$candidate")
+          echo "Found built site at: $site_dir"
+          echo "dir=$site_dir" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.site.outputs.dir }}
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

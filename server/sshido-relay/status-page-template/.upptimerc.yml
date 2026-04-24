@@ -1,0 +1,46 @@
+# Upptime configuration for push.sshido.com status page.
+#
+# Usage:
+#   1. Create a new public GitHub repo (suggested: json9512/sshido-status).
+#   2. Copy this file to the repo root as `.upptimerc.yml`.
+#   3. Copy the workflows in this template folder into `.github/workflows/`.
+#   4. Enable GitHub Pages (branch: gh-pages, root) in repo settings.
+#   5. Add a CNAME `status.sshido.com -> <your-github-user>.github.io` DNS record.
+#   6. Add secret `GH_PAT` (personal access token with repo + workflow scope).
+#   7. Let Actions run — first deploy takes ~10 minutes.
+#
+# https://upptime.js.org/ has full docs.
+
+owner: json9512
+repo: sshido-status
+
+sites:
+  - name: sshido push relay
+    url: https://push.sshido.com/health
+    expectedStatusCodes:
+      - 200
+
+status-website:
+  cname: status.sshido.com
+  name: sshido status
+  introTitle: "sshido status"
+  introMessage: "Uptime for push.sshido.com. Incident history and response-time graphs are publicly available."
+  navbar:
+    - title: Status
+      href: /
+    - title: Repository
+      href: https://github.com/json9512/sshido
+    - title: Self-host guide
+      href: https://github.com/json9512/sshido/tree/main/server/sshido-relay
+
+assignees:
+  - json9512
+
+workflowSchedule:
+  graphs: "0 0 * * *"
+  responseTime: "0 23 * * *"
+  staticSite: "0 1 * * *"
+  summary: "0 1 * * *"
+  updateTemplate: "0 0 * * 0"
+  updates: "0 3 * * *"
+  uptime: "*/5 * * * *"

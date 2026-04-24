@@ -146,6 +146,14 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "store down: "+err.Error(), 503)
 		return
 	}
+	if s.apns == nil {
+		// APNs intentionally unconfigured means notifications won't actually
+		// be delivered; reporting this as a degraded state lets external
+		// uptime probes catch a broken deploy early.
+		http.Error(w, "apns unconfigured", 503)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write([]byte("ok"))
 }
 

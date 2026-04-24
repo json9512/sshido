@@ -73,6 +73,19 @@ If nothing arrives after a real task:
 - run `curl -fsS -X POST -H 'content-type: application/json' -d '{"title":"x","body":"y"}' "$(cat ~/.sshido/notify.url)"` and expect HTTP 204,
 - check **Settings → Notifications → sshido** on the iPhone is enabled.
 
+## Our promise
+
+The relay is open source at [`server/sshido-relay/`](server/sshido-relay/).
+If the hosted service ever goes away, changes pricing in a way you don't
+like, or you simply want control of your own push pipeline, you can stand up
+the exact same binary with one deploy script. **Self-hosting is free and
+will always be free.** The paid `sshido Cloud` tier (when it exists) adds
+features like multiple endpoints, webhook forwarding, and a published SLA
+on top of the hosted relay — it never gates the self-host path.
+
+Public status: [status.sshido.com](https://status.sshido.com) (uptime probe
+against `push.sshido.com/health`).
+
 ## Self-hosting the relay
 
 `push.sshido.com` is a single Cloud Run service anyone can stand up. To run
