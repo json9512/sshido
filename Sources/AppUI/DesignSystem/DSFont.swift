@@ -5,6 +5,11 @@ extension DS {
     enum Font {
         static let displayLarge = SwiftUI.Font.system(size: 28, weight: .bold)
         static let headline     = SwiftUI.Font.system(size: 17, weight: .semibold)
+        /// Settings / list row main label. 17pt regular to match iOS
+        /// system Settings conventions. Use this for every Settings row
+        /// title (Toggle, Picker, Label, NavigationLink) to keep the
+        /// page typographically uniform.
+        static let rowTitle     = SwiftUI.Font.system(size: 17, weight: .regular)
         static let body         = SwiftUI.Font.system(size: 15, weight: .regular)
         static let callout      = SwiftUI.Font.system(size: 14, weight: .regular)
         static let caption      = SwiftUI.Font.system(size: 12, weight: .regular)

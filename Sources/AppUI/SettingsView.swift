@@ -37,8 +37,13 @@ public struct SettingsView: View {
                     NavigationLink {
                         FAQView()
                     } label: {
-                        Label("Help & FAQ", systemImage: "questionmark.circle")
-                            .foregroundStyle(DS.Color.textPrimary)
+                        Label {
+                            Text("Help & FAQ")
+                                .font(DS.Font.rowTitle)
+                                .foregroundStyle(DS.Color.textPrimary)
+                        } icon: {
+                            Image(systemName: "questionmark.circle")
+                        }
                     }
                     .dsRow()
                     Button {
@@ -50,7 +55,7 @@ public struct SettingsView: View {
                                 .frame(width: 24)
                             VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
                                 Text(entitlementsSummary)
-                                    .font(DS.Font.headline)
+                                    .font(DS.Font.rowTitle)
                                     .foregroundStyle(DS.Color.textPrimary)
                                 Text(entitlementsSubtitle)
                                     .font(DS.Font.caption)
@@ -143,7 +148,7 @@ public struct SettingsView: View {
                                 .frame(width: 24)
                             VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
                                 Text("Manage groups")
-                                    .font(DS.Font.headline)
+                                    .font(DS.Font.rowTitle)
                                     .foregroundStyle(DS.Color.textPrimary)
                                 Text(shortcutsSummary)
                                     .font(DS.Font.caption)
@@ -154,22 +159,30 @@ public struct SettingsView: View {
                     .dsRow()
                 }
                 Section(header: DSSectionHeader("Voice input")) {
-                    Picker("Language", selection: $voiceLanguage) {
+                    Picker(selection: $voiceLanguage) {
                         ForEach(VoiceLanguage.allCases, id: \.self) { v in
                             Text(v.displayName).tag(v)
                         }
+                    } label: {
+                        Text("Language").font(DS.Font.rowTitle)
                     }
                     .dsRow()
-                    Toggle("Send Enter after voice input", isOn: $voiceAutoSend)
-                        .dsRow()
-                    Toggle("AI command translation", isOn: $voiceAITranslate)
-                        .dsRow()
+                    Toggle(isOn: $voiceAutoSend) {
+                        Text("Send Enter after voice input").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                    Toggle(isOn: $voiceAITranslate) {
+                        Text("AI command translation").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
                 }
                 Section {
-                    Picker("Return key", selection: $appearance.returnKeyStyle) {
+                    Picker(selection: $appearance.returnKeyStyle) {
                         ForEach(ReturnKeyStyle.allCases, id: \.self) { s in
                             Text(s.displayName).tag(s)
                         }
+                    } label: {
+                        Text("Return key").font(DS.Font.rowTitle)
                     }
                     .dsRow()
                 } header: {
@@ -179,11 +192,14 @@ public struct SettingsView: View {
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Section(header: DSSectionHeader("Terminal")) {
-                    Stepper("Font size: \(appearance.fontSize) pt",
-                            value: $appearance.fontSize, in: 8...22)
-                        .dsRow()
-                    Toggle("Show mascot", isOn: $appearance.showMascotCompanion)
-                        .dsRow()
+                    Stepper(value: $appearance.fontSize, in: 8...22) {
+                        Text("Font size: \(appearance.fontSize) pt").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                    Toggle(isOn: $appearance.showMascotCompanion) {
+                        Text("Show mascot").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
                 }
                 if appearance.showMascotCompanion {
                     MascotSettingsSection(toast: $toast)

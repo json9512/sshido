@@ -13,23 +13,19 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var isPurchasing = false
-    @State private var errorMessage: String?
+    @State private var toast: String?
     @State private var loadFinished = false
     @State private var productsUnavailable = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: DS.Spacing.xl) {
+                VStack(spacing: DS.Spacing.xxl) {
                     hero
-                    stackingHint
                     plusCard
                     cloudCard
                     if productsUnavailable {
                         productsUnavailableNote
-                    }
-                    if let error = errorMessage {
-                        InlineErrorText(error)
                     }
                     legalFooter
                 }
@@ -48,6 +44,7 @@ struct PaywallView: View {
                         .disabled(isPurchasing)
                 }
             }
+            .toast($toast)
             .task {
                 await entitlements.loadProducts()
                 loadFinished = true
@@ -76,65 +73,38 @@ struct PaywallView: View {
         }
     }
 
-    // MARK: - Stacking hint
-
-    /// Most users pick one tier, but the two products stack. This banner
-    /// sets that expectation so nobody buys sshido+ expecting Cloud Pro.
-    @ViewBuilder
-    private var stackingHint: some View {
-        if !(entitlements.hasPlus && entitlements.hasCloudPro) {
-            HStack(alignment: .top, spacing: DS.Spacing.sm) {
-                Image(systemName: "square.stack.3d.up.fill")
-                    .foregroundStyle(DS.Color.accent)
-                Text("These stack. sshido+ unlocks app features; Cloud Pro unlocks hosted relay features. Power users buy both.")
-                    .font(DS.Font.caption)
-                    .foregroundStyle(DS.Color.textSecondary)
-            }
-            .padding(DS.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: DS.Radius.md).fill(DS.Color.surface2))
-        }
-    }
-
     // MARK: - sshido+ card
 
     @ViewBuilder
     private var plusCard: some View {
         let product = entitlements.product(for: StoreProducts.plusLifetime)
-        VStack(alignment: .leading, spacing: DS.Spacing.md) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
-                    Text("sshido+ — app features").font(DS.Font.headline)
-                        .foregroundStyle(DS.Color.textPrimary)
-                    Text("One-time · Lifetime · Family Sharing")
-                        .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+        card(emphasized: context.emphasis == .plus) {
+            VStack(alignment: .leading, spacing: DS.Spacing.lg) {
+                cardHeader(
+                    title: "sshido+ — app features",
+                    subtitle: "One-time · Lifetime · Family Sharing",
+                    priceText: product?.displayPrice ?? "$14.99",
+                    priceActive: product != nil || !loadFinished
+                )
+                featureList([
+                    ("paintpalette.fill", "Premium mascot packs"),
+                    ("swatchpalette.fill", "Curated terminal themes"),
+                    ("icloud.fill",        "CloudKit sync across devices"),
+                    ("rectangle.stack.fill.badge.plus", "Widgets, Live Activities, Watch"),
+                    ("waveform",           "Haptic & sound themes"),
+                ])
+                if entitlements.hasPlus {
+                    ownedNote("You already own sshido+")
+                } else {
+                    ctaButton(
+                        primaryText: "Unlock",
+                        secondaryText: nil,
+                        product: product,
+                        style: .primary
+                    )
                 }
-                Spacer()
-                priceLabel(product: product, placeholder: "$14.99")
             }
-
-            featureList([
-                ("paintpalette.fill", "Premium mascot packs"),
-                ("swatchpalette.fill", "Curated terminal themes"),
-                ("icloud.fill",        "CloudKit sync across devices"),
-                ("rectangle.stack.fill.badge.plus", "Widgets, Live Activities, Watch"),
-                ("waveform",           "Haptic & sound themes"),
-            ])
-
-            cta(
-                product: product,
-                alreadyOwned: entitlements.hasPlus,
-                ownedLabel: "You already own sshido+",
-                buyLabel: "Unlock"
-            )
         }
-        .padding(DS.Spacing.lg)
-        .background(RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.Color.surface1))
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.Radius.lg)
-                .stroke(context.emphasis == .plus ? DS.Color.accent : DS.Color.titaniumDark,
-                        lineWidth: context.emphasis == .plus ? 2 : 1)
-        )
     }
 
     // MARK: - Cloud Pro card
@@ -144,77 +114,87 @@ struct PaywallView: View {
         let monthly = entitlements.product(for: StoreProducts.cloudMonthly)
         let yearly  = entitlements.product(for: StoreProducts.cloudYearly)
 
-        VStack(alignment: .leading, spacing: DS.Spacing.md) {
-            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
-                Text("sshido Cloud Pro — hosted features").font(DS.Font.headline)
-                    .foregroundStyle(DS.Color.textPrimary)
-                Text("Hosted relay with power features · Cancel anytime")
-                    .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
-            }
+        card(emphasized: context.emphasis == .cloud) {
+            VStack(alignment: .leading, spacing: DS.Spacing.lg) {
+                cardHeader(
+                    title: "sshido Cloud Pro — hosted features",
+                    subtitle: "Hosted relay with power features · Cancel anytime",
+                    priceText: nil,
+                    priceActive: true
+                )
+                featureList([
+                    ("link",                    "Multiple named relay endpoints"),
+                    ("arrow.triangle.branch",   "Webhook-to-push bridge (GitHub, Linear, Sentry)"),
+                    ("shield.lefthalf.filled",  "Published 99.9% SLA"),
+                ])
+                Text("Not included in sshido+. Cloud features require hosted infrastructure.")
+                    .font(DS.Font.caption)
+                    .foregroundStyle(DS.Color.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            featureList([
-                ("link",                "Multiple named relay endpoints"),
-                ("arrow.triangle.branch","Webhook-to-push bridge (GitHub, Linear, Sentry)"),
-                ("shield.lefthalf.filled", "Published 99.9% SLA"),
-            ])
-
-            Text("Not included in sshido+. Cloud features require hosted infrastructure.")
-                .font(DS.Font.caption)
-                .foregroundStyle(DS.Color.textTertiary)
-
-            if entitlements.hasCloudPro {
-                Text("Already subscribed\(entitlements.cloudProExpiry.map { " · renews \($0.formatted(date: .abbreviated, time: .omitted))" } ?? "")")
-                    .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-            } else {
-                HStack(spacing: DS.Spacing.sm) {
-                    subscriptionButton(
-                        product: monthly,
-                        placeholderPrice: "$4.99",
-                        periodSuffix: "/ month",
-                        style: .secondary
+                if entitlements.hasCloudPro {
+                    ownedNote(
+                        "Already subscribed" +
+                        (entitlements.cloudProExpiry.map { " · renews \($0.formatted(date: .abbreviated, time: .omitted))" } ?? "")
                     )
-                    subscriptionButton(
-                        product: yearly,
-                        placeholderPrice: "$39.99",
-                        periodSuffix: "/ year",
-                        badge: "Save ~33%",
-                        style: .primary
-                    )
+                } else {
+                    HStack(spacing: DS.Spacing.md) {
+                        ctaButton(
+                            primaryText: monthly?.displayPrice ?? "$4.99",
+                            secondaryText: "/ month",
+                            product: monthly,
+                            style: .secondary
+                        )
+                        ctaButton(
+                            primaryText: yearly?.displayPrice ?? "$39.99",
+                            secondaryText: "/ year · Save ~33%",
+                            product: yearly,
+                            style: .primary
+                        )
+                    }
                 }
-                .disabled(isPurchasing || (monthly == nil && yearly == nil))
             }
         }
-        .padding(DS.Spacing.lg)
-        .background(RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.Color.surface1))
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.Radius.lg)
-                .stroke(context.emphasis == .cloud ? DS.Color.accent : DS.Color.titaniumDark,
-                        lineWidth: context.emphasis == .cloud ? 2 : 1)
-        )
     }
 
-    // MARK: - Helpers
+    // MARK: - Card primitives
 
     @ViewBuilder
-    private func priceLabel(product: Product?, placeholder: String) -> some View {
-        if let product {
-            Text(product.displayPrice)
-                .font(DS.Font.headline)
-                .foregroundStyle(DS.Color.textPrimary)
-        } else if loadFinished {
-            // StoreKit returned no product. Show the intended retail price
-            // greyed out so the paywall remains informative.
-            Text(placeholder)
-                .font(DS.Font.headline)
-                .foregroundStyle(DS.Color.textTertiary)
-        } else {
-            ProgressView().controlSize(.small)
+    private func card<Content: View>(emphasized: Bool, @ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(DS.Spacing.xl)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: DS.Radius.lg).fill(DS.Color.surface1))
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.Radius.lg)
+                    .stroke(emphasized ? DS.Color.accent : DS.Color.titaniumDark,
+                            lineWidth: emphasized ? 2 : 1)
+            )
+    }
+
+    @ViewBuilder
+    private func cardHeader(title: String, subtitle: String, priceText: String?, priceActive: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.md) {
+            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                Text(title)
+                    .font(DS.Font.headline)
+                    .foregroundStyle(DS.Color.textPrimary)
+                Text(subtitle)
+                    .font(DS.Font.caption)
+                    .foregroundStyle(DS.Color.textSecondary)
+            }
+            Spacer(minLength: DS.Spacing.md)
+            if let priceText {
+                Text(priceText)
+                    .font(DS.Font.headline)
+                    .foregroundStyle(priceActive ? DS.Color.textPrimary : DS.Color.textTertiary)
+            }
         }
     }
 
     @ViewBuilder
     private func featureList(_ items: [(String, String)]) -> some View {
-        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
             ForEach(items, id: \.1) { icon, label in
                 HStack(alignment: .top, spacing: DS.Spacing.sm) {
                     Image(systemName: icon)
@@ -224,75 +204,70 @@ struct PaywallView: View {
                     Text(label)
                         .font(DS.Font.body)
                         .foregroundStyle(DS.Color.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func cta(product: Product?,
-                     alreadyOwned: Bool,
-                     ownedLabel: String,
-                     buyLabel: String) -> some View {
-        if alreadyOwned {
-            Text(ownedLabel)
-                .font(DS.Font.caption)
-                .foregroundStyle(DS.Color.textTertiary)
-        } else if let product {
-            Button {
-                Task { await purchase(product) }
-            } label: {
-                if isPurchasing {
-                    ProgressView().tint(DS.Color.textOnAccent)
-                } else {
-                    Text(buyLabel).frame(maxWidth: .infinity)
-                }
-            }
-            .buttonStyle(DSPrimaryButtonStyle())
-            .disabled(isPurchasing)
-        } else {
-            Button(buyLabel) {}
-                .buttonStyle(DSPrimaryButtonStyle())
-                .frame(maxWidth: .infinity)
-                .disabled(true)
-                .opacity(loadFinished ? 0.5 : 1)
-        }
+    private func ownedNote(_ text: String) -> some View {
+        Text(text)
+            .font(DS.Font.caption)
+            .foregroundStyle(DS.Color.textTertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    // MARK: - CTA button
 
     private enum CTAStyle { case primary, secondary }
 
+    /// Single unified button builder so every CTA (sshido+ Unlock, Cloud
+    /// Pro monthly, Cloud Pro yearly) has identical height, padding, and
+    /// font sizing. Primary style fills with accent; secondary outlines.
     @ViewBuilder
-    private func subscriptionButton(
+    private func ctaButton(
+        primaryText: String,
+        secondaryText: String?,
         product: Product?,
-        placeholderPrice: String,
-        periodSuffix: String,
-        badge: String? = nil,
         style: CTAStyle
     ) -> some View {
-        let price = product?.displayPrice ?? placeholderPrice
-        let priceText = "\(price) \(periodSuffix)"
+        let enabled = product != nil && !isPurchasing
         let label = VStack(spacing: 2) {
-            Text(priceText)
+            Text(primaryText)
                 .font(DS.Font.headline)
-                .opacity(product == nil ? 0.6 : 1)
-            if let badge {
-                Text(badge).font(DS.Font.caption)
+            if let secondaryText {
+                Text(secondaryText)
+                    .font(DS.Font.caption)
+                    .opacity(0.9)
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 22)
+        .padding(.vertical, DS.Spacing.sm)
 
         Group {
             if let product {
-                Button { Task { await purchase(product) } } label: { label }
+                Button { Task { await purchase(product) } } label: {
+                    if isPurchasing {
+                        ProgressView()
+                            .tint(style == .primary ? DS.Color.textOnAccent : DS.Color.textPrimary)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    } else {
+                        label
+                    }
+                }
             } else {
                 Button {} label: { label }
                     .disabled(true)
-                    .opacity(loadFinished ? 0.5 : 1)
             }
         }
         .buttonStyle(style == .primary ? AnyButtonStyle(DSPrimaryButtonStyle())
                                        : AnyButtonStyle(DSSecondaryButtonStyle()))
+        .opacity(enabled ? 1 : 0.5)
+        .disabled(!enabled)
     }
+
+    // MARK: - Unavailable + footer
 
     @ViewBuilder
     private var productsUnavailableNote: some View {
@@ -302,8 +277,10 @@ struct PaywallView: View {
             Text("In-app purchases are not available yet on this build. Products are pending App Store Connect setup. Launch from Xcode to test against the local StoreKit configuration.")
                 .font(DS.Font.caption)
                 .foregroundStyle(DS.Color.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(DS.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: DS.Radius.md).fill(DS.Color.surface2))
     }
 
@@ -323,7 +300,6 @@ struct PaywallView: View {
     // MARK: - Actions
 
     private func purchase(_ product: Product) async {
-        errorMessage = nil
         isPurchasing = true
         defer { isPurchasing = false }
         do {
@@ -332,12 +308,11 @@ struct PaywallView: View {
                 dismiss()
             }
         } catch {
-            errorMessage = "Purchase failed: \(error.localizedDescription)"
+            toast = "Purchase failed: \(error.localizedDescription)"
         }
     }
 
     private func restore() async {
-        errorMessage = nil
         isPurchasing = true
         defer { isPurchasing = false }
         do {
@@ -345,10 +320,10 @@ struct PaywallView: View {
             if entitlements.hasPlus || entitlements.hasCloudPro {
                 dismiss()
             } else {
-                errorMessage = "Nothing to restore on this Apple ID."
+                toast = "Nothing to restore on this Apple ID."
             }
         } catch {
-            errorMessage = "Restore failed: \(error.localizedDescription)"
+            toast = "Restore failed: \(error.localizedDescription)"
         }
     }
 }
