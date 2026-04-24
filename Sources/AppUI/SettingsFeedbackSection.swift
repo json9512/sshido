@@ -60,6 +60,7 @@ struct FeedbackSettingsSection: View {
                         .foregroundStyle(DS.Color.accent)
                 }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .dsRow()
