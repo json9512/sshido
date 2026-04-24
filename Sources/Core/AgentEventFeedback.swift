@@ -4,14 +4,9 @@ import UIKit
 import CoreHaptics
 
 /// Events that happen in an sshido session worth nudging the user about.
-/// Fired from the push-notification presentation path and any future
-/// in-app event sources (session died, reconnected, etc.).
 public enum AgentEvent: String, Sendable {
-    /// Agent is asking for user input (Claude Notification hook).
     case needsInput
-    /// Agent finished its task successfully (Stop hook).
     case finishedOk
-    /// Agent finished with an error (StopFailure hook).
     case finishedError
 
     public init?(pushEvent: String?) {
@@ -24,77 +19,167 @@ public enum AgentEvent: String, Sendable {
     }
 }
 
-/// A feedback theme defines how the app *feels* when agent events
-/// arrive — which haptic pattern to fire for each event type. Premium
-/// themes unlock more expressive patterns.
-///
-/// Sound themes are planned but require bundled audio assets; for the
-/// first release we ship haptic-only themes and let iOS handle push
-/// notification sounds via the user's system-level setting.
-public struct FeedbackTheme: Identifiable, Hashable, Sendable {
+/// One event in a haptic pattern. Time is relative to pattern start.
+/// Sharpness 0 feels round/subtle; 1 feels crisp/clicky. Duration nil =
+/// transient (a single click); duration >0 = continuous rumble.
+public struct HapticBeat: Sendable {
+    public let time: TimeInterval
+    public let intensity: Float
+    public let sharpness: Float
+    public let duration: TimeInterval?
+
+    public init(time: TimeInterval, intensity: Float, sharpness: Float, duration: TimeInterval? = nil) {
+        self.time = time
+        self.intensity = intensity
+        self.sharpness = sharpness
+        self.duration = duration
+    }
+}
+
+/// A feedback theme parameterises a per-event haptic signature. Premium
+/// themes unlock richer, more distinctive patterns.
+public struct FeedbackTheme: Identifiable, Sendable {
     public let id: String
     public let name: String
+    public let description: String
     public let isPremium: Bool
-    /// Intensity per event, 0 = no haptic, 1 = light, 2 = medium, 3 = heavy.
-    public let needsInputIntensity: Int
-    public let finishedOkIntensity: Int
-    public let finishedErrorIntensity: Int
-    /// Whether the event fires a double-tap instead of a single tap.
-    public let doubleTapOnFinish: Bool
+    public let patterns: [AgentEvent: [HapticBeat]]
 
-    public init(id: String, name: String, isPremium: Bool,
-                needsInput: Int, finishedOk: Int, finishedError: Int,
-                doubleTapOnFinish: Bool = false) {
-        self.id = id
-        self.name = name
-        self.isPremium = isPremium
-        self.needsInputIntensity = needsInput
-        self.finishedOkIntensity = finishedOk
-        self.finishedErrorIntensity = finishedError
-        self.doubleTapOnFinish = doubleTapOnFinish
-    }
-
-    func intensity(for event: AgentEvent) -> Int {
-        switch event {
-        case .needsInput:    return needsInputIntensity
-        case .finishedOk:    return finishedOkIntensity
-        case .finishedError: return finishedErrorIntensity
-        }
-    }
-
-    func usesDoubleTap(for event: AgentEvent) -> Bool {
-        guard doubleTapOnFinish else { return false }
-        return event == .finishedOk || event == .finishedError
+    func pattern(for event: AgentEvent) -> [HapticBeat] {
+        patterns[event] ?? []
     }
 }
 
 public enum FeedbackThemes {
+    // MARK: - Free
+
     public static let off = FeedbackTheme(
-        id: "off", name: "Off", isPremium: false,
-        needsInput: 0, finishedOk: 0, finishedError: 0
+        id: "off", name: "Off", description: "No haptics.",
+        isPremium: false, patterns: [:]
     )
+
     public static let subtle = FeedbackTheme(
-        id: "subtle", name: "Subtle", isPremium: false,
-        needsInput: 1, finishedOk: 1, finishedError: 2
+        id: "subtle", name: "Subtle", description: "One soft tap per event.",
+        isPremium: false,
+        patterns: [
+            .needsInput:    [HapticBeat(time: 0, intensity: 0.45, sharpness: 0.5)],
+            .finishedOk:    [HapticBeat(time: 0, intensity: 0.45, sharpness: 0.5)],
+            .finishedError: [HapticBeat(time: 0, intensity: 0.55, sharpness: 0.7)],
+        ]
     )
 
-    // Premium — more expressive personalities.
+    // MARK: - Premium
+    // Each pattern aims for a signature rhythm so themes feel
+    // recognisably different even without any visual context.
+
     public static let energetic = FeedbackTheme(
-        id: "energetic", name: "Energetic", isPremium: true,
-        needsInput: 2, finishedOk: 2, finishedError: 3,
-        doubleTapOnFinish: true
-    )
-    public static let intense = FeedbackTheme(
-        id: "intense", name: "Intense", isPremium: true,
-        needsInput: 3, finishedOk: 3, finishedError: 3,
-        doubleTapOnFinish: true
-    )
-    public static let zen = FeedbackTheme(
-        id: "zen", name: "Zen", isPremium: true,
-        needsInput: 1, finishedOk: 1, finishedError: 1
+        id: "energetic", name: "Energetic",
+        description: "Quick double-tap on needs-input, bouncy triple on finish.",
+        isPremium: true,
+        patterns: [
+            // doo-doo
+            .needsInput: [
+                HapticBeat(time: 0.00, intensity: 0.75, sharpness: 0.9),
+                HapticBeat(time: 0.10, intensity: 0.75, sharpness: 0.9),
+            ],
+            // tap-tap-TAP ascending
+            .finishedOk: [
+                HapticBeat(time: 0.00, intensity: 0.55, sharpness: 0.7),
+                HapticBeat(time: 0.09, intensity: 0.70, sharpness: 0.8),
+                HapticBeat(time: 0.18, intensity: 0.95, sharpness: 1.0),
+            ],
+            // rapid alarm burst
+            .finishedError: [
+                HapticBeat(time: 0.00, intensity: 1.00, sharpness: 1.0),
+                HapticBeat(time: 0.06, intensity: 1.00, sharpness: 1.0),
+                HapticBeat(time: 0.12, intensity: 1.00, sharpness: 1.0),
+                HapticBeat(time: 0.18, intensity: 1.00, sharpness: 1.0),
+            ],
+        ]
     )
 
-    public static let all: [FeedbackTheme] = [off, subtle, energetic, intense, zen]
+    public static let morse = FeedbackTheme(
+        id: "morse", name: "Morse",
+        description: "Short-long telegraph rhythms. Each event gets its own code.",
+        isPremium: true,
+        patterns: [
+            // · ·  (two shorts)
+            .needsInput: [
+                HapticBeat(time: 0.00, intensity: 0.8, sharpness: 1.0, duration: 0.06),
+                HapticBeat(time: 0.16, intensity: 0.8, sharpness: 1.0, duration: 0.06),
+            ],
+            // · —  (short, long)  ≈ letter A, "affirmative"
+            .finishedOk: [
+                HapticBeat(time: 0.00, intensity: 0.8, sharpness: 1.0, duration: 0.06),
+                HapticBeat(time: 0.18, intensity: 0.8, sharpness: 1.0, duration: 0.20),
+            ],
+            // · · · — — — · · ·  (SOS, compressed)
+            .finishedError: [
+                HapticBeat(time: 0.00, intensity: 0.9, sharpness: 1.0, duration: 0.05),
+                HapticBeat(time: 0.12, intensity: 0.9, sharpness: 1.0, duration: 0.05),
+                HapticBeat(time: 0.24, intensity: 0.9, sharpness: 1.0, duration: 0.05),
+                HapticBeat(time: 0.40, intensity: 0.9, sharpness: 1.0, duration: 0.18),
+                HapticBeat(time: 0.66, intensity: 0.9, sharpness: 1.0, duration: 0.18),
+                HapticBeat(time: 0.92, intensity: 0.9, sharpness: 1.0, duration: 0.18),
+                HapticBeat(time: 1.18, intensity: 0.9, sharpness: 1.0, duration: 0.05),
+                HapticBeat(time: 1.30, intensity: 0.9, sharpness: 1.0, duration: 0.05),
+                HapticBeat(time: 1.42, intensity: 0.9, sharpness: 1.0, duration: 0.05),
+            ],
+        ]
+    )
+
+    public static let zen = FeedbackTheme(
+        id: "zen", name: "Zen",
+        description: "Slow, soft rumbles. Meditative. Low sharpness.",
+        isPremium: true,
+        patterns: [
+            // slow single bloom
+            .needsInput: [
+                HapticBeat(time: 0.00, intensity: 0.35, sharpness: 0.05, duration: 0.45),
+            ],
+            // bloom then fade
+            .finishedOk: [
+                HapticBeat(time: 0.00, intensity: 0.45, sharpness: 0.1, duration: 0.35),
+                HapticBeat(time: 0.50, intensity: 0.25, sharpness: 0.05, duration: 0.30),
+            ],
+            // three slow pulses
+            .finishedError: [
+                HapticBeat(time: 0.00, intensity: 0.5, sharpness: 0.15, duration: 0.25),
+                HapticBeat(time: 0.45, intensity: 0.5, sharpness: 0.15, duration: 0.25),
+                HapticBeat(time: 0.90, intensity: 0.5, sharpness: 0.15, duration: 0.25),
+            ],
+        ]
+    )
+
+    public static let heartbeat = FeedbackTheme(
+        id: "heartbeat", name: "Heartbeat",
+        description: "Lub-dub per event — a gentle living pulse.",
+        isPremium: true,
+        patterns: [
+            // lub-dub
+            .needsInput: [
+                HapticBeat(time: 0.00, intensity: 0.55, sharpness: 0.3),
+                HapticBeat(time: 0.14, intensity: 0.75, sharpness: 0.4),
+            ],
+            // lub-dub · lub-dub (content resting beat)
+            .finishedOk: [
+                HapticBeat(time: 0.00, intensity: 0.55, sharpness: 0.3),
+                HapticBeat(time: 0.14, intensity: 0.75, sharpness: 0.4),
+                HapticBeat(time: 0.70, intensity: 0.55, sharpness: 0.3),
+                HapticBeat(time: 0.84, intensity: 0.75, sharpness: 0.4),
+            ],
+            // racing beat — 5 fast pulses
+            .finishedError: [
+                HapticBeat(time: 0.00, intensity: 0.85, sharpness: 0.5),
+                HapticBeat(time: 0.18, intensity: 0.85, sharpness: 0.5),
+                HapticBeat(time: 0.36, intensity: 0.85, sharpness: 0.5),
+                HapticBeat(time: 0.54, intensity: 0.85, sharpness: 0.5),
+                HapticBeat(time: 0.72, intensity: 0.85, sharpness: 0.5),
+            ],
+        ]
+    )
+
+    public static let all: [FeedbackTheme] = [off, subtle, energetic, morse, zen, heartbeat]
     public static let defaultID = subtle.id
 
     public static func theme(for id: String) -> FeedbackTheme? {
@@ -117,37 +202,98 @@ public final class FeedbackPreferences {
     }
 }
 
-/// Plays the haptic/sound corresponding to an agent event, using the
-/// currently-selected feedback theme. Silently falls back to a simple
-/// UIImpactFeedbackGenerator when CHHapticEngine is unavailable.
+/// Plays CoreHaptics patterns that encode distinct rhythms per event and
+/// theme. Gracefully degrades to UIImpactFeedbackGenerator on devices
+/// that don't support CoreHaptics (older iPads, simulators).
 @MainActor
 public final class AgentEventFeedback {
     public static let shared = AgentEventFeedback()
 
-    private init() {}
+    private var engine: CHHapticEngine?
+    private var engineStarted = false
+
+    private init() {
+        prepareEngine()
+    }
+
+    private func prepareEngine() {
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+        do {
+            let e = try CHHapticEngine()
+            e.isAutoShutdownEnabled = true
+            e.resetHandler = { [weak self] in
+                // Engine was reset by the system (e.g. audio session
+                // interruption). Restart lazily on next fire().
+                self?.engineStarted = false
+            }
+            e.stoppedHandler = { [weak self] _ in
+                self?.engineStarted = false
+            }
+            engine = e
+        } catch {
+            Log.ui.error("CHHapticEngine init failed: \(String(describing: error), privacy: .public)")
+        }
+    }
 
     public func fire(_ event: AgentEvent) {
         var theme = FeedbackPreferences.shared.theme
-        // Defensive: strip premium if entitlement lapses.
         if theme.isPremium && !Entitlements.shared.hasPlus {
             theme = FeedbackThemes.subtle
         }
-        let intensity = theme.intensity(for: event)
-        guard intensity > 0 else { return }
-        let style: UIImpactFeedbackGenerator.FeedbackStyle = {
-            switch intensity {
-            case 1: return .light
-            case 2: return .medium
-            default: return .heavy
+        let beats = theme.pattern(for: event)
+        guard !beats.isEmpty else { return }
+        play(beats: beats)
+    }
+
+    private func play(beats: [HapticBeat]) {
+        // Prefer CoreHaptics; fall back to UIImpactFeedback when unavailable.
+        if let engine = engine, CHHapticEngine.capabilitiesForHardware().supportsHaptics {
+            do {
+                if !engineStarted {
+                    try engine.start()
+                    engineStarted = true
+                }
+                let events = beats.map { beat -> CHHapticEvent in
+                    let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: beat.intensity)
+                    let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: beat.sharpness)
+                    if let duration = beat.duration {
+                        return CHHapticEvent(
+                            eventType: .hapticContinuous,
+                            parameters: [intensityParam, sharpnessParam],
+                            relativeTime: beat.time,
+                            duration: duration
+                        )
+                    } else {
+                        return CHHapticEvent(
+                            eventType: .hapticTransient,
+                            parameters: [intensityParam, sharpnessParam],
+                            relativeTime: beat.time
+                        )
+                    }
+                }
+                let pattern = try CHHapticPattern(events: events, parameters: [])
+                let player = try engine.makePlayer(with: pattern)
+                try player.start(atTime: CHHapticTimeImmediate)
+                return
+            } catch {
+                Log.ui.error("Haptic pattern failed: \(String(describing: error), privacy: .public)")
+                // Fall through to the impact-generator fallback.
             }
-        }()
-        let gen = UIImpactFeedbackGenerator(style: style)
-        gen.prepare()
-        gen.impactOccurred()
-        if theme.usesDoubleTap(for: event) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+        }
+
+        // Fallback: approximate the first few beats with UIImpactFeedbackGenerator.
+        for (idx, beat) in beats.prefix(4).enumerated() {
+            let style: UIImpactFeedbackGenerator.FeedbackStyle = {
+                if beat.intensity > 0.75 { return .heavy }
+                if beat.intensity > 0.45 { return .medium }
+                return .light
+            }()
+            DispatchQueue.main.asyncAfter(deadline: .now() + beat.time) {
+                let gen = UIImpactFeedbackGenerator(style: style)
+                gen.prepare()
                 gen.impactOccurred()
             }
+            _ = idx
         }
     }
 }
