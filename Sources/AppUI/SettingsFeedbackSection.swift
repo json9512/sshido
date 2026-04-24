@@ -76,12 +76,12 @@ struct FeedbackSettingsSection: View {
             ForEach(Array(FeedbackThemes.all.enumerated()), id: \.element.id) { idx, theme in
                 themeRow(theme)
                 if idx < FeedbackThemes.all.count - 1 {
-                    Divider()
-                        .background(DS.Color.titaniumDark.opacity(0.3))
+                    Rectangle()
+                        .fill(DS.Color.titaniumDark.opacity(0.25))
+                        .frame(height: 0.5)
                 }
             }
         }
-        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -103,14 +103,14 @@ struct FeedbackSettingsSection: View {
                     .foregroundStyle(locked ? DS.Color.textTertiary : DS.Color.accent)
                     .font(.system(size: 20))
                     .frame(width: 44, height: 30)
-                VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(theme.name)
                         .font(DS.Font.body)
                         .foregroundStyle(DS.Color.textPrimary)
                     Text(theme.description)
                         .font(DS.Font.caption)
                         .foregroundStyle(DS.Color.textTertiary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
                 Spacer()
                 if isActive && !locked {
@@ -122,7 +122,7 @@ struct FeedbackSettingsSection: View {
                         .font(.system(size: 12))
                 }
             }
-            .padding(.vertical, DS.Spacing.xs)
+            .padding(.vertical, DS.Spacing.sm)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -59,7 +59,7 @@ public enum FeedbackThemes {
     )
 
     public static let subtle = FeedbackTheme(
-        id: "subtle", name: "Subtle", description: "One soft tap per event.",
+        id: "subtle", name: "Subtle", description: "Soft tap per event.",
         isPremium: false,
         patterns: [
             .needsInput:    [HapticBeat(time: 0, intensity: 0.45, sharpness: 0.5)],
@@ -74,7 +74,7 @@ public enum FeedbackThemes {
 
     public static let energetic = FeedbackTheme(
         id: "energetic", name: "Energetic",
-        description: "Quick double-tap on needs-input, bouncy triple on finish.",
+        description: "Punchy double-tap rhythms.",
         isPremium: true,
         patterns: [
             // doo-doo
@@ -100,7 +100,7 @@ public enum FeedbackThemes {
 
     public static let morse = FeedbackTheme(
         id: "morse", name: "Morse",
-        description: "Short-long telegraph rhythms. Each event gets its own code.",
+        description: "Telegraph dit-dah codes.",
         isPremium: true,
         patterns: [
             // · ·  (two shorts)
@@ -130,7 +130,7 @@ public enum FeedbackThemes {
 
     public static let zen = FeedbackTheme(
         id: "zen", name: "Zen",
-        description: "Slow, soft rumbles. Meditative. Low sharpness.",
+        description: "Slow, meditative rumbles.",
         isPremium: true,
         patterns: [
             // slow single bloom
@@ -153,7 +153,7 @@ public enum FeedbackThemes {
 
     public static let heartbeat = FeedbackTheme(
         id: "heartbeat", name: "Heartbeat",
-        description: "Lub-dub per event — a gentle living pulse.",
+        description: "Lub-dub living pulse.",
         isPremium: true,
         patterns: [
             // lub-dub

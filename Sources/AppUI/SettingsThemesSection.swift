@@ -72,12 +72,12 @@ struct ThemesSettingsSection: View {
             ForEach(Array(TerminalThemes.all.enumerated()), id: \.element.id) { idx, theme in
                 themeRow(theme)
                 if idx < TerminalThemes.all.count - 1 {
-                    Divider()
-                        .background(DS.Color.titaniumDark.opacity(0.3))
+                    Rectangle()
+                        .fill(DS.Color.titaniumDark.opacity(0.25))
+                        .frame(height: 0.5)
                 }
             }
         }
-        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -94,7 +94,7 @@ struct ThemesSettingsSection: View {
         } label: {
             HStack(spacing: DS.Spacing.md) {
                 swatch(theme, locked: locked)
-                VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(theme.name)
                         .font(DS.Font.body)
                         .foregroundStyle(DS.Color.textPrimary)
@@ -112,7 +112,7 @@ struct ThemesSettingsSection: View {
                         .font(.system(size: 12))
                 }
             }
-            .padding(.vertical, DS.Spacing.xs)
+            .padding(.vertical, DS.Spacing.sm)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
