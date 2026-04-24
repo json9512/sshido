@@ -25,7 +25,26 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        let event = Self.agentEvent(for: notification)
+        Task { @MainActor in
+            if let event { AgentEventFeedback.shared.fire(event) }
+        }
         completionHandler([.banner, .sound, .badge, .list])
+    }
+
+    /// Map an incoming push into an AgentEvent. Priority is the primary
+    /// signal (agent setup prompt sets 'high' for Notification + StopFailure,
+    /// 'normal' for Stop). Title substring refines high-priority pushes
+    /// between "needs input" and "error".
+    private static func agentEvent(for notification: UNNotification) -> AgentEvent? {
+        let info = notification.request.content.userInfo
+        let aps = info["aps"] as? [String: Any]
+        let priority = (info["priority"] as? String) ?? (aps?["priority"] as? String)
+        let title = notification.request.content.title.lowercased()
+        if priority == "high" {
+            return title.contains("error") ? .finishedError : .needsInput
+        }
+        return .finishedOk
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,
