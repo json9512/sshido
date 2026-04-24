@@ -30,8 +30,9 @@ public struct SessionView: View {
     @State private var uploading = false
     @State private var showStuckRecovery = false
     @State private var stuckTimer: Task<Void, Never>?
-    @State private var showDisconnectAlert = false
     @State private var disconnectWatcher: Task<Void, Never>?
+    @State private var isReconnecting = false
+    @State private var lastReconnectAt: Date?
     @StateObject private var oauthFlow = OAuthAuthorizeFlow()
     @State private var mascotState = MascotSpriteState()
     @State private var showMascot = true
@@ -146,25 +147,13 @@ public struct SessionView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(DS.Color.void)
             } else {
-                VStack(spacing: DS.Spacing.lg) {
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(DS.Color.titaniumLight)
-                    Text("Opening \(liveTitle.isEmpty ? session.title : liveTitle)…")
-                        .font(DS.Font.callout).foregroundStyle(DS.Color.textSecondary)
-                    if showStuckRecovery {
-                        Text("Taking longer than usual…")
-                            .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-                        HStack(spacing: DS.Spacing.md) {
-                            Button("Retry") { Task { await load() } }
-                                .buttonStyle(DSPrimaryButtonStyle())
-                            Button("Back") { dismiss() }
-                                .buttonStyle(DSSecondaryButtonStyle())
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(DS.Color.void)
+                loadingScreen
+            }
+        }
+        .overlay {
+            if isReconnecting && channel != nil {
+                loadingScreen
+                    .transition(.opacity)
             }
         }
         .task { await load() }
@@ -248,21 +237,6 @@ public struct SessionView: View {
             }
         }
         .toast($toast)
-        .alert("Connection Lost", isPresented: $showDisconnectAlert) {
-            Button("OK") {
-                BridgeStore.shared.remove(sessionID: session.id)
-                disconnectWatcher?.cancel()
-                if !router.path.isEmpty {
-                    router.path.removeLast()
-                }
-            }
-        } message: {
-            if host.useTmux {
-                Text("The network connection was closed by iOS. Tap the session again to reconnect — your tmux session is still running on the server.")
-            } else {
-                Text("The network connection was closed by iOS.")
-            }
-        }
         .onReceive(oauthFlow.$toast.compactMap { $0 }) { msg in
             toast = msg
             oauthFlow.toast = nil
@@ -316,44 +290,109 @@ public struct SessionView: View {
     }
 
     private func load() async {
-        NSLog("[sshido] SessionView.load start host=\(host.name) session=\(session.id.uuidString.prefix(8))")
+        NSLog("[sshido] SessionView.load start host=\(host.name) session=\(session.id.uuidString.prefix(8)) reconnecting=\(isReconnecting)")
         error = nil
         showStuckRecovery = false
         stuckTimer?.cancel()
         stuckTimer = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 10_000_000_000)
-            if channel == nil && error == nil {
+            if (channel == nil || isReconnecting) && error == nil {
                 showStuckRecovery = true
             }
         }
-        do {
-            let auth: SSHAuth
-            switch host.authMethod {
-            case .password:
-                let pw = try KeychainKeyStore().loadPassword(hostID: host.id)
-                auth = .password(pw)
-            case .key:
-                guard let identityID = host.identityID else {
-                    let msg = "host authMethod=.key but no identity attached (host.id=\(host.id.uuidString.prefix(8)))"
-                    NSLog("[sshido] SessionView.load error: \(msg)")
-                    error = msg
+        while !Task.isCancelled {
+            await waitForProtectedDataAvailable()
+            do {
+                let auth: SSHAuth
+                switch host.authMethod {
+                case .password:
+                    let pw = try KeychainKeyStore().loadPassword(hostID: host.id)
+                    auth = .password(pw)
+                case .key:
+                    guard let identityID = host.identityID else {
+                        let msg = "host authMethod=.key but no identity attached (host.id=\(host.id.uuidString.prefix(8)))"
+                        NSLog("[sshido] SessionView.load error: \(msg)")
+                        if !isReconnecting { error = msg }
+                        return
+                    }
+                    let pem = try await IdentityStore.shared.loadPEM(for: identityID)
+                    auth = .privateKeyPEM(pem, passphrase: nil)
+                }
+                let ch = await SessionStore.shared.ensureChannel(for: session, host: host, auth: auth)
+                NSLog("[sshido] SessionView.load got channel, awaiting first connect…")
+                channel = ch
+                voice.onSendBytes = { bytes in
+                    Task { try? await ch.send(bytes) }
+                }
+                if await waitForFirstConnection(ch) {
+                    NSLog("[sshido] SessionView.load: channel connected")
+                    isReconnecting = false
+                    showStuckRecovery = false
+                    startDisconnectWatcher()
                     return
                 }
-                let pem = try await IdentityStore.shared.loadPEM(for: identityID)
-                auth = .privateKeyPEM(pem, passphrase: nil)
+                NSLog("[sshido] SessionView.load: first-connect timed out, tearing down and retrying")
+                BridgeStore.shared.remove(sessionID: session.id)
+                bridge = nil
+                channel = nil
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                continue
+            } catch {
+                let msg = String(describing: error)
+                NSLog("[sshido] SessionView.load catch: \(msg)")
+                if isReconnecting {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    continue
+                }
+                self.error = msg
+                return
             }
-            let ch = await SessionStore.shared.ensureChannel(for: session, host: host, auth: auth)
-            NSLog("[sshido] SessionView.load got channel")
-            channel = ch
-            voice.onSendBytes = { bytes in
-                Task { try? await ch.send(bytes) }
-            }
-            startDisconnectWatcher()
-        } catch {
-            let msg = String(describing: error)
-            NSLog("[sshido] SessionView.load catch: \(msg)")
-            self.error = msg
         }
+    }
+
+    @MainActor
+    private func waitForProtectedDataAvailable() async {
+        guard !UIApplication.shared.isProtectedDataAvailable else { return }
+        NSLog("[sshido] SessionView.load: protected data unavailable, waiting for unlock…")
+        while !Task.isCancelled && !UIApplication.shared.isProtectedDataAvailable {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+    }
+
+    private func waitForFirstConnection(_ ch: SSHChannel, timeout: TimeInterval = 15) async -> Bool {
+        let start = Date()
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if await ch.isConnected {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if await ch.isConnected { return true }
+            }
+            if Date().timeIntervalSince(start) > timeout { return false }
+        }
+        return false
+    }
+
+    @ViewBuilder
+    private var loadingScreen: some View {
+        VStack(spacing: DS.Spacing.lg) {
+            ProgressView()
+                .controlSize(.large)
+                .tint(DS.Color.titaniumLight)
+            Text(loadingLabel)
+                .font(DS.Font.callout).foregroundStyle(DS.Color.textSecondary)
+            if showStuckRecovery {
+                Text("Taking longer than usual…")
+                    .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                HStack(spacing: DS.Spacing.md) {
+                    Button("Retry") { Task { await load() } }
+                        .buttonStyle(DSPrimaryButtonStyle())
+                    Button("Back") { dismiss() }
+                        .buttonStyle(DSSecondaryButtonStyle())
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DS.Color.void)
     }
 
     private func startDisconnectWatcher() {
@@ -363,11 +402,33 @@ public struct SessionView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 if await !ch.isConnected {
-                    await MainActor.run { showDisconnectAlert = true }
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    if await ch.isConnected { continue }
+                    await MainActor.run { triggerReconnect() }
                     return
                 }
             }
         }
+    }
+
+    private func triggerReconnect() {
+        guard !isReconnecting else { return }
+        if let last = lastReconnectAt, Date().timeIntervalSince(last) < 5 {
+            NSLog("[sshido] SessionView: skipping reconnect, cooldown active")
+            return
+        }
+        NSLog("[sshido] SessionView: channel disconnected, auto-reconnecting session=\(session.id.uuidString.prefix(8))")
+        lastReconnectAt = Date()
+        isReconnecting = true
+        BridgeStore.shared.remove(sessionID: session.id)
+        bridge = nil
+        channel = nil
+        Task { await load() }
+    }
+
+    private var loadingLabel: String {
+        let name = liveTitle.isEmpty ? session.title : liveTitle
+        return isReconnecting ? "Reconnecting to \(name)…" : "Opening \(name)…"
     }
 
     private var connectPillPhase: DSStatusIndicator.Phase {

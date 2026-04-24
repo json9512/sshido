@@ -23,8 +23,8 @@ public extension ShortcutGroup {
         sfSymbol: "rectangle.split.2x1",
         shortcuts: [
             .init(label: "Prefix",      bytes: [0x02]),
-            .init(label: "Split |",     bytes: [0x02, 0x7c]),
-            .init(label: "Split -",     bytes: [0x02, 0x2d]),
+            .init(label: "Split |",     bytes: [0x02, 0x25]),
+            .init(label: "Split -",     bytes: [0x02, 0x22]),
             .init(label: "New window",  bytes: [0x02, 0x63]),
             .init(label: "Next window", bytes: [0x02, 0x6e]),
             .init(label: "Prev window", bytes: [0x02, 0x70]),
@@ -35,7 +35,12 @@ public extension ShortcutGroup {
             .init(label: "Pane ↑",      bytes: [0x02, 0x1b, 0x5b, 0x41]),
             .init(label: "Pane ↓",      bytes: [0x02, 0x1b, 0x5b, 0x42]),
             .init(label: "Pane ←",      bytes: [0x02, 0x1b, 0x5b, 0x44]),
-            .init(label: "Pane →",      bytes: [0x02, 0x1b, 0x5b, 0x43])
+            .init(label: "Pane →",      bytes: [0x02, 0x1b, 0x5b, 0x43]),
+            .init(label: "Mouse on",
+                  bytes: [0x74, 0x6d, 0x75, 0x78, 0x20,
+                          0x73, 0x65, 0x74, 0x20, 0x2d, 0x67, 0x20,
+                          0x6d, 0x6f, 0x75, 0x73, 0x65, 0x20,
+                          0x6f, 0x6e, 0x0d])
         ]
     )
 

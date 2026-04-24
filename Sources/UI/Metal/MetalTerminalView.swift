@@ -52,7 +52,7 @@ final class MetalOverlayView: UIView {
 }
 
 @MainActor
-public final class MetalTerminalView: UIView, UITextViewDelegate {
+public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     public let renderer: MetalTerminalRenderer
     public weak var bridge: MetalTerminalBridge? {
         didSet { inputProxy.bridge = bridge }
@@ -72,6 +72,7 @@ public final class MetalTerminalView: UIView, UITextViewDelegate {
     private var pinchBaseFontSize: CGFloat = 16
     private var keyboardOverlap: CGFloat = 0
     private var lastLayoutSize: CGSize = .zero
+    private var lastTapCell: (col: Int, row: Int)?
 
     public init(renderer: MetalTerminalRenderer) {
         self.renderer = renderer
@@ -101,6 +102,8 @@ public final class MetalTerminalView: UIView, UITextViewDelegate {
         addGestureRecognizer(pinch)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(didTap(_:)))
+        tap.delegate = self
+        tap.cancelsTouchesInView = false
         addGestureRecognizer(tap)
 
         let long = UILongPressGestureRecognizer(target: self, action: #selector(didLong(_:)))
@@ -120,6 +123,11 @@ public final class MetalTerminalView: UIView, UITextViewDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     public override var canBecomeFirstResponder: Bool { true }
+
+    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                                  shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
+    }
 
     @discardableResult
     public override func becomeFirstResponder() -> Bool {
@@ -183,10 +191,17 @@ public final class MetalTerminalView: UIView, UITextViewDelegate {
 
     private var panAccum: CGFloat = 0
     @objc private func didPan(_ g: UIPanGestureRecognizer) {
+        let cellW = renderer.glyphMetrics.cellWidth
         let cellH = renderer.glyphMetrics.cellHeight
         switch g.state {
         case .began:
             panAccum = 0
+            if let bridge {
+                let p = g.location(in: self)
+                let col = max(0, min(bridge.cols - 1, Int(p.x / cellW)))
+                let row = max(0, min(bridge.rows - 1, Int(p.y / cellH)))
+                lastTapCell = (col, row)
+            }
         case .changed:
             let dy = g.translation(in: self).y
             let lines = Int(dy / cellH)
@@ -200,14 +215,18 @@ public final class MetalTerminalView: UIView, UITextViewDelegate {
 
     private func emitScroll(lines: Int) {
         guard let bridge else { return }
-        if bridge.terminal.isCurrentBufferAlternate {
+        if bridge.terminal.mouseMode != .off {
             let button = lines > 0 ? 64 : 65
-            let col = max(1, bridge.terminal.cols / 2)
-            let row = max(1, bridge.terminal.rows / 2)
-            let seq = "\u{1b}[<\(button);\(col);\(row)M"
-            let bytes = Array(seq.utf8)
+            let cols = bridge.terminal.cols
+            let rows = bridge.terminal.rows
+            let col = lastTapCell.map { max(0, min(cols - 1, $0.col)) } ?? max(0, cols / 2)
+            let row = lastTapCell.map { max(0, min(rows - 1, $0.row)) } ?? max(0, rows / 2)
             let reps = min(max(abs(lines) / 2, 1), 6)
-            for _ in 0..<reps { bridge.sendBytes(bytes) }
+            for _ in 0..<reps {
+                bridge.terminal.sendEvent(buttonFlags: button, x: col, y: row)
+            }
+        } else if bridge.terminal.isCurrentBufferAlternate {
+            return
         } else {
             let buf = bridge.terminal.buffer
             let new = max(0, buf.yDisp - lines)
@@ -236,6 +255,18 @@ public final class MetalTerminalView: UIView, UITextViewDelegate {
         }
         selectionStart = nil
         selectionEnd = nil
+        if let bridge {
+            let p = g.location(in: self)
+            let cellW = renderer.glyphMetrics.cellWidth
+            let cellH = renderer.glyphMetrics.cellHeight
+            let col = max(0, min(bridge.cols - 1, Int(p.x / cellW)))
+            let row = max(0, min(bridge.rows - 1, Int(p.y / cellH)))
+            lastTapCell = (col, row)
+            if bridge.terminal.mouseMode != .off {
+                bridge.terminal.sendEvent(buttonFlags: 0, x: col, y: row)
+                bridge.terminal.sendEvent(buttonFlags: 3, x: col, y: row)
+            }
+        }
         renderer.setNeedsRender()
     }
 
