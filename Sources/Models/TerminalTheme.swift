@@ -38,6 +38,8 @@ public struct TerminalTheme: Codable, Hashable, Sendable, Identifiable {
 /// Catalog of bundled themes. The id is persisted in `TerminalAppearance`,
 /// so never rename or renumber these IDs without a migration.
 public enum TerminalThemes {
+    // MARK: - Free built-ins
+
     public static let classicDark = TerminalTheme(
         id: "classic-dark", name: "Classic Dark", isPremium: false,
         bgHex: "232325", fgHex: "E0E0E0"
@@ -51,33 +53,53 @@ public enum TerminalThemes {
         bgHex: "FDF6E3", fgHex: "586E75"
     )
 
-    // Premium palettes — flagship community palettes. Credits belong
-    // to their respective designers; attribution will appear in the
-    // in-app About / credits view once it's added.
+    // MARK: - Free (community palettes, MIT-licensed)
+    //
+    // All five are MIT-licensed and legally redistributable. Credits go
+    // to their respective designers and will appear in the in-app
+    // Credits view. If a dedicated premium tier launches these can be
+    // curated + packaged, but the palettes themselves stay free because
+    // they exist as free downloads on GitHub already.
+
     public static let dracula = TerminalTheme(
-        id: "dracula", name: "Dracula", isPremium: true,
+        id: "dracula", name: "Dracula", isPremium: false,
         bgHex: "282A36", fgHex: "F8F8F2"
     )
     public static let catppuccinMocha = TerminalTheme(
-        id: "catppuccin-mocha", name: "Catppuccin Mocha", isPremium: true,
+        id: "catppuccin-mocha", name: "Catppuccin Mocha", isPremium: false,
         bgHex: "1E1E2E", fgHex: "CDD6F4"
     )
     public static let nord = TerminalTheme(
-        id: "nord", name: "Nord", isPremium: true,
+        id: "nord", name: "Nord", isPremium: false,
         bgHex: "2E3440", fgHex: "D8DEE9"
     )
     public static let tokyoNight = TerminalTheme(
-        id: "tokyo-night", name: "Tokyo Night", isPremium: true,
+        id: "tokyo-night", name: "Tokyo Night", isPremium: false,
         bgHex: "1A1B26", fgHex: "A9B1D6"
     )
     public static let gruvboxDark = TerminalTheme(
-        id: "gruvbox-dark", name: "Gruvbox Dark", isPremium: true,
+        id: "gruvbox-dark", name: "Gruvbox Dark", isPremium: false,
         bgHex: "282828", fgHex: "EBDBB2"
+    )
+
+    // MARK: - Premium (sshido+ exclusive, custom palettes)
+    //
+    // Placeholder while real premium content is commissioned. When
+    // real designer-made themes ship, remove "Titanium" from this
+    // list (or keep it as one of several). Never mark a
+    // community-palette theme above as premium — they're freely
+    // available elsewhere and gating them feels user-hostile.
+
+    public static let titanium = TerminalTheme(
+        id: "sshido-titanium", name: "Titanium",
+        isPremium: true,
+        bgHex: "0A0E14", fgHex: "7FE0D3"
     )
 
     public static let all: [TerminalTheme] = [
         classicDark, highContrast, solarizedLight,
         dracula, catppuccinMocha, nord, tokyoNight, gruvboxDark,
+        titanium,
     ]
 
     public static let defaultID = classicDark.id
