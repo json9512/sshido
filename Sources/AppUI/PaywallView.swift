@@ -22,6 +22,7 @@ struct PaywallView: View {
             ScrollView {
                 VStack(spacing: DS.Spacing.xl) {
                     hero
+                    stackingHint
                     plusCard
                     cloudCard
                     if productsUnavailable {
@@ -75,6 +76,26 @@ struct PaywallView: View {
         }
     }
 
+    // MARK: - Stacking hint
+
+    /// Most users pick one tier, but the two products stack. This banner
+    /// sets that expectation so nobody buys sshido+ expecting Cloud Pro.
+    @ViewBuilder
+    private var stackingHint: some View {
+        if !(entitlements.hasPlus && entitlements.hasCloudPro) {
+            HStack(alignment: .top, spacing: DS.Spacing.sm) {
+                Image(systemName: "square.stack.3d.up.fill")
+                    .foregroundStyle(DS.Color.accent)
+                Text("These stack. sshido+ unlocks app features; Cloud Pro unlocks hosted relay features. Power users buy both.")
+                    .font(DS.Font.caption)
+                    .foregroundStyle(DS.Color.textSecondary)
+            }
+            .padding(DS.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: DS.Radius.md).fill(DS.Color.surface2))
+        }
+    }
+
     // MARK: - sshido+ card
 
     @ViewBuilder
@@ -83,7 +104,7 @@ struct PaywallView: View {
         VStack(alignment: .leading, spacing: DS.Spacing.md) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
-                    Text("sshido+").font(DS.Font.headline)
+                    Text("sshido+ — app features").font(DS.Font.headline)
                         .foregroundStyle(DS.Color.textPrimary)
                     Text("One-time · Lifetime · Family Sharing")
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
@@ -125,7 +146,7 @@ struct PaywallView: View {
 
         VStack(alignment: .leading, spacing: DS.Spacing.md) {
             VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
-                Text("sshido Cloud Pro").font(DS.Font.headline)
+                Text("sshido Cloud Pro — hosted features").font(DS.Font.headline)
                     .foregroundStyle(DS.Color.textPrimary)
                 Text("Hosted relay with power features · Cancel anytime")
                     .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
@@ -137,6 +158,10 @@ struct PaywallView: View {
                 ("shield.lefthalf.filled", "Published 99.9% SLA"),
             ])
 
+            Text("Not included in sshido+. Cloud features require hosted infrastructure.")
+                .font(DS.Font.caption)
+                .foregroundStyle(DS.Color.textTertiary)
+
             if entitlements.hasCloudPro {
                 Text("Already subscribed\(entitlements.cloudProExpiry.map { " · renews \($0.formatted(date: .abbreviated, time: .omitted))" } ?? "")")
                     .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
@@ -144,14 +169,15 @@ struct PaywallView: View {
                 HStack(spacing: DS.Spacing.sm) {
                     subscriptionButton(
                         product: monthly,
-                        title: "Monthly",
-                        placeholder: "$4.99 / mo",
+                        placeholderPrice: "$4.99",
+                        periodSuffix: "/ month",
                         style: .secondary
                     )
                     subscriptionButton(
                         product: yearly,
-                        title: "Yearly · save ~33%",
-                        placeholder: "$39.99 / yr",
+                        placeholderPrice: "$39.99",
+                        periodSuffix: "/ year",
+                        badge: "Save ~33%",
                         style: .primary
                     )
                 }
@@ -238,16 +264,19 @@ struct PaywallView: View {
     @ViewBuilder
     private func subscriptionButton(
         product: Product?,
-        title: String,
-        placeholder: String,
+        placeholderPrice: String,
+        periodSuffix: String,
+        badge: String? = nil,
         style: CTAStyle
     ) -> some View {
+        let price = product?.displayPrice ?? placeholderPrice
+        let priceText = "\(price) \(periodSuffix)"
         let label = VStack(spacing: 2) {
-            Text(title).font(DS.Font.caption)
-            if let product {
-                Text(product.displayPrice).font(DS.Font.headline)
-            } else {
-                Text(placeholder).font(DS.Font.headline).opacity(0.6)
+            Text(priceText)
+                .font(DS.Font.headline)
+                .opacity(product == nil ? 0.6 : 1)
+            if let badge {
+                Text(badge).font(DS.Font.caption)
             }
         }
         .frame(maxWidth: .infinity)
