@@ -206,6 +206,9 @@ public struct SettingsView: View {
                 if appearance.showMascotCompanion {
                     MascotSettingsSection(toast: $toast)
                 }
+                #if DEBUG
+                developerSection
+                #endif
                 if let error {
                     Section { InlineErrorText(error) }
                 }
@@ -287,6 +290,56 @@ public struct SettingsView: View {
         guard let sub = subscription else { return "Subscribe" }
         return sub.serverURL == trimmedServerURLInput ? "Update subscription" : "Change server"
     }
+
+    #if DEBUG
+    @ViewBuilder
+    private var developerSection: some View {
+        Section {
+            HStack {
+                Text("hasPlus").font(DS.Font.rowTitle)
+                Spacer()
+                Text(entitlements.hasPlus ? "ON" : "OFF")
+                    .font(DS.Font.caption)
+                    .foregroundStyle(entitlements.hasPlus ? DS.Color.accent : DS.Color.textTertiary)
+            }
+            .dsRow()
+            HStack {
+                Text("hasCloudPro").font(DS.Font.rowTitle)
+                Spacer()
+                Text(entitlements.hasCloudPro ? "ON" : "OFF")
+                    .font(DS.Font.caption)
+                    .foregroundStyle(entitlements.hasCloudPro ? DS.Color.accent : DS.Color.textTertiary)
+            }
+            .dsRow()
+            Button("Grant sshido+") {
+                entitlements.debugSetEntitlements(plus: true, cloud: entitlements.hasCloudPro)
+                toast = "DEBUG: sshido+ granted"
+            }
+            .font(DS.Font.rowTitle)
+            .foregroundStyle(DS.Color.accent)
+            .dsRow()
+            Button("Grant Cloud Pro") {
+                entitlements.debugSetEntitlements(plus: entitlements.hasPlus, cloud: true)
+                toast = "DEBUG: Cloud Pro granted"
+            }
+            .font(DS.Font.rowTitle)
+            .foregroundStyle(DS.Color.accent)
+            .dsRow()
+            Button("Clear all entitlements") {
+                entitlements.debugSetEntitlements(plus: false, cloud: false)
+                toast = "DEBUG: entitlements cleared"
+            }
+            .font(DS.Font.rowTitle)
+            .foregroundStyle(DS.Color.error)
+            .dsRow()
+        } header: {
+            DSSectionHeader("Developer (DEBUG only)")
+        } footer: {
+            Text("In-memory overrides for smoke-testing premium gating. Not present in Release builds. Resets on app relaunch.")
+                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+        }
+    }
+    #endif
 
     private var entitlementsSummary: String {
         switch (entitlements.hasPlus, entitlements.hasCloudPro) {

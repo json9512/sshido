@@ -133,6 +133,18 @@ public final class Entitlements: ObservableObject {
         await refresh()
     }
 
+    #if DEBUG
+    /// Developer-only entitlement override for smoke-testing premium
+    /// gating without a real StoreKit purchase. DEBUG builds only — the
+    /// #if DEBUG block ensures release binaries cannot flip entitlements
+    /// through any path other than a signed transaction.
+    public func debugSetEntitlements(plus: Bool, cloud: Bool) {
+        self.hasPlus = plus
+        self.hasCloudPro = cloud
+        if !cloud { self.cloudProExpiry = nil }
+    }
+    #endif
+
     private func handle(transactionResult: VerificationResult<Transaction>) async {
         guard case .verified(let transaction) = transactionResult else {
             Log.store.error("Entitlements received unverified transaction")
