@@ -1,6 +1,9 @@
 #if canImport(UIKit)
 import Foundation
 import UIKit
+#if canImport(sshidoCore)
+import sshidoCore
+#endif
 
 /// Manages sprite pack storage, downloading, and active pack selection.
 @MainActor
@@ -18,11 +21,20 @@ public final class SpritePackManager {
     private init() {
         loadInstalledPacks()
         let savedID = activePackID
-        if let saved = installedPacks.first(where: { $0.id == savedID }) {
+        if let saved = installedPacks.first(where: { $0.id == savedID }),
+           canActivate(saved) {
             activePack = saved
         } else {
-            activePack = installedPacks.first
+            // Fall back to the first non-premium pack if the saved one is
+            // gated and the user hasn't paid.
+            activePack = installedPacks.first { canActivate($0) } ?? installedPacks.first
         }
+    }
+
+    /// True if the current entitlement state allows activating this pack.
+    /// Free packs always pass; premium packs require sshido+.
+    public func canActivate(_ pack: SpritePack) -> Bool {
+        !pack.isPremium || Entitlements.shared.hasPlus
     }
 
     // MARK: - Directory layout
@@ -74,18 +86,20 @@ public final class SpritePackManager {
 
     private var builtinLoaders: [() -> SpritePack?] {
         let loaders: [() -> SpritePack?] = [
-            // Otter (standalone)
+            // Otter (standalone, free)
             { self.loadBuiltinGIF(prefix: "otter", name: "Otter", id: "builtin-otter") },
 
-            // Sleepy Cat group (3 colors)
+            // Sleepy Cat group — Cream and Ginger are free, Silver is a
+            // sshido+ premium variant (demonstrates the paywall flow until
+            // dedicated premium packs ship).
             { self.loadBuiltinGIF(prefix: "sleepycat_1", name: "Sleepy Cat Cream",  id: "builtin-sleepycat-cream",  group: "sleepycat", variant: "Cream") },
             { self.loadBuiltinGIF(prefix: "sleepycat_3", name: "Sleepy Cat Ginger", id: "builtin-sleepycat-ginger", group: "sleepycat", variant: "Ginger") },
-            { self.loadBuiltinGIF(prefix: "sleepycat_5", name: "Sleepy Cat Silver", id: "builtin-sleepycat-silver", group: "sleepycat", variant: "Silver") },
+            { self.loadBuiltinGIF(prefix: "sleepycat_5", name: "Sleepy Cat Silver", id: "builtin-sleepycat-silver", group: "sleepycat", variant: "Silver", premium: true) },
         ]
         return loaders
     }
 
-    private func loadBuiltinGIF(prefix: String, name: String, id: String, group: String? = nil, variant: String? = nil, extraNames: [String] = []) -> SpritePack? {
+    private func loadBuiltinGIF(prefix: String, name: String, id: String, group: String? = nil, variant: String? = nil, extraNames: [String] = [], premium: Bool = false) -> SpritePack? {
         var sheets: [MascotMood: SpriteSheet] = [:]
         for mood in MascotMood.allCases {
             // SpriteSheet(named:) tries .gif then .png
@@ -105,14 +119,19 @@ public final class SpritePackManager {
 
         let manifest = SpriteManifest(
             version: 1, name: name, author: "Community", license: "CC0",
-            format: "gif", frameSize: nil, animations: nil
+            format: "gif", frameSize: nil, animations: nil, premium: premium
         )
         return SpritePack(manifest: manifest, id: id, directory: nil, sheets: sheets, preview: nil, group: group, variant: variant, extras: extras)
     }
 
     // MARK: - Select active pack
 
+    /// Activates the pack. Silently refuses if the pack is premium and the
+    /// user doesn't have sshido+; UI should gate the call upstream via
+    /// `canActivate(_:)` and present the paywall. The silent refusal here
+    /// is a safety net in case the gating UI is bypassed.
     public func setActive(_ pack: SpritePack) {
+        guard canActivate(pack) else { return }
         activePack = pack
         activePackID = pack.id
     }

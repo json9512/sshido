@@ -7,8 +7,21 @@ import sshidoUI
 struct MascotSettingsSection: View {
     @Binding var toast: String?
 
+    @EnvironmentObject private var router: AppRouter
+    @ObservedObject private var entitlements = Entitlements.shared
     @State private var showMascotGrid = false
     @State private var expandedGroup: String?
+
+    /// Activate if allowed, otherwise open the paywall. Kept in one place
+    /// so both the top-level grid and the variant picker share behavior.
+    private func selectOrPaywall(_ pack: SpritePack, manager: SpritePackManager) {
+        if manager.canActivate(pack) {
+            manager.setActive(pack)
+            toast = "Switched to \(pack.name)"
+        } else {
+            router.sheet = .paywall(.plusLocked(feature: "Mascot \"\(pack.name)\""))
+        }
+    }
 
     var body: some View {
         let manager = SpritePackManager.shared
@@ -92,8 +105,7 @@ struct MascotSettingsSection: View {
                         if let group = pack.group {
                             expandedGroup = group
                         } else {
-                            manager.setActive(pack)
-                            toast = "Switched to \(pack.name)"
+                            selectOrPaywall(pack, manager: manager)
                         }
                     }
             }
@@ -127,8 +139,7 @@ struct MascotSettingsSection: View {
                 ForEach(groupVariants, id: \.id) { vPack in
                     variantChip(vPack, isActive: manager.activePack?.id == vPack.id)
                         .onTapGesture {
-                            manager.setActive(vPack)
-                            toast = "Switched to \(vPack.name)"
+                            selectOrPaywall(vPack, manager: manager)
                         }
                 }
             }
@@ -140,6 +151,7 @@ struct MascotSettingsSection: View {
     private func mascotCell(_ pack: SpritePack, isActive: Bool) -> some View {
         let sheet = pack.sheets[.sitting]
         let label = pack.group?.capitalized ?? pack.name
+        let locked = pack.isPremium && !entitlements.hasPlus
         VStack(spacing: 6) {
             ZStack {
                 RoundedRectangle(cornerRadius: DS.Radius.md)
@@ -150,8 +162,17 @@ struct MascotSettingsSection: View {
                         .interpolation(.none)
                         .resizable()
                         .frame(width: 48, height: 48)
+                        .opacity(locked ? 0.5 : 1)
                 }
-                if isActive {
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(DS.Color.accent)
+                        .font(.system(size: 12))
+                        .padding(4)
+                        .background(DS.Color.surface0.opacity(0.85), in: Circle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(6)
+                } else if isActive {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(DS.Color.accent)
                         .font(.system(size: 14))
@@ -176,6 +197,7 @@ struct MascotSettingsSection: View {
     @ViewBuilder
     private func variantChip(_ pack: SpritePack, isActive: Bool) -> some View {
         let sheet = pack.sheets[.sitting]
+        let locked = pack.isPremium && !entitlements.hasPlus
         VStack(spacing: 4) {
             ZStack {
                 RoundedRectangle(cornerRadius: DS.Radius.sm)
@@ -186,8 +208,17 @@ struct MascotSettingsSection: View {
                         .interpolation(.none)
                         .resizable()
                         .frame(width: 36, height: 36)
+                        .opacity(locked ? 0.5 : 1)
                 }
-                if isActive {
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(DS.Color.accent)
+                        .font(.system(size: 11))
+                        .padding(3)
+                        .background(DS.Color.surface0.opacity(0.85), in: Circle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(3)
+                } else if isActive {
                     RoundedRectangle(cornerRadius: DS.Radius.sm)
                         .stroke(DS.Color.accent, lineWidth: 2)
                         .frame(width: 56, height: 56)
