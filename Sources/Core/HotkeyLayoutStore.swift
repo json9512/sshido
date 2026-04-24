@@ -26,8 +26,8 @@ public actor HotkeyLayoutStore {
         }
     }
 
-    public func ordered(builtins: [HotkeyButton], customs: [CustomShortcut]) -> [BarItem] {
-        let items: [BarItem] = builtins.map(BarItem.builtin) + customs.map(BarItem.custom)
+    public func ordered(builtins: [HotkeyButton], groups: [ShortcutGroup]) -> [BarItem] {
+        let items: [BarItem] = builtins.map(BarItem.builtin) + groups.map(BarItem.group)
         let byId = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         var result: [BarItem] = []
         var seen = Set<String>()

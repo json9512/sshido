@@ -80,7 +80,7 @@ public struct AgentBar: View {
                 ForEach(items) { item in
                     switch item {
                     case .builtin(let btn): button(for: btn)
-                    case .custom(let sc):   customButton(sc)
+                    case .group(let g):     groupButton(g)
                     }
                 }
             }
@@ -101,22 +101,43 @@ public struct AgentBar: View {
     }
 
     private func reload() async {
-        let customs = await CustomShortcutStore.shared.shortcuts
-        items = await HotkeyLayoutStore.shared.ordered(builtins: HotkeyButton.defaults, customs: customs)
+        let groups = await ShortcutGroupStore.shared.groups
+        items = await HotkeyLayoutStore.shared.ordered(builtins: HotkeyButton.defaults, groups: groups)
     }
 
     @ViewBuilder
-    private func customButton(_ sc: CustomShortcut) -> some View {
-        Button {
-            send(bytes: sc.bytes)
+    private func groupButton(_ g: ShortcutGroup) -> some View {
+        Menu {
+            if g.shortcuts.isEmpty {
+                Text("No shortcuts yet")
+            } else {
+                ForEach(g.shortcuts) { sc in
+                    Button {
+                        send(bytes: sc.bytes)
+                    } label: {
+                        Text(sc.label)
+                    }
+                }
+            }
         } label: {
-            Text(sc.label)
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color(red: 232/255, green: 232/255, blue: 237/255))
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(Color(red: 0.353, green: 0.784, blue: 0.839).opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+            HStack(spacing: 4) {
+                if let sym = g.sfSymbol, !sym.isEmpty {
+                    Image(systemName: sym).font(.system(size: 13))
+                }
+                Text(g.label)
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .opacity(0.7)
+            }
+            .foregroundStyle(Color(red: 232/255, green: 232/255, blue: 237/255))
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(
+                Color(red: 0.353, green: 0.784, blue: 0.839).opacity(0.15),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
         }
-        .buttonStyle(.plain)
+        .menuOrder(.fixed)
     }
 
     @ViewBuilder

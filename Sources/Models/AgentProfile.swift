@@ -64,24 +64,20 @@ public extension CustomShortcut {
 
 public enum BarItem: Identifiable, Hashable, Sendable {
     case builtin(HotkeyButton)
-    case custom(CustomShortcut)
+    case group(ShortcutGroup)
 
     public var id: String {
         switch self {
         case .builtin(let b): return "b:\(b.label)"
-        case .custom(let c):  return "c:\(c.id.uuidString)"
+        case .group(let g):   return "g:\(g.id.uuidString)"
         }
     }
 
     public var label: String {
         switch self {
         case .builtin(let b): return b.label
-        case .custom(let c):  return c.label
+        case .group(let g):   return g.label
         }
-    }
-
-    public var isBuiltin: Bool {
-        if case .builtin = self { return true } else { return false }
     }
 }
 

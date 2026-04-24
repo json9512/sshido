@@ -20,70 +20,10 @@ public struct SettingsView: View {
     @State private var toast: String?
     @State private var working = false
     @State private var appearance: TerminalAppearance = .default
-    @State private var shortcuts: [CustomShortcut] = []
-    @State private var barItems: [BarItem] = []
+    @State private var groups: [ShortcutGroup] = []
     @State private var voiceLanguage: VoiceLanguage = VoicePreferences.shared.language
     @State private var voiceAutoSend: Bool = VoicePreferences.shared.autoSend
     @State private var voiceAITranslate: Bool = VoicePreferences.shared.aiTranslate
-    @State private var quickAddExpanded = false
-    @State private var building: [CustomShortcut] = []
-    @State private var shortcutsEditMode: EditMode = .inactive
-
-    static let commonShortcuts: [CustomShortcut] = [
-        .init(label: "Esc",      bytes: [0x1b]),
-        .init(label: "Tab",      bytes: [0x09]),
-        .init(label: "⇧Tab",     bytes: [0x1b, 0x5b, 0x5a]),
-        .init(label: "Enter",    bytes: [0x0d]),
-        .init(label: "Space",    bytes: [0x20]),
-        .init(label: "Bksp",     bytes: [0x7f]),
-        .init(label: "Del",      bytes: [0x1b, 0x5b, 0x33, 0x7e]),
-        .init(label: "←",        bytes: [0x1b, 0x5b, 0x44]),
-        .init(label: "↓",        bytes: [0x1b, 0x5b, 0x42]),
-        .init(label: "↑",        bytes: [0x1b, 0x5b, 0x41]),
-        .init(label: "→",        bytes: [0x1b, 0x5b, 0x43]),
-        .init(label: "⌃←",       bytes: [0x1b, 0x5b, 0x31, 0x3b, 0x35, 0x44]),
-        .init(label: "⌃→",       bytes: [0x1b, 0x5b, 0x31, 0x3b, 0x35, 0x43]),
-        .init(label: "Home",     bytes: [0x1b, 0x5b, 0x48]),
-        .init(label: "End",      bytes: [0x1b, 0x5b, 0x46]),
-        .init(label: "PgUp",     bytes: [0x1b, 0x5b, 0x35, 0x7e]),
-        .init(label: "PgDn",     bytes: [0x1b, 0x5b, 0x36, 0x7e]),
-        .init(label: "⌃A",       bytes: [0x01]),
-        .init(label: "⌃B",       bytes: [0x02]),
-        .init(label: "⌃C",       bytes: [0x03]),
-        .init(label: "⌃D",       bytes: [0x04]),
-        .init(label: "⌃E",       bytes: [0x05]),
-        .init(label: "⌃F",       bytes: [0x06]),
-        .init(label: "⌃G",       bytes: [0x07]),
-        .init(label: "⌃H",       bytes: [0x08]),
-        .init(label: "⌃J",       bytes: [0x0a]),
-        .init(label: "⌃K",       bytes: [0x0b]),
-        .init(label: "⌃L",       bytes: [0x0c]),
-        .init(label: "⌃N",       bytes: [0x0e]),
-        .init(label: "⌃O",       bytes: [0x0f]),
-        .init(label: "⌃P",       bytes: [0x10]),
-        .init(label: "⌃Q",       bytes: [0x11]),
-        .init(label: "⌃R",       bytes: [0x12]),
-        .init(label: "⌃S",       bytes: [0x13]),
-        .init(label: "⌃T",       bytes: [0x14]),
-        .init(label: "⌃U",       bytes: [0x15]),
-        .init(label: "⌃V",       bytes: [0x16]),
-        .init(label: "⌃W",       bytes: [0x17]),
-        .init(label: "⌃X",       bytes: [0x18]),
-        .init(label: "⌃Y",       bytes: [0x19]),
-        .init(label: "⌃Z",       bytes: [0x1a]),
-        .init(label: "F1",       bytes: [0x1b, 0x4f, 0x50]),
-        .init(label: "F2",       bytes: [0x1b, 0x4f, 0x51]),
-        .init(label: "F3",       bytes: [0x1b, 0x4f, 0x52]),
-        .init(label: "F4",       bytes: [0x1b, 0x4f, 0x53]),
-        .init(label: "F5",       bytes: [0x1b, 0x5b, 0x31, 0x35, 0x7e]),
-        .init(label: "F6",       bytes: [0x1b, 0x5b, 0x31, 0x37, 0x7e]),
-        .init(label: "F7",       bytes: [0x1b, 0x5b, 0x31, 0x38, 0x7e]),
-        .init(label: "F8",       bytes: [0x1b, 0x5b, 0x31, 0x39, 0x7e]),
-        .init(label: "F9",       bytes: [0x1b, 0x5b, 0x32, 0x30, 0x7e]),
-        .init(label: "F10",      bytes: [0x1b, 0x5b, 0x32, 0x31, 0x7e]),
-        .init(label: "F11",      bytes: [0x1b, 0x5b, 0x32, 0x33, 0x7e]),
-        .init(label: "F12",      bytes: [0x1b, 0x5b, 0x32, 0x34, 0x7e])
-    ]
 
     public init() {}
 
@@ -166,107 +106,25 @@ public struct SettingsView: View {
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Section(header: DSSectionHeader("Shortcuts")) {
-                    DisclosureGroup(isExpanded: $quickAddExpanded) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            if building.isEmpty {
-                                Text("Tap keys below. They'll send in the order you tap.")
-                                    .font(.caption).foregroundStyle(DS.Color.textSecondary)
-                            } else {
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 6)], spacing: 6) {
-                                    ForEach(Array(building.enumerated()), id: \.offset) { idx, sc in
-                                        Button {
-                                            building.remove(at: idx)
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Text(sc.label)
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .font(.caption2)
-                                                    .opacity(0.7)
-                                            }
-                                        }
-                                        .buttonStyle(TintedChipButtonStyle())
-                                    }
-                                }
-                            }
-                            Divider()
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 56), spacing: 6)], spacing: 6) {
-                                ForEach(SettingsView.commonShortcuts, id: \.label) { sc in
-                                    Button(sc.label) {
-                                        building.append(sc)
-                                    }
-                                    .buttonStyle(TintedChipButtonStyle())
-                                }
-                            }
-                            HStack {
-                                Button("Cancel", role: .cancel) {
-                                    building = []
-                                    quickAddExpanded = false
-                                }
-                                Spacer()
-                                Button("Save") {
-                                    Task { await saveBuilding() }
-                                }
-                                .disabled(building.isEmpty)
-                                .buttonStyle(DSPrimaryButtonStyle())
-                            }
-                        }
-                        .padding(.vertical, 4)
+                    NavigationLink {
+                        ShortcutGroupsListView()
                     } label: {
-                        Label("Add a shortcut", systemImage: "plus.circle")
-                            .foregroundStyle(DS.Color.accent)
-                    }
-                    .tint(DS.Color.accent)
-                    .dsRow()
-                    HStack {
-                        Text("\(barItems.count) in bar")
-                            .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
-                        Spacer()
-                        Button(shortcutsEditMode.isEditing ? "Done" : "Manage") {
-                            withAnimation {
-                                shortcutsEditMode = shortcutsEditMode.isEditing ? .inactive : .active
+                        HStack(spacing: DS.Spacing.md) {
+                            Image(systemName: "square.grid.2x2")
+                                .font(.system(size: 16))
+                                .foregroundStyle(DS.Color.titanium)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                                Text("Manage groups")
+                                    .font(DS.Font.headline)
+                                    .foregroundStyle(DS.Color.textPrimary)
+                                Text(shortcutsSummary)
+                                    .font(DS.Font.caption)
+                                    .foregroundStyle(DS.Color.textSecondary)
                             }
                         }
-                        .font(DS.Font.callout)
-                        .foregroundStyle(DS.Color.accent)
-                        .disabled(barItems.isEmpty)
                     }
                     .dsRow()
-                    if shortcutsEditMode.isEditing {
-                        ForEach(barItems) { item in
-                            HStack(spacing: 10) {
-                                if case .custom(let sc) = item {
-                                    Button {
-                                        Task { await deleteCustom(sc.id) }
-                                    } label: {
-                                        Image(systemName: "minus.circle.fill")
-                                            .foregroundStyle(DS.Color.error)
-                                            .font(.title3)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                Text(item.label).bold()
-                                Spacer()
-                                switch item {
-                                case .builtin:
-                                    Text("built-in")
-                                        .font(.caption).foregroundStyle(DS.Color.textSecondary)
-                                case .custom(let sc):
-                                    Text(displayBytes(sc.bytes))
-                                        .font(.caption.monospaced()).foregroundStyle(DS.Color.textSecondary)
-                                        .lineLimit(1).truncationMode(.tail)
-                                }
-                            }
-                        }
-                        .onMove { source, destination in
-                            var ids = barItems.map(\.id)
-                            ids.move(fromOffsets: source, toOffset: destination)
-                            Task {
-                                try? await HotkeyLayoutStore.shared.setOrder(ids)
-                                NotificationCenter.default.post(name: .hotkeyLayoutChanged, object: nil)
-                                await reload()
-                            }
-                        }
-                    }
                 }
                 Section(header: DSSectionHeader("Voice input")) {
                     Picker("Language", selection: $voiceLanguage) {
@@ -310,7 +168,6 @@ public struct SettingsView: View {
             .dsFormStyle()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .environment(\.editMode, $shortcutsEditMode)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -322,6 +179,9 @@ public struct SettingsView: View {
                 }
             }
             .task { await reload() }
+            .onReceive(NotificationCenter.default.publisher(for: .hotkeyLayoutChanged)) { _ in
+                Task { await reload() }
+            }
             .onChange(of: appearance) { _, new in
                 Task { try? await AppearanceStore.shared.set(new) }
             }
@@ -381,38 +241,16 @@ public struct SettingsView: View {
         subscription = await PushService.shared.subscription
         deviceToken = await PushService.shared.deviceToken
         appearance = await AppearanceStore.shared.appearance
-        shortcuts = await CustomShortcutStore.shared.shortcuts
-        barItems = await HotkeyLayoutStore.shared.ordered(
-            builtins: HotkeyButton.defaults,
-            customs: shortcuts
-        )
+        groups = await ShortcutGroupStore.shared.groups
         if serverURLInput.isEmpty { serverURLInput = settings.serverURL }
     }
 
-    private func deleteCustom(_ id: UUID) async {
-        try? await CustomShortcutStore.shared.remove(id: id)
-        NotificationCenter.default.post(name: .hotkeyLayoutChanged, object: nil)
-        await reload()
-    }
-
-    private func saveBuilding() async {
-        guard !building.isEmpty else { return }
-        let label = building.map { $0.label }.joined(separator: " ")
-        let bytes = building.flatMap { $0.bytes }
-        let sc = CustomShortcut(label: label, bytes: bytes)
-        try? await CustomShortcutStore.shared.add(sc)
-        building = []
-        quickAddExpanded = false
-        NotificationCenter.default.post(name: .hotkeyLayoutChanged, object: nil)
-        await reload()
-        toast = "Shortcut added"
-    }
-
-    private func displayBytes(_ b: [UInt8]) -> String {
-        if let s = String(bytes: b, encoding: .utf8), s.allSatisfy({ $0.isASCII && !$0.isNewline }) {
-            return s
-        }
-        return b.map { String(format: "\\x%02x", $0) }.joined()
+    private var shortcutsSummary: String {
+        let groupCount = groups.count
+        let shortcutCount = groups.reduce(0) { $0 + $1.shortcuts.count }
+        let g = groupCount == 1 ? "group" : "groups"
+        let s = shortcutCount == 1 ? "shortcut" : "shortcuts"
+        return "\(groupCount) \(g), \(shortcutCount) \(s)"
     }
 
     private func applyServer() async {
