@@ -273,6 +273,8 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
     private var selectionStart: (col: Int, row: Int)?
     private var selectionEnd: (col: Int, row: Int)?
 
+    public var hasSelection: Bool { selectionStart != nil && selectionEnd != nil }
+
     @objc private func didLong(_ g: UILongPressGestureRecognizer) {
         let p = g.location(in: self)
         let cellW = renderer.glyphMetrics.cellWidth

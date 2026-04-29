@@ -7,8 +7,6 @@ import sshidoCore
 struct FeedbackSettingsSection: View {
     @Binding var toast: String?
 
-    @EnvironmentObject private var router: AppRouter
-    @ObservedObject private var entitlements = Entitlements.shared
     @State private var themeID: String = FeedbackPreferences.shared.themeID
     @State private var expanded = false
 
@@ -35,7 +33,7 @@ struct FeedbackSettingsSection: View {
     @ViewBuilder
     private var activePreview: some View {
         HStack(spacing: DS.Spacing.md) {
-            Image(systemName: active.isPremium ? "waveform.circle.fill" : "waveform")
+            Image(systemName: "waveform")
                 .foregroundStyle(DS.Color.accent)
                 .font(.system(size: 22))
                 .frame(width: 44, height: 30)
@@ -87,20 +85,15 @@ struct FeedbackSettingsSection: View {
     @ViewBuilder
     private func themeRow(_ theme: FeedbackTheme) -> some View {
         let isActive = themeID == theme.id
-        let locked = theme.isPremium && !entitlements.hasPlus
         Button {
-            if locked {
-                router.sheet = .paywall(.plusLocked(feature: "Feedback theme \"\(theme.name)\""))
-            } else {
-                themeID = theme.id
-                FeedbackPreferences.shared.themeID = theme.id
-                toast = "Feedback: \(theme.name)"
-                AgentEventFeedback.shared.fire(.needsInput)
-            }
+            themeID = theme.id
+            FeedbackPreferences.shared.themeID = theme.id
+            toast = "Feedback: \(theme.name)"
+            AgentEventFeedback.shared.fire(.needsInput)
         } label: {
             HStack(spacing: DS.Spacing.md) {
-                Image(systemName: theme.isPremium ? "waveform.circle.fill" : "waveform")
-                    .foregroundStyle(locked ? DS.Color.textTertiary : DS.Color.accent)
+                Image(systemName: "waveform")
+                    .foregroundStyle(DS.Color.accent)
                     .font(.system(size: 20))
                     .frame(width: 44, height: 30)
                 VStack(alignment: .leading, spacing: 0) {
@@ -113,13 +106,9 @@ struct FeedbackSettingsSection: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                if isActive && !locked {
+                if isActive {
                     Image(systemName: "checkmark")
                         .foregroundStyle(DS.Color.accent)
-                } else if locked {
-                    Image(systemName: "lock.fill")
-                        .foregroundStyle(DS.Color.accent)
-                        .font(.system(size: 12))
                 }
             }
             .padding(.vertical, DS.Spacing.sm)

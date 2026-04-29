@@ -47,7 +47,7 @@ enum SentryBootstrap {
         return new
     }
 
-    private static let sensitiveCategories: Set<String> = ["http", "ssh", "terminal", "voice"]
+    private static let sensitiveCategories: Set<String> = ["http", "ssh", "terminal"]
 
     private static func filter(breadcrumb: Breadcrumb) -> Breadcrumb? {
         let category = breadcrumb.category.lowercased()

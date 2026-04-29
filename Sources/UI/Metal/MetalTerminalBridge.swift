@@ -125,16 +125,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     public func applyAppearance() async {
         let appearance = await AppearanceStore.shared.appearance
         renderer.updateFontSize(CGFloat(appearance.fontSize))
-        // Defensive fallback: if the saved theme is premium but entitlement
-        // has lapsed (cancelled subscription, refunded purchase), revert to
-        // Classic Dark instead of continuing to render paid content.
-        let resolved: TerminalTheme = {
-            let raw = appearance.theme
-            if raw.isPremium && !Entitlements.shared.hasPlus {
-                return TerminalThemes.classicDark
-            }
-            return raw
-        }()
+        let resolved = appearance.theme
         if let bg = TerminalTheme.rgb(fromHex: resolved.bgHex) {
             cachedBackground = SIMD4(bg.r, bg.g, bg.b, 1)
         }
@@ -165,63 +156,56 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         onTitleChange?(display)
     }
 
+    public var hasSelection: Bool { view.hasSelection }
+
     public func copyFromTerminal(_ kind: CopyKind) async -> String {
         switch kind {
         case .selection:
             return view.selectedText() ?? ""
         case .viewport:
-            return buildViewportDump()
-        case .lastURL:
-            return findLastURL()
+            let rows = snapshotBufferLines(beforeViewport: 0, afterViewport: 0)
+            return rows.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
-    private func buildViewportDump() -> String {
-        var lines: [String] = []
-        for r in 0..<terminal.rows {
-            if let line = terminal.getLine(row: r) {
-                var s = ""
-                for c in 0..<terminal.cols {
-                    let cd = line[c]
-                    if let scalar = Unicode.Scalar(cd.unicodeScalarCode) {
-                        s.append(Character(scalar))
-                    }
-                }
-                lines.append(s.trimmingCharacters(in: .whitespaces))
-            }
-        }
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func findLastURL() -> String {
+    public func snapshotBufferLines(beforeViewport: Int, afterViewport: Int) -> [String] {
         let yDisp = terminal.buffer.yDisp
-        let scanStart = max(0, yDisp - 50)
-        let scanEnd = yDisp + max(terminal.rows, 50)
-        var flat = ""
-        for r in scanStart..<scanEnd {
+        let start = max(0, yDisp - max(0, beforeViewport))
+        let end = yDisp + terminal.rows + max(0, afterViewport)
+        guard end > start else { return [] }
+
+        var rows: [String] = []
+        rows.reserveCapacity(end - start)
+        let cols = terminal.cols
+        for r in start..<end {
             guard let line = terminal.getScrollInvariantLine(row: r) else { continue }
             var s = ""
-            for c in 0..<terminal.cols {
+            s.reserveCapacity(cols)
+            for c in 0..<cols {
                 let cd = line[c]
-                let code = cd.getCharacter()
-                if code != "\0" {
-                    s.append(code)
+                let ch = cd.getCharacter()
+                if ch == "\0" {
+                    s.append(" ")
+                } else {
+                    s.append(ch)
                 }
             }
-            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                flat.append(" ")
+            rows.append(rightTrim(s))
+        }
+        return rows
+    }
+
+    private func rightTrim(_ s: String) -> String {
+        var end = s.endIndex
+        while end > s.startIndex {
+            let prev = s.index(before: end)
+            if s[prev].isWhitespace {
+                end = prev
             } else {
-                flat.append(trimmed)
+                break
             }
         }
-        let pattern = #"https?://[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return "" }
-        let range = NSRange(flat.startIndex..., in: flat)
-        let matches = regex.matches(in: flat, range: range)
-        guard let last = matches.last,
-              let r = Range(last.range, in: flat) else { return "" }
-        return String(flat[r])
+        return String(s[s.startIndex..<end])
     }
 
     public func sendBytes(_ bytes: [UInt8]) {

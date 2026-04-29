@@ -44,14 +44,11 @@ public struct PrivacyPolicyView: View {
             policySection("Push notifications (optional)",
                 "If enabled, your APNs device token is sent to push.sshido.com over HTTPS. The relay stores only a random subscriber ID, the token, and a notification count. No credentials, terminal content, or personal info is stored. You may self-host the relay.")
 
-            policySection("Voice input",
-                "Speech is processed on-device by Apple SFSpeechRecognizer. AI command translation uses Apple's on-device Foundation Models. No audio leaves the device.")
-
             policySection("Crash reporting",
                 "sshido uses Sentry to collect crash reports and performance diagnostics. Sentry may receive device model, OS version, stack traces, and breadcrumb logs. No SSH credentials, terminal content, or personal data is included in crash reports. See sentry.io/privacy for Sentry's privacy policy.")
 
             policySection("SSH connections",
-                "Commands you type or speak are sent to your remote server via SSH. sshido does not intercept or log this traffic.")
+                "Commands you type are sent to your remote server via SSH. sshido does not intercept or log this traffic.")
 
             policySection("Data deletion",
                 "Uninstall the app to remove all local data. Unsubscribe from push notifications to remove relay data.")

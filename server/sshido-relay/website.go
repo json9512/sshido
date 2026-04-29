@@ -20,7 +20,7 @@ const landingHTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>sshido — SSH terminal for iOS</title>
-<meta name="description" content="A fast, private SSH terminal for iPhone and iPad. Voice commands, push notifications, on-device AI.">
+<meta name="description" content="A fast, private SSH terminal for iPhone and iPad. Mosh, tmux, push notifications.">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -87,11 +87,6 @@ footer a:hover{color:var(--text)}
     <p>Full terminal with session persistence. Reconnect to running sessions from anywhere.</p>
   </div>
   <div class="feat">
-    <div class="feat-icon">&#x1F3A4;</div>
-    <h3>Voice mode</h3>
-    <p>Hands-free continuous voice input with on-device AI command translation.</p>
-  </div>
-  <div class="feat">
     <div class="feat-icon">&#x1F514;</div>
     <h3>Push notifications</h3>
     <p>Get notified when long-running tasks finish. Self-hostable relay.</p>
@@ -113,10 +108,6 @@ footer a:hover{color:var(--text)}
     <div class="detail">
       <h4>Auth</h4>
       <p>Ed25519 and RSA keys stored in the iOS Keychain, protected by Face ID. Password auth for quick setups.</p>
-    </div>
-    <div class="detail">
-      <h4>Voice</h4>
-      <p>On-device speech recognition (Korean + English). Apple Intelligence translates "go to code folder" into <code>cd code</code>.</p>
     </div>
     <div class="detail">
       <h4>Notifications</h4>

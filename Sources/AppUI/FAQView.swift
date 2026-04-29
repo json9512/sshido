@@ -59,55 +59,6 @@ public struct FAQView: View {
                     """
                 )
             }
-            Section(header: DSSectionHeader("Upgrades")) {
-                FAQItem(
-                    q: "What's sshido+?",
-                    a: """
-                    A one-time purchase that unlocks optional app features:
-                    • Premium mascot packs
-                    • Curated terminal themes
-                    • CloudKit sync for hosts, identities, and shortcut groups across your devices
-                    • Widgets, Live Activities, and Apple Watch glances
-                    • Haptic and sound themes for agent events
-
-                    Paid once, lifetime access. Family Sharing is enabled — one purchase covers everyone in your Apple Family group.
-                    """
-                )
-                FAQItem(
-                    q: "What's sshido Cloud Pro?",
-                    a: """
-                    A monthly or yearly subscription that unlocks hosted-relay features on push.sshido.com:
-                    • Multiple named relay endpoints (home / work / CI, each with its own notify URL and label)
-                    • Webhook-to-push bridge — forward GitHub, Linear, Sentry events to your phone
-                    • Published 99.9% uptime SLA backed by a public status page
-
-                    It's a subscription because the relay has real server costs (storage, egress, ops). Cancel anytime in iOS Settings → Apple ID → Subscriptions.
-                    """
-                )
-                FAQItem(
-                    q: "Are sshido+ and Cloud Pro the same thing?",
-                    a: """
-                    No. They unlock different things and stack.
-
-                    • sshido+ = app features (cosmetic, client-side, one-time)
-                    • Cloud Pro = hosted relay features (server-side, subscription)
-
-                    Buying sshido+ does not unlock webhook forwarding or multiple endpoints. Subscribing to Cloud Pro does not unlock mascots or themes. Power users buy both.
-                    """
-                )
-                FAQItem(
-                    q: "What stays free forever?",
-                    a: """
-                    Everything that makes sshido useful as a terminal:
-                    • SSH, Mosh, and tmux session persistence
-                    • Push notifications (one endpoint per account, unlimited volume)
-                    • All hosts, identities, and shortcut groups
-                    • Agent bar, command palette, voice input
-
-                    You can also self-host the relay (server/sshido-relay) — free forever. The paid Cloud Pro tier is for people who want the hosted version plus the extra features.
-                    """
-                )
-            }
             Section(header: DSSectionHeader("Open-source libraries")) {
                 FAQItem(
                     q: "What open-source software does sshido use?",

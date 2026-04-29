@@ -69,8 +69,6 @@ public struct HostListView: View {
                 }
             case .editHost(let host):
                 AddHostView(existing: host) { _ in Task { await reload() } }
-            case .paywall(let ctx):
-                PaywallView(context: ctx)
             }
         })
         .coachmarks()

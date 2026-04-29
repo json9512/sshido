@@ -12,7 +12,6 @@ import sshidoUI
 #endif
 
 public struct SettingsView: View {
-    @ObservedObject private var entitlements = Entitlements.shared
     @EnvironmentObject private var router: AppRouter
     @State private var settings = PushSettings.default
     @State private var subscription: PushSubscription?
@@ -23,9 +22,6 @@ public struct SettingsView: View {
     @State private var working = false
     @State private var appearance: TerminalAppearance = .default
     @State private var groups: [ShortcutGroup] = []
-    @State private var voiceLanguage: VoiceLanguage = VoicePreferences.shared.language
-    @State private var voiceAutoSend: Bool = VoicePreferences.shared.autoSend
-    @State private var voiceAITranslate: Bool = VoicePreferences.shared.aiTranslate
     @State private var confirmClearSubscription = false
 
     public init() {}
@@ -45,29 +41,6 @@ public struct SettingsView: View {
                             Image(systemName: "questionmark.circle")
                         }
                     }
-                    .dsRow()
-                    Button {
-                        router.sheet = .paywall(.upgrade)
-                    } label: {
-                        HStack(spacing: DS.Spacing.md) {
-                            Image(systemName: "sparkles")
-                                .foregroundStyle(DS.Color.accent)
-                                .frame(width: 24)
-                            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
-                                Text(entitlementsSummary)
-                                    .font(DS.Font.rowTitle)
-                                    .foregroundStyle(DS.Color.textPrimary)
-                                Text(entitlementsSubtitle)
-                                    .font(DS.Font.caption)
-                                    .foregroundStyle(DS.Color.textSecondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12))
-                                .foregroundStyle(DS.Color.textTertiary)
-                        }
-                    }
-                    .buttonStyle(.plain)
                     .dsRow()
                 }
                 Section {
@@ -158,24 +131,6 @@ public struct SettingsView: View {
                     }
                     .dsRow()
                 }
-                Section(header: DSSectionHeader("Voice input")) {
-                    Picker(selection: $voiceLanguage) {
-                        ForEach(VoiceLanguage.allCases, id: \.self) { v in
-                            Text(v.displayName).tag(v)
-                        }
-                    } label: {
-                        Text("Language").font(DS.Font.rowTitle)
-                    }
-                    .dsRow()
-                    Toggle(isOn: $voiceAutoSend) {
-                        Text("Send Enter after voice input").font(DS.Font.rowTitle)
-                    }
-                    .dsRow()
-                    Toggle(isOn: $voiceAITranslate) {
-                        Text("AI command translation").font(DS.Font.rowTitle)
-                    }
-                    .dsRow()
-                }
                 Section {
                     Picker(selection: $appearance.returnKeyStyle) {
                         ForEach(ReturnKeyStyle.allCases, id: \.self) { s in
@@ -206,9 +161,6 @@ public struct SettingsView: View {
                 if appearance.showMascotCompanion {
                     MascotSettingsSection(toast: $toast)
                 }
-                #if DEBUG
-                developerSection
-                #endif
                 if let error {
                     Section { InlineErrorText(error) }
                 }
@@ -223,15 +175,6 @@ public struct SettingsView: View {
             }
             .onChange(of: appearance) { _, new in
                 Task { try? await AppearanceStore.shared.set(new) }
-            }
-            .onChange(of: voiceLanguage) { _, new in
-                VoicePreferences.shared.language = new
-            }
-            .onChange(of: voiceAutoSend) { _, new in
-                VoicePreferences.shared.autoSend = new
-            }
-            .onChange(of: voiceAITranslate) { _, new in
-                VoicePreferences.shared.aiTranslate = new
             }
             .toast($toast)
             .confirmationDialog(
@@ -289,72 +232,6 @@ public struct SettingsView: View {
     private var subscribeActionLabel: String {
         guard let sub = subscription else { return "Subscribe" }
         return sub.serverURL == trimmedServerURLInput ? "Update subscription" : "Change server"
-    }
-
-    #if DEBUG
-    @ViewBuilder
-    private var developerSection: some View {
-        Section {
-            HStack {
-                Text("hasPlus").font(DS.Font.rowTitle)
-                Spacer()
-                Text(entitlements.hasPlus ? "ON" : "OFF")
-                    .font(DS.Font.caption)
-                    .foregroundStyle(entitlements.hasPlus ? DS.Color.accent : DS.Color.textTertiary)
-            }
-            .dsRow()
-            HStack {
-                Text("hasCloudPro").font(DS.Font.rowTitle)
-                Spacer()
-                Text(entitlements.hasCloudPro ? "ON" : "OFF")
-                    .font(DS.Font.caption)
-                    .foregroundStyle(entitlements.hasCloudPro ? DS.Color.accent : DS.Color.textTertiary)
-            }
-            .dsRow()
-            Button("Grant sshido+") {
-                entitlements.debugSetEntitlements(plus: true, cloud: entitlements.hasCloudPro)
-                toast = "DEBUG: sshido+ granted"
-            }
-            .font(DS.Font.rowTitle)
-            .foregroundStyle(DS.Color.accent)
-            .dsRow()
-            Button("Grant Cloud Pro") {
-                entitlements.debugSetEntitlements(plus: entitlements.hasPlus, cloud: true)
-                toast = "DEBUG: Cloud Pro granted"
-            }
-            .font(DS.Font.rowTitle)
-            .foregroundStyle(DS.Color.accent)
-            .dsRow()
-            Button("Clear all entitlements") {
-                entitlements.debugSetEntitlements(plus: false, cloud: false)
-                toast = "DEBUG: entitlements cleared"
-            }
-            .font(DS.Font.rowTitle)
-            .foregroundStyle(DS.Color.error)
-            .dsRow()
-        } header: {
-            DSSectionHeader("Developer (DEBUG only)")
-        } footer: {
-            Text("In-memory overrides for smoke-testing premium gating. Not present in Release builds. Resets on app relaunch.")
-                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-        }
-    }
-    #endif
-
-    private var entitlementsSummary: String {
-        switch (entitlements.hasPlus, entitlements.hasCloudPro) {
-        case (true, true):   return "sshido+ and Cloud Pro active"
-        case (true, false):  return "sshido+ active"
-        case (false, true):  return "Cloud Pro active"
-        case (false, false): return "Upgrade sshido"
-        }
-    }
-
-    private var entitlementsSubtitle: String {
-        if entitlements.hasPlus || entitlements.hasCloudPro {
-            return "Manage subscriptions in iOS Settings → Apple ID"
-        }
-        return "See what's available"
     }
 
     private func reload() async {

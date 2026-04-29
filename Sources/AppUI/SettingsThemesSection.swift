@@ -11,8 +11,6 @@ struct ThemesSettingsSection: View {
     @Binding var appearance: TerminalAppearance
     @Binding var toast: String?
 
-    @EnvironmentObject private var router: AppRouter
-    @ObservedObject private var entitlements = Entitlements.shared
     @State private var expanded = false
 
     var body: some View {
@@ -35,15 +33,10 @@ struct ThemesSettingsSection: View {
     private var activePreview: some View {
         let theme = appearance.theme
         HStack(spacing: DS.Spacing.md) {
-            swatch(theme, locked: false)
-            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
-                Text(theme.name)
-                    .font(DS.Font.rowTitle)
-                    .foregroundStyle(DS.Color.textPrimary)
-                Text(theme.isPremium ? "sshido+" : "Free")
-                    .font(DS.Font.caption)
-                    .foregroundStyle(theme.isPremium ? DS.Color.accent : DS.Color.textSecondary)
-            }
+            swatch(theme)
+            Text(theme.name)
+                .font(DS.Font.rowTitle)
+                .foregroundStyle(DS.Color.textPrimary)
             Spacer()
         }
         .padding(.vertical, 4)
@@ -83,33 +76,19 @@ struct ThemesSettingsSection: View {
     @ViewBuilder
     private func themeRow(_ theme: TerminalTheme) -> some View {
         let isActive = appearance.themeID == theme.id
-        let locked = theme.isPremium && !entitlements.hasPlus
         Button {
-            if locked {
-                router.sheet = .paywall(.plusLocked(feature: "Theme \"\(theme.name)\""))
-            } else {
-                appearance.themeID = theme.id
-                toast = "Theme: \(theme.name)"
-            }
+            appearance.themeID = theme.id
+            toast = "Theme: \(theme.name)"
         } label: {
             HStack(spacing: DS.Spacing.md) {
-                swatch(theme, locked: locked)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(theme.name)
-                        .font(DS.Font.body)
-                        .foregroundStyle(DS.Color.textPrimary)
-                    Text(theme.isPremium ? "sshido+" : "Free")
-                        .font(DS.Font.caption)
-                        .foregroundStyle(theme.isPremium ? DS.Color.accent : DS.Color.textTertiary)
-                }
+                swatch(theme)
+                Text(theme.name)
+                    .font(DS.Font.body)
+                    .foregroundStyle(DS.Color.textPrimary)
                 Spacer()
                 if isActive {
                     Image(systemName: "checkmark")
                         .foregroundStyle(DS.Color.accent)
-                } else if locked {
-                    Image(systemName: "lock.fill")
-                        .foregroundStyle(DS.Color.accent)
-                        .font(.system(size: 12))
                 }
             }
             .padding(.vertical, DS.Spacing.sm)
@@ -119,7 +98,7 @@ struct ThemesSettingsSection: View {
     }
 
     @ViewBuilder
-    private func swatch(_ theme: TerminalTheme, locked: Bool) -> some View {
+    private func swatch(_ theme: TerminalTheme) -> some View {
         let bg = color(from: theme.bgHex) ?? .black
         let fg = color(from: theme.fgHex) ?? .white
         ZStack {
@@ -130,7 +109,6 @@ struct ThemesSettingsSection: View {
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(fg)
         }
-        .opacity(locked ? 0.5 : 1)
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.sm)
                 .stroke(DS.Color.titaniumDark, lineWidth: 1)

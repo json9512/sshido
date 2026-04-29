@@ -16,11 +16,6 @@ public struct SpriteManifest: Codable, Sendable {
     public let format: String?          // "gif" or "png" (defaults to "png")
     public let frameSize: [Int]?        // optional for GIF packs
     public let animations: [String: AnimationDef]?  // optional for GIF packs
-    /// Whether this pack requires sshido+. Defaults to false so existing
-    /// free community packs keep working unchanged.
-    public let premium: Bool?
-
-    public var isPremium: Bool { premium ?? false }
 
     public struct AnimationDef: Codable, Sendable {
         public let frames: Int
@@ -116,7 +111,6 @@ public final class SpritePack {
 
     public var name: String { manifest.name }
     public var author: String { manifest.author }
-    public var isPremium: Bool { manifest.isPremium }
 
     /// Display size in points. Larger on iPad for visibility.
     public var displaySize: CGFloat {

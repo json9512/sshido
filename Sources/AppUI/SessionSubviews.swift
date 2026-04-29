@@ -71,43 +71,4 @@ struct SessionErrorScreen: View {
     }
 }
 
-/// Thin status bar shown above the agent bar when voice-input mode is active.
-struct SessionVoiceStrip: View {
-    @ObservedObject var voice: VoiceInputController
-
-    var body: some View {
-        HStack(spacing: DS.Spacing.sm) {
-            Image(systemName: icon)
-                .foregroundStyle(DS.Color.accent)
-                .font(.system(size: 14))
-            Text(status)
-                .font(DS.Font.mono).lineLimit(2)
-                .foregroundStyle(voice.state == .sending ? DS.Color.accent : DS.Color.textPrimary)
-            Spacer()
-        }
-        .padding(DS.Spacing.sm).background(DS.Color.surface1)
-    }
-
-    private var icon: String {
-        switch voice.state {
-        case .listening:    return "waveform"
-        case .translating:  return "brain"
-        case .sending:      return "arrow.right.circle.fill"
-        default:            return "mic.fill"
-        }
-    }
-
-    private var status: String {
-        switch voice.state {
-        case .idle:        return ""
-        case .voiceActive: return "Voice mode"
-        case .listening:
-            return voice.transcript.isEmpty ? "Listening…" : voice.transcript
-        case .translating:
-            return voice.aiStatus.isEmpty ? voice.transcript : voice.aiStatus
-        case .sending:
-            return voice.translatedCommand.isEmpty ? voice.transcript : voice.translatedCommand
-        }
-    }
-}
 #endif

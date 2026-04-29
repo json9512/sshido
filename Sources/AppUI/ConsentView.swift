@@ -49,12 +49,6 @@ public struct ConsentView: View {
                             : "SSH credentials are encrypted in the iOS Keychain"
                     )
                     bulletPoint(
-                        icon: "mic.badge.xmark",
-                        text: isKorean
-                            ? "음성 인식은 기기에서만 처리됩니다"
-                            : "Voice recognition is processed on-device only"
-                    )
-                    bulletPoint(
                         icon: "bell.badge",
                         text: isKorean
                             ? "푸시 알림은 선택 사항이며 자체 호스팅 가능합니다"
@@ -75,7 +69,7 @@ public struct ConsentView: View {
                 Spacer()
 
                 Button {
-                    VoicePreferences.shared.privacyAccepted = true
+                    UserDefaults.standard.set(true, forKey: "sshido.privacyAccepted")
                     onAccept()
                 } label: {
                     Text(isKorean ? "동의하고 계속하기" : "Agree & Continue")

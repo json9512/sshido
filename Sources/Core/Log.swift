@@ -10,7 +10,6 @@ public enum Log {
     public static let push = Logger(subsystem: subsystem, category: "push")
     public static let session = Logger(subsystem: subsystem, category: "session")
     public static let ui = Logger(subsystem: subsystem, category: "ui")
-    public static let voice = Logger(subsystem: subsystem, category: "voice")
     public static let oauth = Logger(subsystem: subsystem, category: "oauth")
     public static let store = Logger(subsystem: subsystem, category: "store")
 }

@@ -37,7 +37,9 @@ public enum OAuthURLDetector {
               let portRange = Range(match.range(at: 1), in: input),
               let port = Int(input[portRange]),
               (1...65535).contains(port),
-              let url = URL(string: input)
+              let url = URL(string: input),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https"
         else { return nil }
         return OAuthTunnelTarget(port: port, originalURL: url)
     }

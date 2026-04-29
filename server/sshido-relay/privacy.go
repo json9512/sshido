@@ -55,14 +55,11 @@ a{color:#4fd1c5}
 <h2>Push notifications (optional)</h2>
 <p>If enabled, your APNs device token is sent to push.sshido.com over HTTPS. The relay stores only a random subscriber ID, the token, and a notification count. No credentials, terminal content, or personal info is stored. You may self-host the relay.</p>
 
-<h2>Voice input</h2>
-<p>Speech is processed on-device by Apple SFSpeechRecognizer. AI command translation uses Apple's on-device Foundation Models. No audio leaves the device.</p>
-
 <h2>Crash reporting</h2>
 <p>sshido uses <a href="https://sentry.io">Sentry</a> to collect crash reports and performance diagnostics. Sentry may receive device model, OS version, stack traces, and breadcrumb logs. No SSH credentials, terminal content, or personal data is included in crash reports. See <a href="https://sentry.io/privacy/">Sentry's privacy policy</a>.</p>
 
 <h2>SSH connections</h2>
-<p>Commands you type or speak are sent to your remote server via SSH. sshido does not intercept or log this traffic.</p>
+<p>Commands you type are sent to your remote server via SSH. sshido does not intercept or log this traffic.</p>
 
 <h2>Data deletion</h2>
 <p>Uninstall the app to remove all local data. Unsubscribe from push notifications to remove relay data.</p>

@@ -36,13 +36,10 @@ public struct HapticBeat: Sendable {
     }
 }
 
-/// A feedback theme parameterises a per-event haptic signature. Premium
-/// themes unlock richer, more distinctive patterns.
 public struct FeedbackTheme: Identifiable, Sendable {
     public let id: String
     public let name: String
     public let description: String
-    public let isPremium: Bool
     public let patterns: [AgentEvent: [HapticBeat]]
 
     func pattern(for event: AgentEvent) -> [HapticBeat] {
@@ -51,16 +48,13 @@ public struct FeedbackTheme: Identifiable, Sendable {
 }
 
 public enum FeedbackThemes {
-    // MARK: - Free
-
     public static let off = FeedbackTheme(
         id: "off", name: "Off", description: "No haptics.",
-        isPremium: false, patterns: [:]
+        patterns: [:]
     )
 
     public static let subtle = FeedbackTheme(
         id: "subtle", name: "Subtle", description: "Soft tap per event.",
-        isPremium: false,
         patterns: [
             .needsInput:    [HapticBeat(time: 0, intensity: 0.45, sharpness: 0.5)],
             .finishedOk:    [HapticBeat(time: 0, intensity: 0.45, sharpness: 0.5)],
@@ -68,14 +62,9 @@ public enum FeedbackThemes {
         ]
     )
 
-    // MARK: - Premium
-    // Each pattern aims for a signature rhythm so themes feel
-    // recognisably different even without any visual context.
-
     public static let energetic = FeedbackTheme(
         id: "energetic", name: "Energetic",
         description: "Punchy double-tap rhythms.",
-        isPremium: true,
         patterns: [
             // doo-doo
             .needsInput: [
@@ -101,7 +90,6 @@ public enum FeedbackThemes {
     public static let morse = FeedbackTheme(
         id: "morse", name: "Morse",
         description: "Telegraph dit-dah codes.",
-        isPremium: true,
         patterns: [
             // · ·  (two shorts)
             .needsInput: [
@@ -131,7 +119,6 @@ public enum FeedbackThemes {
     public static let zen = FeedbackTheme(
         id: "zen", name: "Zen",
         description: "Slow, meditative rumbles.",
-        isPremium: true,
         patterns: [
             // slow single bloom
             .needsInput: [
@@ -154,7 +141,6 @@ public enum FeedbackThemes {
     public static let heartbeat = FeedbackTheme(
         id: "heartbeat", name: "Heartbeat",
         description: "Lub-dub living pulse.",
-        isPremium: true,
         patterns: [
             // lub-dub
             .needsInput: [
@@ -236,11 +222,7 @@ public final class AgentEventFeedback {
     }
 
     public func fire(_ event: AgentEvent) {
-        var theme = FeedbackPreferences.shared.theme
-        if theme.isPremium && !Entitlements.shared.hasPlus {
-            theme = FeedbackThemes.subtle
-        }
-        let beats = theme.pattern(for: event)
+        let beats = FeedbackPreferences.shared.theme.pattern(for: event)
         guard !beats.isEmpty else { return }
         play(beats: beats)
     }

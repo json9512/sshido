@@ -20,11 +20,6 @@ public struct SessionView: View {
     @State private var error: String?
     @State private var toast: String?
     @State private var liveTitle: String
-    @StateObject private var voice: VoiceInputController = {
-        let v = VoiceInputController()
-        v.language = VoicePreferences.shared.language
-        return v
-    }()
     @StateObject private var hotkeys = HotkeyState()
     @State private var photoItem: PhotosPickerItem?
     @State private var uploading = false
@@ -33,7 +28,8 @@ public struct SessionView: View {
     @State private var disconnectWatcher: Task<Void, Never>?
     @State private var isReconnecting = false
     @State private var lastReconnectAt: Date?
-    @StateObject private var oauthFlow = OAuthAuthorizeFlow()
+    @StateObject private var authorize = AuthorizeSignInController()
+    @State private var urlPickerURLs: [DetectedURL]?
     @State private var mascotState = MascotSpriteState()
     @State private var showMascot = true
     @State private var mascotOffset: CGSize = .zero
@@ -116,9 +112,6 @@ public struct SessionView: View {
                             .allowsHitTesting(false)
                     }
                 }
-                if voice.isVoiceModeActive {
-                    SessionVoiceStrip(voice: voice)
-                }
                 AgentBar(channel: ch, bridge: bridge, hotkeys: hotkeys) {
                     bridge?.focus()
                 }
@@ -181,25 +174,25 @@ public struct SessionView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { Task { await openAuthorizeSheet() } } label: {
+                    Image(systemName: "lock.shield")
+                }
+                .accessibilityLabel("Authorize sign-in")
                 Menu {
-                    Button { Task { await copyFromTerminal(.selection) } } label: {
-                        Label("Copy selection", systemImage: "selection.pin.in.out")
+                    Button { Task { await openURLPicker() } } label: {
+                        Label("Find URL…", systemImage: "link")
                     }
-                    Button { Task { await copyFromTerminal(.viewport) } } label: {
-                        Label("Copy visible screen", systemImage: "rectangle.on.rectangle")
-                    }
-                    Button { Task { await copyFromTerminal(.lastURL) } } label: {
-                        Label("Copy last URL", systemImage: "link")
+                    Button { Task { await openAuthorizeSheet() } } label: {
+                        Label("Authorize sign-in…", systemImage: "lock.shield")
                     }
                     Divider()
-                    Button { Task { await authorizeLastURL() } } label: {
-                        Label("Authorize in app", systemImage: "lock.shield")
-                    }
-                    Button { oauthFlow.pastePromptActive = true } label: {
-                        Label("Finish OAuth sign-in…", systemImage: "text.badge.checkmark")
+                    Button { Task { await copyEntireScreen() } } label: {
+                        Label("Copy entire screen", systemImage: "rectangle.on.rectangle")
                     }
                 } label: {
                     Image(systemName: "doc.on.clipboard")
+                } primaryAction: {
+                    Task { await smartCopy() }
                 }
                 Button { Task { await pasteIntoTerminal() } } label: {
                     Image(systemName: "doc.on.doc")
@@ -212,38 +205,43 @@ public struct SessionView: View {
                     }
                 }
                 .disabled(uploading)
-                Button { Task { await toggleVoice() } } label: {
-                    Image(systemName: voice.isVoiceModeActive ? "mic.fill" : "mic")
-                        .foregroundStyle(voice.isVoiceModeActive ? DS.Color.accent : .primary)
-                }
             }
         }
         .toast($toast)
-        .onReceive(oauthFlow.$toast.compactMap { $0 }) { msg in
+        .onReceive(authorize.$toast.compactMap { $0 }) { msg in
             toast = msg
-            oauthFlow.toast = nil
+            authorize.toast = nil
         }
-        .sheet(
-            isPresented: Binding(
-                get: { oauthFlow.presentedURL != nil },
-                set: { presenting in
-                    if !presenting {
-                        Task { await oauthFlow.sessionDismissed() }
+        .sheet(item: Binding(
+            get: { authorize.activeSheet },
+            set: { new in
+                authorize.activeSheet = new
+                if new == nil {
+                    if case .openingSafari = authorize.phase {
+                        authorize.safariDismissed()
+                    } else {
+                        Task { await authorize.cancel() }
                     }
                 }
-            )
-        ) {
-            if let url = oauthFlow.presentedURL {
-                SafariSheet(url: url) {
-                    Task { await oauthFlow.sessionDismissed() }
-                }
-                .ignoresSafeArea()
+            }
+        )) { sheet in
+            switch sheet {
+            case .authorize:
+                AuthorizeSignInSheet(controller: authorize)
+            case .safari(let url):
+                SafariSheet(url: url) { authorize.safariDismissed() }
+                    .ignoresSafeArea()
             }
         }
-        .sheet(isPresented: $oauthFlow.pastePromptActive) {
-            PasteCallbackSheet { pasted in
-                guard let ch = channel else { return }
-                Task { await oauthFlow.finishWithPastedCallback(pasted, channel: ch) }
+        .sheet(isPresented: Binding(
+            get: { urlPickerURLs != nil },
+            set: { presenting in
+                if !presenting { urlPickerURLs = nil }
+            }
+        )) {
+            CopyURLPickerSheet(urls: urlPickerURLs ?? []) { picked in
+                UIPasteboard.general.string = picked.raw
+                toast = "Copied URL"
             }
         }
     }
@@ -280,9 +278,6 @@ public struct SessionView: View {
                 let ch = await SessionStore.shared.ensureChannel(for: session, host: host, auth: auth)
                 NSLog("[sshido] SessionView.load got channel, awaiting first connect…")
                 channel = ch
-                voice.onSendBytes = { bytes in
-                    Task { try? await ch.send(bytes) }
-                }
                 if await waitForFirstConnection(ch) {
                     NSLog("[sshido] SessionView.load: channel connected")
                     isReconnecting = false
@@ -386,58 +381,61 @@ public struct SessionView: View {
         }
     }
 
-    private func toggleVoice() async {
-        voice.language = VoicePreferences.shared.language
-        if voice.isVoiceModeActive {
-            voice.deactivate()
-            return
-        }
-        guard await voice.requestAuthorization() else {
-            toast = voice.error ?? "Voice permission denied"
-            return
-        }
-        do {
-            try await voice.toggleVoiceMode()
-            if !voice.aiStatus.isEmpty {
-                toast = voice.aiStatus
-            }
-        } catch {
-            toast = voice.error ?? error.localizedDescription
-        }
-    }
-
-    private func authorizeLastURL() async {
-        guard let bridge, let ch = channel else { return }
-        let text = await bridge.copyFromTerminal(.lastURL)
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            toast = "No URL on screen"
-            return
-        }
-        guard let target = OAuthURLDetector.detect(trimmed) else {
-            let preview = String(trimmed.prefix(80))
-            let suffix = trimmed.count > 80 ? "…(\(trimmed.count) chars)" : ""
-            toast = "No localhost redirect in: \(preview)\(suffix)"
-            NSLog("[sshido] authorizeLastURL: detector rejected URL: %@", trimmed)
-            return
-        }
-        await oauthFlow.startAuthorize(target: target, channel: ch)
-    }
-
-    private func copyFromTerminal(_ kind: CopyKind) async {
+    private func smartCopy() async {
         guard let bridge else { return }
-        let text = await bridge.copyFromTerminal(kind)
+
+        if bridge.hasSelection {
+            let text = await bridge.copyFromTerminal(.selection)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { toast = "Nothing selected"; return }
+            UIPasteboard.general.string = text
+            toast = "Copied selection (\(text.count) chars)"
+            return
+        }
+
+        let rows = bridge.snapshotBufferLines(beforeViewport: 0, afterViewport: 0)
+        let urls = TerminalURLExtractor.extract(from: rows, cols: bridge.cols)
+        if urls.count == 1 {
+            UIPasteboard.general.string = urls[0].raw
+            toast = "Copied URL"
+            return
+        }
+        if urls.count > 1 {
+            urlPickerURLs = urls
+            return
+        }
+
+        let text = await bridge.copyFromTerminal(.viewport)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { toast = "Nothing to copy"; return }
+        UIPasteboard.general.string = text
+        toast = "Copied screen (\(text.count) chars)"
+    }
+
+    private func copyEntireScreen() async {
+        guard let bridge else { return }
+        let text = await bridge.copyFromTerminal(.viewport)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            switch kind {
-            case .selection: toast = "Long-press to select first"
-            case .viewport:  toast = "Nothing on screen"
-            case .lastURL:   toast = "No URL found"
-            }
+            toast = "Nothing on screen"
             return
         }
         UIPasteboard.general.string = trimmed
-        toast = "Copied \(trimmed.count) chars"
+        toast = "Copied screen (\(trimmed.count) chars)"
+    }
+
+    private func openURLPicker() async {
+        guard let bridge else { return }
+        let rows = bridge.snapshotBufferLines(beforeViewport: 200, afterViewport: 50)
+        let urls = TerminalURLExtractor.extract(from: rows, cols: bridge.cols)
+        urlPickerURLs = urls
+    }
+
+    private func openAuthorizeSheet() async {
+        guard let bridge, let ch = channel else { return }
+        let rows = bridge.snapshotBufferLines(beforeViewport: 200, afterViewport: 50)
+        let urls = TerminalURLExtractor.extract(from: rows, cols: bridge.cols)
+        authorize.present(channel: ch, urls: urls)
     }
 
     private func uploadImage(_ item: PhotosPickerItem) async {
