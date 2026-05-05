@@ -44,7 +44,7 @@ a{color:#4fd1c5}
 <body>
 <div class="lang"><a href="?lang=en">English</a> <a href="?lang=ko">한국어</a></div>
 <h1>sshido Privacy Policy</h1>
-<p class="updated">Last updated: April 19, 2026</p>
+<p class="updated">Last updated: May 6, 2026</p>
 
 <h2>Summary</h2>
 <p>sshido is an iOS SSH terminal. Your data stays on your device. We do not track usage or sell data.</p>
@@ -91,7 +91,7 @@ a{color:#4fd1c5}
 <body>
 <div class="lang"><a href="?lang=en">English</a> <a href="?lang=ko">한국어</a></div>
 <h1>sshido 개인정보 처리방침</h1>
-<p class="updated">최종 수정일: 2026년 4월 19일</p>
+<p class="updated">최종 수정일: 2026년 5월 6일</p>
 
 <h2>요약</h2>
 <p>sshido는 iOS SSH 터미널입니다. 데이터는 기기에 저장되며, 사용을 추적하거나 데이터를 판매하지 않습니다.</p>
@@ -102,14 +102,11 @@ a{color:#4fd1c5}
 <h2>푸시 알림 (선택 사항)</h2>
 <p>활성화 시 APNs 기기 토큰이 HTTPS로 push.sshido.com에 전송됩니다. 릴레이는 무작위 구독자 ID, 토큰, 알림 횟수만 저장합니다. 자격 증명, 터미널 내용, 개인정보는 저장하지 않습니다. 자체 릴레이 호스팅이 가능합니다.</p>
 
-<h2>음성 입력</h2>
-<p>음성은 Apple SFSpeechRecognizer로 기기 내에서 처리됩니다. AI 명령 번역은 Apple의 기기 내 Foundation Models를 사용합니다. 오디오는 기기 외부로 전송되지 않습니다.</p>
-
 <h2>충돌 보고</h2>
 <p>sshido는 <a href="https://sentry.io">Sentry</a>를 사용하여 충돌 보고서 및 성능 진단을 수집합니다. Sentry는 기기 모델, OS 버전, 스택 트레이스, 브레드크럼 로그를 수신할 수 있습니다. SSH 자격 증명, 터미널 내용 또는 개인 데이터는 충돌 보고서에 포함되지 않습니다. <a href="https://sentry.io/privacy/">Sentry 개인정보 처리방침</a>을 참조하세요.</p>
 
 <h2>SSH 연결</h2>
-<p>입력하거나 말하는 명령은 SSH를 통해 원격 서버로 전송됩니다. sshido는 이 트래픽을 가로채거나 기록하지 않습니다.</p>
+<p>입력한 명령은 SSH를 통해 원격 서버로 전송됩니다. sshido는 이 트래픽을 가로채거나 기록하지 않습니다.</p>
 
 <h2>데이터 삭제</h2>
 <p>앱을 삭제하면 모든 로컬 데이터가 제거됩니다. 푸시 알림 구독을 취소하면 릴레이 데이터가 제거됩니다.</p>
