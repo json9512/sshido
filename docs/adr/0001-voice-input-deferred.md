@@ -1,4 +1,4 @@
-# Voice input deferred; if revived, route through the remote agent
+# Voice input deferred; if revived, use the user's own remote agent
 
 Voice → command translation was prototyped against Apple's on-device
 Foundation Models and removed in commit 47c23f0 because trivial inputs
@@ -11,20 +11,28 @@ bundled in the binary) is unlikely to fix the root cause and would cost
 ~3 GB of binary size, raise the device floor to A17 Pro, and add App
 Review risk.
 
-When the feature is revived, the default path is:
+The hosted relay (`push.sshido.com`) cannot proxy to a paid LLM API on
+behalf of users — the operator (a single dev) cannot absorb Anthropic /
+OpenAI token costs at any scale that would matter for a public iOS app.
+That rules out a "relay → API" fallback.
+
+When the feature is revived, the only viable path is:
 
   mic → SFSpeechRecognizer (on-device, Korean OK) → transcript →
-  remote agent (Claude Code / Codex session, or relay → Anthropic API)
+  the user's *own* AI agent already running in their tmux pane
+  (Claude Code, Codex, aider) — sshido just types the transcript into
+  the active agent's stdin
 
-This keeps audio on-device, ships zero extra weight in the binary, runs
-on every iPhone, and produces commands from a model that is materially
-better at command synthesis than anything that fits in RAM.
+This requires an active agent session on the remote host. If there
+isn't one, the feature is unavailable; sshido does not silently fall
+back to a paid API call. That tradeoff is acceptable because the entire
+product is built around driving a remote agent — voice without an agent
+session is out of scope.
 
-On-device translation only gets reconsidered if "transcript leaves the
-device" becomes a hard no. In that case the first attempt should be
-Apple Foundation Models held correctly (`@Generable` output struct, real
-system instruction, few-shot grounded in the host's `uname` / shell /
-installed binaries) — not a bundled LLM.
+Apple Foundation Models, held correctly (`@Generable` output struct,
+real system instruction, few-shot grounded in the host's `uname` /
+shell / installed binaries), remains the fallback to attempt before
+declaring on-device inadequate. A bundled LLM is not on the table.
 
 All user-facing surfaces (in-app privacy policy, relay's public privacy
 page, App Store listing, screenshots) must not advertise voice input

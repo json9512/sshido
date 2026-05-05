@@ -179,7 +179,6 @@ struct AddHostView: View {
             username: form.username,
             identityID: form.authMethod == .key ? form.selectedIdentityID : nil,
             authMethod: form.authMethod,
-            useMosh: false,
             useTmux: true,
             tmuxSession: existing?.tmuxSession ?? "sshido",
             agentProfileID: nil

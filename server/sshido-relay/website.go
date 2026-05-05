@@ -20,7 +20,7 @@ const landingHTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>sshido — SSH terminal for iOS</title>
-<meta name="description" content="A fast, private SSH terminal for iPhone and iPad. Mosh, tmux, push notifications.">
+<meta name="description" content="A fast, private SSH terminal for iPhone and iPad. tmux, push notifications.">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{

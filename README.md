@@ -1,7 +1,7 @@
 # sshido
 
 An iOS/iPadOS terminal built for driving AI coding agents (Claude Code, Codex,
-aider, etc.) from your phone. SSH/Mosh transport, tmux-per-session, and a
+aider, etc.) from your phone. SSH transport, tmux-per-session, and a
 push-notification relay so you get an APNs alert the moment your agent finishes
 a task or needs input.
 

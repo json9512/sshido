@@ -13,7 +13,6 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
     public var username: String
     public var identityID: UUID?
     public var authMethod: HostAuthMethod
-    public var useMosh: Bool
     public var useTmux: Bool
     public var tmuxSession: String
     public var agentProfileID: UUID?
@@ -26,7 +25,6 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         username: String,
         identityID: UUID? = nil,
         authMethod: HostAuthMethod = .key,
-        useMosh: Bool = false,
         useTmux: Bool = true,
         tmuxSession: String = "sshido",
         agentProfileID: UUID? = nil
@@ -38,7 +36,6 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         self.username = username
         self.identityID = identityID
         self.authMethod = authMethod
-        self.useMosh = useMosh
         self.useTmux = useTmux
         self.tmuxSession = tmuxSession
         self.agentProfileID = agentProfileID
@@ -46,7 +43,7 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, hostname, port, username, identityID, authMethod
-        case useMosh, useTmux, tmuxSession, agentProfileID
+        case useTmux, tmuxSession, agentProfileID
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -58,7 +55,6 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         try c.encode(username, forKey: .username)
         try c.encodeIfPresent(identityID, forKey: .identityID)
         try c.encode(authMethod, forKey: .authMethod)
-        try c.encode(useMosh, forKey: .useMosh)
         try c.encode(useTmux, forKey: .useTmux)
         try c.encode(tmuxSession, forKey: .tmuxSession)
         try c.encodeIfPresent(agentProfileID, forKey: .agentProfileID)
@@ -73,7 +69,6 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         self.username = try c.decode(String.self, forKey: .username)
         self.identityID = try c.decodeIfPresent(UUID.self, forKey: .identityID)
         self.authMethod = try c.decodeIfPresent(HostAuthMethod.self, forKey: .authMethod) ?? .key
-        self.useMosh = try c.decodeIfPresent(Bool.self, forKey: .useMosh) ?? false
         self.useTmux = try c.decodeIfPresent(Bool.self, forKey: .useTmux) ?? true
         self.tmuxSession = try c.decodeIfPresent(String.self, forKey: .tmuxSession) ?? "sshido"
         self.agentProfileID = try c.decodeIfPresent(UUID.self, forKey: .agentProfileID)
