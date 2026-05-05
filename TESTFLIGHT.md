@@ -62,8 +62,7 @@ Fill before first submission:
   - Provide at least 1 per required size.
 - **Privacy Nutrition Labels**:
   - Data Not Linked to You: Diagnostics (crash reports via MetricKit, opt-in)
-  - Permissions: Microphone (voice dictation), Speech Recognition (on-device),
-    Notifications, Local Network (push relay)
+  - Permissions: Notifications, Local Network (push relay)
 - **Encryption export compliance** — "Uses standard encryption (SSH)". Answer
   "Yes, uses exempt standard encryption" in the ITSAppUsesNonExemptEncryption
   question.
