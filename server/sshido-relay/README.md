@@ -87,9 +87,9 @@ makes Claude Code write the hook and settings itself (see the root README).
 
 - The relay listens on whatever `-addr` you give it. Default `127.0.0.1:8787`
   keeps it local; bind to `0.0.0.0` only if you understand the exposure.
-- Each subscription gets a random 32-byte token in its URL (effectively a
-  bearer secret). If you rotate devices, re-subscribe to invalidate the old
-  URL.
+- Each subscription gets a 32-character random token (128 bits of entropy)
+  in its URL (effectively a bearer secret). If you rotate devices,
+  re-subscribe to invalidate the old URL.
 - The `.p8` never leaves your server. Only the sshido app's device token
   is stored in the local SQLite.
 
