@@ -50,7 +50,7 @@ a{color:#4fd1c5}
 <p>sshido is an iOS SSH terminal. Your data stays on your device. We do not track usage or sell data.</p>
 
 <h2>Local storage</h2>
-<p>SSH credentials are encrypted in the iOS Keychain (Face ID / Touch ID protected). Host configs, sessions, and preferences are stored locally in the app sandbox. None of this is uploaded.</p>
+<p>SSH credentials are encrypted at rest in the iOS Keychain and accessible only while your device is unlocked. Host configs, sessions, and preferences are stored locally in the app sandbox. None of this is uploaded.</p>
 
 <h2>Push notifications (optional)</h2>
 <p>If enabled, your APNs device token is sent to push.sshido.com over HTTPS. The relay stores only a random subscriber ID, the token, and a notification count. No credentials, terminal content, or personal info is stored. You may self-host the relay.</p>
@@ -97,7 +97,7 @@ a{color:#4fd1c5}
 <p>sshido는 iOS SSH 터미널입니다. 데이터는 기기에 저장되며, 사용을 추적하거나 데이터를 판매하지 않습니다.</p>
 
 <h2>로컬 저장</h2>
-<p>SSH 자격 증명은 iOS 키체인에 암호화됩니다 (Face ID / Touch ID 보호). 호스트 설정, 세션, 환경설정은 앱 샌드박스에 로컬 저장됩니다. 서버에 업로드되지 않습니다.</p>
+<p>SSH 자격 증명은 iOS 키체인에 암호화되어 저장되며, 기기 잠금이 해제된 상태에서만 접근할 수 있습니다. 호스트 설정, 세션, 환경설정은 앱 샌드박스에 로컬 저장됩니다. 서버에 업로드되지 않습니다.</p>
 
 <h2>푸시 알림 (선택 사항)</h2>
 <p>활성화 시 APNs 기기 토큰이 HTTPS로 push.sshido.com에 전송됩니다. 릴레이는 무작위 구독자 ID, 토큰, 알림 횟수만 저장합니다. 자격 증명, 터미널 내용, 개인정보는 저장하지 않습니다. 자체 릴레이 호스팅이 가능합니다.</p>
