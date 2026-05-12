@@ -18,11 +18,11 @@ func (s *server) privacy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page := privacyEn
 	if lang == "ko" {
-		fmt.Fprint(w, privacyKo)
-	} else {
-		fmt.Fprint(w, privacyEn)
+		page = privacyKo
 	}
+	fmt.Fprint(w, strings.ReplaceAll(page, "{{CONTACT}}", s.cfg.privacyContact))
 }
 
 const privacyEn = `<!DOCTYPE html>
@@ -68,7 +68,7 @@ a{color:#4fd1c5}
 <p>Not intended for children under 13.</p>
 
 <h2>Contact</h2>
-<p><a href="mailto:json9512@gmail.com">json9512@gmail.com</a></p>
+<p><a href="mailto:{{CONTACT}}">{{CONTACT}}</a></p>
 </body>
 </html>`
 
@@ -115,6 +115,6 @@ a{color:#4fd1c5}
 <p>13세 미만 아동을 대상으로 하지 않습니다.</p>
 
 <h2>문의</h2>
-<p><a href="mailto:json9512@gmail.com">json9512@gmail.com</a></p>
+<p><a href="mailto:{{CONTACT}}">{{CONTACT}}</a></p>
 </body>
 </html>`

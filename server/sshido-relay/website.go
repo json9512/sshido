@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 func (s *server) landing(w http.ResponseWriter, r *http.Request) {
@@ -11,7 +12,15 @@ func (s *server) landing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, landingHTML)
+	fmt.Fprint(w, strings.ReplaceAll(landingHTML, "{{CONTACT}}", s.cfg.privacyContact))
+}
+
+func (s *server) selfHost(w http.ResponseWriter, r *http.Request) {
+	url := s.cfg.upstreamRepoURL
+	if url == "" {
+		url = "/"
+	}
+	http.Redirect(w, r, url, http.StatusFound)
 }
 
 const landingHTML = `<!DOCTYPE html>
@@ -118,7 +127,7 @@ footer a:hover{color:var(--text)}
 
 <footer>
   <span>&copy; 2026 sshido</span>
-  <span><a href="/privacy">Privacy Policy</a> &middot; <a href="mailto:json9512@gmail.com">Contact</a></span>
+  <span><a href="/privacy">Privacy Policy</a> &middot; <a href="mailto:{{CONTACT}}">Contact</a></span>
 </footer>
 
 </body>

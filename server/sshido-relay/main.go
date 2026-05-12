@@ -31,6 +31,8 @@ type config struct {
 	bundleID          string
 	production        bool
 	publicURL         string
+	privacyContact    string
+	upstreamRepoURL   string
 }
 
 type server struct {
@@ -68,6 +70,8 @@ func main() {
 	flag.StringVar(&cfg.bundleID, "bundle-id", env("APNS_BUNDLE_ID", "com.sshido.app"), "iOS bundle id")
 	flag.BoolVar(&cfg.production, "production", envBool("APNS_PRODUCTION", false), "use production APNs")
 	flag.StringVar(&cfg.publicURL, "public-url", env("PUBLIC_URL", "http://127.0.0.1:8787"), "public base URL returned to clients")
+	flag.StringVar(&cfg.privacyContact, "privacy-contact", env("PRIVACY_CONTACT", "privacy@sshido.com"), "email surfaced in /privacy and the landing footer")
+	flag.StringVar(&cfg.upstreamRepoURL, "upstream-repo-url", env("UPSTREAM_REPO_URL", ""), "URL that /self-host redirects to (e.g. canonical project repo); empty = redirect to /")
 	flag.Parse()
 
 	if p := os.Getenv("PORT"); p != "" {
@@ -85,6 +89,7 @@ func main() {
 	mux.HandleFunc("/subscribe", s.subscribe)
 	mux.HandleFunc("/n/", s.notify)
 	mux.HandleFunc("/privacy", s.privacy)
+	mux.HandleFunc("/self-host", s.selfHost)
 	mux.HandleFunc("/", s.landing)
 
 	log.Printf("sshido push server on %s (storage=%s apns=%v)", cfg.addr, cfg.storage, s.apns != nil)
