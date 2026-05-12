@@ -21,3 +21,5 @@ fastlane/README.md
 vendor/
 sentry-wizard
 .sentryclirc
+docs/*-sandbox.md
+docs/app-review-sandbox.md
