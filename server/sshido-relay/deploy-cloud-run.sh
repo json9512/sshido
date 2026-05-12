@@ -2,14 +2,21 @@
 set -euo pipefail
 
 # Required env:
-#   GCP_PROJECT      — your GCP project id
-#   APNS_KEY_SECRET  — Secret Manager secret name that holds the APNs .p8
-#   APNS_KEY_ID      — 10-char key id
-#   APNS_TEAM_ID     — 10-char team id
-#   APNS_BUNDLE_ID   — default com.sshido.app
-#   APNS_PRODUCTION  — "true" for App Store/TestFlight, "false" otherwise
-#   REGION           — default us-central1
-#   SERVICE          — default sshido-relay
+#   GCP_PROJECT       — your GCP project id
+#   APNS_KEY_SECRET   — Secret Manager secret name that holds the APNs .p8
+#   APNS_KEY_ID       — 10-char key id
+#   APNS_TEAM_ID      — 10-char team id
+#   APNS_BUNDLE_ID    — default com.sshido.app
+#   APNS_PRODUCTION   — "true" for App Store/TestFlight, "false" otherwise
+#   REGION            — default us-central1
+#   SERVICE           — default sshido-relay
+#
+# Optional public-facing config:
+#   PRIVACY_CONTACT   — email surfaced on /privacy and the landing footer
+#                       (default privacy@sshido.com)
+#   UPSTREAM_REPO_URL — URL /self-host redirects to (default: empty → /).
+#                       Upstream sets this to the canonical repo tree URL;
+#                       forks set their own or leave blank.
 #
 # One-time setup:
 #   gcloud auth login
@@ -26,6 +33,8 @@ set -euo pipefail
 : "${APNS_PRODUCTION:=true}"
 : "${REGION:=us-central1}"
 : "${SERVICE:=sshido-relay}"
+: "${PRIVACY_CONTACT:=privacy@sshido.com}"
+: "${UPSTREAM_REPO_URL:=}"
 
 IMAGE="$REGION-docker.pkg.dev/$GCP_PROJECT/sshido/$SERVICE:latest"
 
@@ -41,7 +50,7 @@ gcloud run deploy "$SERVICE" \
   --concurrency 80 \
   --cpu 1 --memory 256Mi \
   --min-instances 0 --max-instances 3 \
-  --set-env-vars "STORAGE=firestore,GOOGLE_CLOUD_PROJECT=$GCP_PROJECT,APNS_KEY_ID=$APNS_KEY_ID,APNS_TEAM_ID=$APNS_TEAM_ID,APNS_BUNDLE_ID=$APNS_BUNDLE_ID,APNS_PRODUCTION=$APNS_PRODUCTION,APNS_KEY_PATH=/secrets/apns.p8" \
+  --set-env-vars "STORAGE=firestore,GOOGLE_CLOUD_PROJECT=$GCP_PROJECT,APNS_KEY_ID=$APNS_KEY_ID,APNS_TEAM_ID=$APNS_TEAM_ID,APNS_BUNDLE_ID=$APNS_BUNDLE_ID,APNS_PRODUCTION=$APNS_PRODUCTION,APNS_KEY_PATH=/secrets/apns.p8,PRIVACY_CONTACT=$PRIVACY_CONTACT,UPSTREAM_REPO_URL=$UPSTREAM_REPO_URL" \
   --set-secrets "/secrets/apns.p8=$APNS_KEY_SECRET:latest"
 
 URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
