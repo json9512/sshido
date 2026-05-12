@@ -13,11 +13,3 @@ public struct PushSubscription: Codable, Hashable, Sendable {
         self.subscribedAt = subscribedAt
     }
 }
-
-public struct PushSettings: Codable, Hashable, Sendable {
-    public var serverURL: String
-
-    public init(serverURL: String) { self.serverURL = serverURL }
-
-    public static let `default` = PushSettings(serverURL: "https://push.sshido.com")
-}
