@@ -51,7 +51,7 @@ public struct PrivacyPolicyView: View {
                 "Commands you type are sent to your remote server via SSH. sshido does not intercept or log this traffic.")
 
             policySection("Data deletion",
-                "Uninstall the app to remove all local data. Unsubscribe from push notifications to remove relay data.")
+                "Uninstall the app to remove all local data. Push subscription data on the relay (subscription ID, device token, notify count) persists until removal is requested — email privacy@sshido.com to delete it.")
 
             policySection("Children",
                 "Not intended for children under 13.")
@@ -83,7 +83,7 @@ public struct PrivacyPolicyView: View {
                 "입력한 명령은 SSH를 통해 원격 서버로 전송됩니다. sshido는 이 트래픽을 가로채거나 기록하지 않습니다.")
 
             policySection("데이터 삭제",
-                "앱을 삭제하면 모든 로컬 데이터가 제거됩니다. 푸시 알림 구독을 취소하면 릴레이 데이터가 제거됩니다.")
+                "앱을 삭제하면 모든 로컬 데이터가 제거됩니다. 릴레이에 저장된 푸시 구독 데이터(구독 ID, 기기 토큰, 알림 횟수)는 삭제 요청 시까지 보관됩니다. 삭제를 원하시면 privacy@sshido.com으로 문의해 주세요.")
 
             policySection("아동",
                 "13세 미만 아동을 대상으로 하지 않습니다.")
