@@ -1,7 +1,7 @@
 # Upptime configuration for push.sshido.com status page.
 #
 # Usage:
-#   1. Create a new public GitHub repo (suggested: json9512/sshido-status).
+#   1. Create a new public GitHub repo (suggested: <your-github-user>/<your-status-repo>).
 #   2. Copy this file to the repo root as `.upptimerc.yml`.
 #   3. Copy the workflows in this template folder into `.github/workflows/`.
 #   4. Enable GitHub Pages (branch: gh-pages, root) in repo settings.
@@ -11,8 +11,8 @@
 #
 # https://upptime.js.org/ has full docs.
 
-owner: json9512
-repo: sshido-status
+owner: <your-github-user>
+repo: <your-status-repo>
 
 sites:
   - name: sshido push relay
@@ -28,13 +28,9 @@ status-website:
   navbar:
     - title: Status
       href: /
-    - title: Repository
-      href: https://github.com/json9512/sshido
-    - title: Self-host guide
-      href: https://github.com/json9512/sshido/tree/main/server/sshido-relay
 
 assignees:
-  - json9512
+  - <your-github-user>
 
 workflowSchedule:
   graphs: "0 0 * * *"
