@@ -16,19 +16,19 @@ stand up a free uptime-monitoring page at `status.sshido.com`.
 
 ## One-time setup
 
-1. `gh repo create json9512/sshido-status --public`
+1. `gh repo create <your-github-user>/<your-status-repo> --public`
 2. Clone it locally and copy everything from this folder (`.upptimerc.yml`
    and the `.github/workflows/` directory).
 3. Update `.upptimerc.yml`:
-   - replace `json9512` with your GitHub username if different,
-   - replace `sshido-status` with your repo name if different.
+   - replace `<your-github-user>` with your GitHub username,
+   - replace `<your-status-repo>` with your repo name.
 4. Push to `main`.
 5. On GitHub: **Settings → Pages → Source: `gh-pages` branch, root**.
 6. Generate a Personal Access Token with `repo` + `workflow` scopes at
    <https://github.com/settings/tokens>. Add it as repo secret `GH_PAT`.
 7. Run the **Uptime CI** workflow manually once — it creates the initial
    state files.
-8. DNS: add a CNAME `status.sshido.com` → `json9512.github.io` (or your
+8. DNS: add a CNAME `status.sshido.com` → `<your-github-user>.github.io` (or your
    user's pages domain). Put `status.sshido.com` in a file named `CNAME`
    at the repo root so GitHub Pages associates it.
 
