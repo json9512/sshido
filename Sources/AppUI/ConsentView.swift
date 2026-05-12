@@ -54,6 +54,12 @@ public struct ConsentView: View {
                             ? "푸시 알림은 선택 사항이며 자체 호스팅 가능합니다"
                             : "Push notifications are optional and self-hostable"
                     )
+                    bulletPoint(
+                        icon: "ladybug",
+                        text: isKorean
+                            ? "익명 충돌 보고 (Sentry, 자격 증명·터미널 내용 제외) — 설정에서 끌 수 있습니다"
+                            : "Anonymous crash reports via Sentry (no credentials, no terminal content) — can be disabled in Settings"
+                    )
                 }
                 .padding()
                 .background(DS.Color.surface1, in: RoundedRectangle(cornerRadius: 12))

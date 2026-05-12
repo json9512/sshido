@@ -23,6 +23,7 @@ public struct SettingsView: View {
     @State private var appearance: TerminalAppearance = .default
     @State private var groups: [ShortcutGroup] = []
     @State private var confirmClearSubscription = false
+    @AppStorage(SentryBootstrap.enabledKey) private var sentryEnabled: Bool = true
 
     public init() {}
 
@@ -144,6 +145,17 @@ public struct SettingsView: View {
                     DSSectionHeader("Keyboard")
                 } footer: {
                     Text("Changes the bottom-right key on the software keyboard. \"Return\" is the usual ↵ arrow.")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                }
+                Section {
+                    Toggle(isOn: $sentryEnabled) {
+                        Text("Send crash reports").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                } header: {
+                    DSSectionHeader("Privacy")
+                } footer: {
+                    Text("Anonymous crash reports via Sentry. No credentials or terminal content are included. Takes effect on next app launch.")
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Section(header: DSSectionHeader("Terminal")) {
