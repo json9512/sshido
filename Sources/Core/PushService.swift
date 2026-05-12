@@ -92,6 +92,9 @@ public actor PushService {
         }
         struct R: Decodable { let id: String; let notifyURL: String }
         let decoded = try JSONDecoder().decode(R.self, from: data)
+        guard Self.isValidNotifyURL(decoded.notifyURL) else {
+            throw PushError.invalidNotifyURL
+        }
         let sub = PushSubscription(
             serverURL: settings.serverURL,
             subscriberID: decoded.id,
@@ -99,6 +102,19 @@ public actor PushService {
         )
         self.subscription = sub
         try persistSubscription()
+    }
+
+    /// Notify URLs returned by /subscribe end up interpolated into the
+    /// agent-setup prompt that users paste into Claude Code. A malicious
+    /// relay can otherwise smuggle prompt-injection content (newlines,
+    /// shell snippets) into that prompt. This whitelist matches what the
+    /// real relay actually returns: scheme + host (no whitespace) + the
+    /// literal /n/ path + a URL-safe id.
+    static let notifyURLPattern = #"^https?://[^/\s]+/n/[A-Za-z0-9_-]+$"#
+
+    static func isValidNotifyURL(_ s: String) -> Bool {
+        guard !s.isEmpty, s.count <= 512 else { return false }
+        return s.range(of: notifyURLPattern, options: .regularExpression) != nil
     }
 
     private func persistSubscription() throws {
@@ -117,12 +133,14 @@ public enum PushError: Error, LocalizedError {
     case invalidServerURL
     case serverRejected
     case noDeviceToken
+    case invalidNotifyURL
 
     public var errorDescription: String? {
         switch self {
         case .invalidServerURL: return "Invalid push server URL"
         case .serverRejected:   return "Push server refused subscribe"
         case .noDeviceToken:    return "No device APNs token yet — enable notifications in iOS Settings → sshido, then force-quit + reopen."
+        case .invalidNotifyURL: return "The push server returned an unexpected notify URL. Verify you trust the server at Settings → Push notifications → Push server URL."
         }
     }
 }
