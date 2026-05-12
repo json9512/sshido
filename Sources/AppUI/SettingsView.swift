@@ -105,7 +105,7 @@ public struct SettingsView: View {
                     VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
                         Text("Enter your push server URL and tap send. Then copy the agent setup prompt and paste it into Claude Code.")
                         Link("Run your own relay →",
-                             destination: URL(string: "https://github.com/json9512/sshido/tree/main/server/sshido-relay")!)
+                             destination: URL(string: "https://sshido.com/self-host")!)
                             .foregroundStyle(DS.Color.accent)
                     }
                     .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
