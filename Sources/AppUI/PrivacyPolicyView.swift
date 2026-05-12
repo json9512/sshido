@@ -57,7 +57,7 @@ public struct PrivacyPolicyView: View {
                 "Not intended for children under 13.")
 
             policySection("Contact",
-                "json9512@gmail.com")
+                "privacy@sshido.com")
         }
     }
 
@@ -89,7 +89,7 @@ public struct PrivacyPolicyView: View {
                 "13세 미만 아동을 대상으로 하지 않습니다.")
 
             policySection("문의",
-                "json9512@gmail.com")
+                "privacy@sshido.com")
         }
     }
 
