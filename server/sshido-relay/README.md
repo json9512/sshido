@@ -63,25 +63,85 @@ Optional:
 
 ## Claude Code hook example
 
-Install the hook in `~/.claude/hooks/notify.sh`:
+End users don't do this by hand — the iOS app's Settings screen ships a
+one-shot agent-setup prompt that makes Claude Code write the hook and
+settings itself (see the root README). The manual equivalent is below,
+for anyone who wants to understand what it produces or set it up without
+the app.
+
+Only three Claude Code events are valid for our case: `Notification`,
+`Stop`, `StopFailure`. `AskUserQuestion` and `Error` are not Claude Code
+events — they're silently ignored with a warning.
+
+The hook gates on `$SSHIDO_SESSION`, an env var sshido exports in every
+shell it opens (plain SSH and inside its tmux sessions). Without the
+gate, Claude Code running locally on your dev box would also push.
+
+Install the hook in `~/.claude/hooks/notify.sh` (`chmod +x`):
 
 ```sh
 #!/usr/bin/env bash
-URL="$SSHIDO_NOTIFY_URL"   # the URL the app gave you after subscribe
-case "$CLAUDE_HOOK_EVENT" in
-  AskUserQuestion) TITLE="Claude needs input"; PRIO="high" ;;
-  Stop)            TITLE="Task complete";      PRIO="normal" ;;
-  Error)           TITLE="Error";              PRIO="high" ;;
-  *)               TITLE="Claude";             PRIO="normal" ;;
+set -eu
+
+EVENT="${1:-}"
+TITLE="${2:-Claude}"
+BODY="${3:-}"
+
+URL="${SSHIDO_NOTIFY_URL:-}"
+if [ -z "$URL" ] && [ -r "$HOME/.sshido/notify.url" ]; then
+  read -r URL < "$HOME/.sshido/notify.url"
+fi
+if [ -z "$URL" ]; then
+  exit 0
+fi
+
+case "$EVENT" in
+  Notification|StopFailure) PRIO="high" ;;
+  *)                        PRIO="normal" ;;
 esac
-curl -fsS -X POST "$URL" -H 'content-type: application/json' \
-  -d "$(jq -n --arg t "$TITLE" --arg b "$CLAUDE_HOOK_MESSAGE" --arg p "$PRIO" \
-       '{title:$t, body:$b, priority:$p}')"
+
+SESSION_REF=""
+if [ -n "${TMUX:-}" ]; then
+  SESSION_REF=$(tmux display-message -p '#S' 2>/dev/null || true)
+fi
+HOST_REF=$(hostname -s)
+
+curl -fsS -m 5 -X POST "$URL" -H 'content-type: application/json' \
+  -d "$(jq -n \
+    --arg t "$TITLE" --arg b "$BODY" --arg p "$PRIO" \
+    --arg s "$SESSION_REF" --arg h "$HOST_REF" \
+    '{title:$t, body:$b, priority:$p, sessionRef:$s, hostRef:$h}')"
 ```
 
-Then merge the relevant entries into `~/.claude/settings.json`. End users
-don't do this by hand — the iOS app ships a one-shot agent-setup prompt that
-makes Claude Code write the hook and settings itself (see the root README).
+Optionally write the Notify URL to `~/.sshido/notify.url` (chmod 600) so
+the hook works even when `$SSHIDO_NOTIFY_URL` isn't set.
+
+Then merge into `~/.claude/settings.json` (preserve any existing keys):
+
+```json
+{
+  "hooks": {
+    "Notification": [
+      { "matcher": "", "hooks": [ { "type": "command", "command": "[ -z \"$SSHIDO_SESSION\" ] || ~/.claude/hooks/notify.sh Notification \"Claude needs input\" \"Check your session\"" } ] }
+    ],
+    "Stop": [
+      { "matcher": "", "hooks": [ { "type": "command", "command": "[ -z \"$SSHIDO_SESSION\" ] || ~/.claude/hooks/notify.sh Stop \"Task complete\" \"Claude finished\"" } ] }
+    ],
+    "StopFailure": [
+      { "matcher": "", "hooks": [ { "type": "command", "command": "[ -z \"$SSHIDO_SESSION\" ] || ~/.claude/hooks/notify.sh StopFailure \"Claude error\" \"Claude stopped with an error\"" } ] }
+    ]
+  }
+}
+```
+
+Verify end-to-end:
+
+```sh
+curl -fsS -X POST -H 'content-type: application/json' \
+  -d '{"title":"test","body":"hello","priority":"high"}' \
+  "$SSHIDO_NOTIFY_URL"
+# expect HTTP 204
+```
 
 ## Security
 
