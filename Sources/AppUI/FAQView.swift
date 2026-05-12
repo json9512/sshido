@@ -53,7 +53,7 @@ public struct FAQView: View {
                 FAQItem(
                     q: "Key or password?",
                     a: """
-                    Keys are preferred — stored in the iOS Keychain, Face ID gated.
+                    Keys are preferred — stored in the iOS Keychain, accessible only while your device is unlocked.
 
                     Password auth works for Tailscale and dev boxes where you don't want to manage keys.
                     """
