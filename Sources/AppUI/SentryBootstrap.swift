@@ -3,9 +3,22 @@ import Foundation
 import Sentry
 
 enum SentryBootstrap {
+    static let enabledKey = "sshido.sentryEnabled"
     private static let installIDKey = "sshido.installID"
 
+    /// User preference for crash reporting. Defaults to true if the user
+    /// has never touched the Settings toggle (matches v1.0 baseline; the
+    /// consent screen discloses Sentry's presence before first launch).
+    static var userEnabled: Bool {
+        get {
+            let d = UserDefaults.standard
+            return d.object(forKey: enabledKey) == nil || d.bool(forKey: enabledKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: enabledKey) }
+    }
+
     static func start() {
+        guard userEnabled else { return }
         guard let hostPath = Bundle.main.object(forInfoDictionaryKey: "SentryDSNHostPath") as? String,
               !hostPath.isEmpty else {
             return
@@ -87,7 +100,19 @@ enum SentryBootstrap {
     }
 }
 #else
+import Foundation
+
 enum SentryBootstrap {
+    static let enabledKey = "sshido.sentryEnabled"
+
+    static var userEnabled: Bool {
+        get {
+            let d = UserDefaults.standard
+            return d.object(forKey: enabledKey) == nil || d.bool(forKey: enabledKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: enabledKey) }
+    }
+
     static func start() {}
 }
 #endif

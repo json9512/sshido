@@ -61,7 +61,13 @@ Fill before first submission:
 - **Screenshots** — 6.7" (iPhone 15 Pro Max), 6.1" (iPhone 15), iPad 12.9"
   - Provide at least 1 per required size.
 - **Privacy Nutrition Labels**:
-  - Data Not Linked to You: Diagnostics (crash reports via MetricKit, opt-in)
+  - Diagnostics: crash reports via Sentry; default on, user can opt out
+    in-app at Settings → Privacy → Send crash reports. Sentry receives
+    device model, OS version, stack traces, breadcrumbs (HTTP/SSH/
+    terminal categories filtered out client-side), and a persistent
+    install UUID; no SSH credentials or terminal content. Because the
+    install UUID is a stable cross-session identifier, declare under
+    "Data Linked to You" in App Store Connect to be safe.
   - Permissions: Notifications, Local Network (push relay)
 - **Encryption export compliance** — "Uses standard encryption (SSH)". Answer
   "Yes, uses exempt standard encryption" in the ITSAppUsesNonExemptEncryption
