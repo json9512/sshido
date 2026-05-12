@@ -62,7 +62,7 @@ a{color:#4fd1c5}
 <p>Commands you type are sent to your remote server via SSH. sshido does not intercept or log this traffic.</p>
 
 <h2>Data deletion</h2>
-<p>Uninstall the app to remove all local data. Unsubscribe from push notifications to remove relay data.</p>
+<p>Uninstall the app to remove all local data. Push subscription data on the relay (subscription ID, device token, notify count) persists until removal is requested — email <a href="mailto:{{CONTACT}}">{{CONTACT}}</a> to delete it.</p>
 
 <h2>Children</h2>
 <p>Not intended for children under 13.</p>
@@ -109,7 +109,7 @@ a{color:#4fd1c5}
 <p>입력한 명령은 SSH를 통해 원격 서버로 전송됩니다. sshido는 이 트래픽을 가로채거나 기록하지 않습니다.</p>
 
 <h2>데이터 삭제</h2>
-<p>앱을 삭제하면 모든 로컬 데이터가 제거됩니다. 푸시 알림 구독을 취소하면 릴레이 데이터가 제거됩니다.</p>
+<p>앱을 삭제하면 모든 로컬 데이터가 제거됩니다. 릴레이에 저장된 푸시 구독 데이터(구독 ID, 기기 토큰, 알림 횟수)는 삭제 요청 시까지 보관됩니다. 삭제를 원하시면 <a href="mailto:{{CONTACT}}">{{CONTACT}}</a>으로 문의해 주세요.</p>
 
 <h2>아동</h2>
 <p>13세 미만 아동을 대상으로 하지 않습니다.</p>
