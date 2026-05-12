@@ -116,7 +116,7 @@ footer a:hover{color:var(--text)}
     </div>
     <div class="detail">
       <h4>Auth</h4>
-      <p>Ed25519 and RSA keys stored in the iOS Keychain, protected by Face ID. Password auth for quick setups.</p>
+      <p>Ed25519 and RSA keys stored in the iOS Keychain, accessible only while your device is unlocked. Password auth for quick setups.</p>
     </div>
     <div class="detail">
       <h4>Notifications</h4>
