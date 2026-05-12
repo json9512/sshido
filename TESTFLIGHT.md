@@ -72,6 +72,24 @@ Fill before first submission:
 - **Encryption export compliance** — "Uses standard encryption (SSH)". Answer
   "Yes, uses exempt standard encryption" in the ITSAppUsesNonExemptEncryption
   question.
+- **App Transport Security justification** — `Sources/AppUI/Info.plist` sets
+  `NSAllowsArbitraryLoads=true`. App Review (Guideline 2.5.1 / 5.1.1) regularly
+  asks for a justification when this is on. Prepared answer:
+
+  > sshido is a self-hostable SSH client. Users configure the push-notification
+  > relay URL themselves at Settings → Push notifications → Push server URL,
+  > and most self-hosters run that relay on a LAN, a Tailscale tailnet, or
+  > another internal network where no public TLS certificate is available.
+  > Forcing HTTPS on that single user-supplied field would break the self-host
+  > path the product is designed around. Every other URL the app talks to —
+  > the default `https://push.sshido.com` relay, Sentry, all in-app links —
+  > is HTTPS-only.
+
+  Scoping via `URLSessionConfiguration` rather than blanket Info.plist would
+  keep the exception code-controlled and is tracked as a v1.1 follow-up; for
+  now the blanket flag is the simplest way to support arbitrary user-supplied
+  hosts. Closely tracked in issue #7 (user-safety angle of the same Info.plist
+  flag).
 - **Review notes** — include a test SSH host credential, or the note "Requires
   a user-supplied SSH host. Reviewer may use a temporary Tailscale node at
   `reviewer-mac.tail-xxxx.ts.net`, password `redacted`." if you set one up.
