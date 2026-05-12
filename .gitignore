@@ -23,3 +23,9 @@ sentry-wizard
 .sentryclirc
 docs/*-sandbox.md
 docs/app-review-sandbox.md
+
+# Sprite assets — licensed for use in the compiled app per their original
+# itch.io creators (see docs/sprites.md), but not redistributable. Kept
+# locally for builds-from-source; not committed.
+Sources/UI/Sprites/Assets/*.gif
+server/sprite-assets/

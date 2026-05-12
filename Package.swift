@@ -31,6 +31,7 @@ let package = Package(
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
             ],
             path: "Sources/UI",
+            exclude: ["Sprites/Assets/README.md"],
             resources: [
                 .process("Metal/Shaders.metal"),
                 .process("Metal/ChromeShaders.metal"),

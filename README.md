@@ -116,3 +116,7 @@ open XcodeProject/sshido.xcodeproj
 The app target pulls source from `Sources/{Models,Core,UI,AppUI}/`. The Go
 relay in `server/sshido-relay/` is built entirely separately (Docker → Cloud
 Run) and is not linked into the app binary.
+
+Built-in mascot sprite GIFs are not committed to this repo (their itch.io
+licenses don't permit redistribution). The app builds and runs without
+them; if you want mascots in your local build, see `docs/sprites.md`.

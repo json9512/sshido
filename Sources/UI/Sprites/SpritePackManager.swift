@@ -76,18 +76,30 @@ public final class SpritePackManager {
     }
 
     private var builtinLoaders: [() -> SpritePack?] {
-        let loaders: [() -> SpritePack?] = [
-            // Otter (standalone, free)
-            { self.loadBuiltinGIF(prefix: "otter", name: "Otter", id: "builtin-otter") },
+        // License notes per pack, from the original itch.io product pages.
+        // The raw GIFs are bundled into the compiled app only — they are not
+        // tracked in this repo and not redistributable. See docs/sprites.md.
+        let otterLicense    = "itch.io — rili-xl.itch.io/otter-sprite-pack (commercial OK; do not redistribute)"
+        let sleepycatLicense = "itch.io — toffeecraft.itch.io/cat-sleeping-animation-free (commercial OK; do not redistribute)"
 
-            { self.loadBuiltinGIF(prefix: "sleepycat_1", name: "Sleepy Cat Cream",  id: "builtin-sleepycat-cream",  group: "sleepycat", variant: "Cream") },
-            { self.loadBuiltinGIF(prefix: "sleepycat_3", name: "Sleepy Cat Ginger", id: "builtin-sleepycat-ginger", group: "sleepycat", variant: "Ginger") },
-            { self.loadBuiltinGIF(prefix: "sleepycat_5", name: "Sleepy Cat Silver", id: "builtin-sleepycat-silver", group: "sleepycat", variant: "Silver") },
+        let loaders: [() -> SpritePack?] = [
+            { self.loadBuiltinGIF(prefix: "otter", name: "Otter", id: "builtin-otter",
+                                   author: "RiLi_XL", license: otterLicense) },
+
+            { self.loadBuiltinGIF(prefix: "sleepycat_1", name: "Sleepy Cat Cream",  id: "builtin-sleepycat-cream",
+                                   author: "ToffeeCraft", license: sleepycatLicense,
+                                   group: "sleepycat", variant: "Cream") },
+            { self.loadBuiltinGIF(prefix: "sleepycat_3", name: "Sleepy Cat Ginger", id: "builtin-sleepycat-ginger",
+                                   author: "ToffeeCraft", license: sleepycatLicense,
+                                   group: "sleepycat", variant: "Ginger") },
+            { self.loadBuiltinGIF(prefix: "sleepycat_5", name: "Sleepy Cat Silver", id: "builtin-sleepycat-silver",
+                                   author: "ToffeeCraft", license: sleepycatLicense,
+                                   group: "sleepycat", variant: "Silver") },
         ]
         return loaders
     }
 
-    private func loadBuiltinGIF(prefix: String, name: String, id: String, group: String? = nil, variant: String? = nil, extraNames: [String] = []) -> SpritePack? {
+    private func loadBuiltinGIF(prefix: String, name: String, id: String, author: String, license: String, group: String? = nil, variant: String? = nil, extraNames: [String] = []) -> SpritePack? {
         var sheets: [MascotMood: SpriteSheet] = [:]
         for mood in MascotMood.allCases {
             // SpriteSheet(named:) tries .gif then .png
@@ -106,7 +118,7 @@ public final class SpritePackManager {
         }
 
         let manifest = SpriteManifest(
-            version: 1, name: name, author: "Community", license: "CC0",
+            version: 1, name: name, author: author, license: license,
             format: "gif", frameSize: nil, animations: nil
         )
         return SpritePack(manifest: manifest, id: id, directory: nil, sheets: sheets, preview: nil, group: group, variant: variant, extras: extras)
