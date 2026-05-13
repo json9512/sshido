@@ -7,19 +7,29 @@ PROJECT="XcodeProject/sshido.xcodeproj"
 SCHEME="sshido"
 CONFIG="${CONFIG:-Debug}"
 
-device_id="$(xcrun devicectl list devices 2>/dev/null \
-  | grep -Ei 'iPhone|iPad' \
-  | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
-  | head -1)"
+# Pull the device's hardware UDID via `xctrace`, which formats it as
+# `8hex-16hex` (e.g. 00008130-001A755E20EB8D3A) — the format xcodebuild's
+# `id=` destination accepts. `devicectl list devices` reports a different
+# CoreDevice UUID that xcodebuild rejects as not matching any destination.
+# Older devices use a 40-char hex UDID; fall back to that.
+device_lines="$(xcrun xctrace list devices 2>&1 \
+  | awk '/^== Simulators ==/{exit} /iPhone|iPad/{print}')"
+device_id="$(echo "$device_lines" \
+  | grep -oE '\([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}\)' \
+  | tail -1 \
+  | tr -d '()')"
 if [[ -z "${device_id:-}" ]]; then
-    device_id="$(xcrun devicectl list devices 2>/dev/null \
-      | grep -Ei 'iPhone|iPad' \
-      | grep -oE '[0-9a-fA-F]{40}' | head -1)"
+    device_id="$(echo "$device_lines" \
+      | grep -oE '\([0-9A-Fa-f]{40}\)' \
+      | tail -1 \
+      | tr -d '()')"
 fi
 
 if [[ -z "${device_id:-}" ]]; then
-    echo "✗ No tethered iPhone/iPad found. Plug in, unlock, trust this Mac." >&2
-    echo "  Also ensure Developer Mode is enabled (Settings → Privacy & Security → Developer Mode)." >&2
+    echo "✗ No tethered iPhone/iPad found." >&2
+    echo "  • Plug in, unlock, trust this Mac." >&2
+    echo "  • Enable Developer Mode (Settings → Privacy & Security → Developer Mode)." >&2
+    echo "  • Verify with: xcrun xctrace list devices" >&2
     exit 1
 fi
 
