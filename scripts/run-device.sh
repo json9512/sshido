@@ -42,8 +42,12 @@ xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration "$CONFIG" \
   DEVELOPMENT_TEAM="$team" PRODUCT_BUNDLE_IDENTIFIER="$bundle" \
   CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates build
 
-app_path="$(find build/Build/Products -maxdepth 3 -name '*.app' -type d | head -1)"
-if [[ -z "$app_path" ]]; then echo "✗ .app not produced"; exit 1; fi
+# Scope to Debug-iphoneos/Release-iphoneos so a stale simulator-build
+# .app doesn't get picked up and installed instead — that path would
+# fail with the install-time codesign error 0xe8008014 ("invalid
+# signature") because simulator binaries aren't signed for device.
+app_path="$(find "build/Build/Products/${CONFIG}-iphoneos" -maxdepth 2 -name '*.app' -type d 2>/dev/null | head -1)"
+if [[ -z "$app_path" ]]; then echo "✗ device .app not produced under build/Build/Products/${CONFIG}-iphoneos"; exit 1; fi
 
 echo "▶ Installing + launching $app_path on ${device_id}..."
 xcrun devicectl device install app --device "$device_id" "$app_path"
