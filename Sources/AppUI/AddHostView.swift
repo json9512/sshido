@@ -271,6 +271,10 @@ struct AddHostView: View {
             return "Key problem: \(m)"
         case .notConnected:
             return "Not connected"
+        case .hostKeyChanged(let host, let port, _, _):
+            return "Host key for \(host):\(port) has changed since you first trusted it. The TOFU prompt explains what to do — open Settings → Identity → Host fingerprints to inspect or remove the stored fingerprint."
+        case .hostKeyRejected(let host, let port):
+            return "Connection to \(host):\(port) cancelled because the host key wasn't trusted."
         }
     }
 
