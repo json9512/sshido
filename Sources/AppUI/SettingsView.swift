@@ -63,6 +63,16 @@ public struct SettingsView: View {
                         .disabled(working || trimmedServerURLInput.isEmpty)
                     }
                     .dsRow()
+                    if isPlaintextServerURL {
+                        HStack(spacing: DS.Spacing.xs) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(DS.Color.warning)
+                            Text("Plaintext HTTP — only safe on a trusted LAN or Tailscale. APNs device token and notify URL travel in the clear.")
+                                .font(DS.Font.caption)
+                                .foregroundStyle(DS.Color.warning)
+                        }
+                        .dsRow()
+                    }
                     if let subscription {
                         HStack {
                             Text("Subscribed \(subscription.subscribedAt.formatted(date: .abbreviated, time: .shortened))")
@@ -241,6 +251,10 @@ public struct SettingsView: View {
 
     private var trimmedServerURLInput: String {
         serverURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isPlaintextServerURL: Bool {
+        trimmedServerURLInput.lowercased().hasPrefix("http://")
     }
 
     private var subscribeActionLabel: String {
