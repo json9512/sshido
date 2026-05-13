@@ -45,9 +45,7 @@ public actor PushService {
     }
 
     public func setServerURL(_ url: String) async throws {
-        var trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        while trimmed.hasSuffix("/") { trimmed.removeLast() }
-        guard URL(string: trimmed) != nil else { throw PushError.invalidServerURL }
+        let trimmed = try Self.validateServerURL(url)
         self.settings = PushSettings(serverURL: trimmed)
         try persistSettings()
         self.subscription = nil
@@ -110,6 +108,25 @@ public actor PushService {
     /// shell snippets) into that prompt. This whitelist matches what the
     /// real relay actually returns: scheme + host (no whitespace) + the
     /// literal /n/ path + a URL-safe id.
+    /// Normalize and validate a user-supplied push relay URL. We allow both
+    /// http and https (Tailscale and LAN deployments without TLS are a real
+    /// use case), but reject any other scheme so file:// / javascript: /
+    /// ssh:// can't slip past `URL(string:)`'s lax acceptance. A non-empty
+    /// host is also required.
+    static func validateServerURL(_ url: String) throws -> String {
+        var trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmed.hasSuffix("/") { trimmed.removeLast() }
+        guard !trimmed.isEmpty,
+              let parsed = URL(string: trimmed),
+              let scheme = parsed.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = parsed.host, !host.isEmpty
+        else {
+            throw PushError.invalidServerURL
+        }
+        return trimmed
+    }
+
     static let notifyURLPattern = #"^https?://[^/\s]+/n/[A-Za-z0-9_-]+$"#
 
     static func isValidNotifyURL(_ s: String) -> Bool {
