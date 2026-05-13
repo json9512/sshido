@@ -17,6 +17,7 @@ import (
 	"github.com/sideshow/apns2"
 	"github.com/sideshow/apns2/payload"
 	"github.com/sideshow/apns2/token"
+	"golang.org/x/time/rate"
 )
 
 type config struct {
@@ -84,10 +85,16 @@ func main() {
 	}
 	defer s.store.Close()
 
+	// In-process per-IP token bucket. 5 rps with burst 10 stops the
+	// abuse vectors in issue #6 (subscriber-spam, notify-URL spam) and
+	// leaves real users — who hit /subscribe once per device and /n/<id>
+	// a few times per agent task — far below the ceiling.
+	limiter := newIPLimiter(rate.Limit(5), 10)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
-	mux.HandleFunc("/subscribe", s.subscribe)
-	mux.HandleFunc("/n/", s.notify)
+	mux.HandleFunc("/subscribe", limiter.middleware(s.subscribe))
+	mux.HandleFunc("/n/", limiter.middleware(s.notify))
 	mux.HandleFunc("/privacy", s.privacy)
 	mux.HandleFunc("/self-host", s.selfHost)
 	mux.HandleFunc("/", s.landing)
@@ -175,8 +182,18 @@ func (s *server) subscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", 405)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<10) // 1 KiB
 	var req subscribeReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DeviceToken == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "bad body", 400)
+		return
+	}
+	if req.DeviceToken == "" {
 		http.Error(w, "bad body", 400)
 		return
 	}
@@ -222,8 +239,14 @@ func (s *server) notify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "store error", 500)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10) // 4 KiB — APNs payload max
 	var req notifyReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "bad body", 400)
 		return
 	}
