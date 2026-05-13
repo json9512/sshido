@@ -168,6 +168,19 @@ public struct SettingsView: View {
                     Text("Anonymous crash reports via Sentry. No credentials or terminal content are included. Takes effect on next app launch.")
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
+                Section(header: DSSectionHeader("Identity")) {
+                    NavigationLink {
+                        HostFingerprintsView()
+                    } label: {
+                        HStack(spacing: DS.Spacing.md) {
+                            Image(systemName: "lock.shield")
+                                .font(.system(size: 16))
+                                .foregroundStyle(DS.Color.accent)
+                            Text("Host fingerprints").font(DS.Font.rowTitle)
+                        }
+                    }
+                    .dsRow()
+                }
                 Section(header: DSSectionHeader("Terminal")) {
                     Stepper(value: $appearance.fontSize, in: 8...22) {
                         Text("Font size: \(appearance.fontSize) pt").font(DS.Font.rowTitle)

@@ -121,8 +121,19 @@ public actor SessionStore {
             user: host.username,
             auth: auth,
             bootstrapCommand: bootstrap,
-            environment: env
+            environment: env,
+            hostKeyConfirm: hostKeyConfirm
         )
+    }
+
+    /// Callback the channel calls when host-key validation requires user
+    /// input. Injected externally so `sshidoCore` doesn't depend on
+    /// `sshidoUI`; the iOS app supplies `HostKeyChallengeBroker.shared`
+    /// at startup via `setHostKeyConfirm(_:)`.
+    private var hostKeyConfirm: HostKeyConfirmCallback = { _ in .reject }
+
+    public func setHostKeyConfirm(_ confirm: @escaping HostKeyConfirmCallback) {
+        self.hostKeyConfirm = confirm
     }
 
     private func tmuxName(host: RemoteHost, session: UUID) -> String {
