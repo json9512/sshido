@@ -186,16 +186,9 @@ public struct SettingsView: View {
                         Text("Font size: \(appearance.fontSize) pt").font(DS.Font.rowTitle)
                     }
                     .dsRow()
-                    Toggle(isOn: $appearance.showMascotCompanion) {
-                        Text("Show mascot").font(DS.Font.rowTitle)
-                    }
-                    .dsRow()
                 }
                 ThemesSettingsSection(appearance: $appearance, toast: $toast)
                 FeedbackSettingsSection(toast: $toast)
-                if appearance.showMascotCompanion {
-                    MascotSettingsSection(toast: $toast)
-                }
                 if let error {
                     Section { InlineErrorText(error) }
                 }
