@@ -1,9 +1,8 @@
 import Foundation
 
-/// A host whose SSH host-key fingerprint has been seen and trusted at
-/// least once. Storage is keyed by `(host, port)` rather than by
-/// `RemoteHost.id` so trust survives `RemoteHost` rename/delete and so
-/// ad-hoc connections (no `RemoteHost` record) can also accrue trust.
+// Keyed by (host, port), not RemoteHost.id, so trust survives RemoteHost
+// rename/delete and ad-hoc connections (no RemoteHost record) also accrue
+// trust. Mirrors OpenSSH's known_hosts behavior.
 public struct KnownHost: Codable, Hashable, Sendable, Identifiable {
     public let host: String
     public let port: Int
@@ -22,9 +21,6 @@ public struct KnownHost: Codable, Hashable, Sendable, Identifiable {
     public var id: String { "\(host):\(port)" }
 }
 
-/// A challenge the SSH layer surfaces to the UI when first connecting
-/// to an unknown host, or when the presented host key doesn't match
-/// the one we've previously trusted.
 public enum HostKeyChallenge: Hashable, Sendable, Identifiable {
     case unknownHost(host: String, port: Int, fingerprint: String)
     case mismatch(host: String, port: Int, expected: String, presented: String)
@@ -52,8 +48,6 @@ public enum HostKeyChallenge: Hashable, Sendable, Identifiable {
 }
 
 public enum HostKeyDecision: Sendable {
-    /// First-connect: trust and store. Mismatch: replace stored fingerprint and continue.
     case trust
-    /// First-connect: abort the connection. Mismatch: same.
     case reject
 }

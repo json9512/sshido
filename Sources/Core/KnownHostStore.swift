@@ -3,11 +3,6 @@ import Foundation
 import sshidoModels
 #endif
 
-/// File-backed JSON store of `KnownHost` records.
-///
-/// Storage shape: `Application Support/sshido/known-hosts.json` containing
-/// `[KnownHost]`. Keyed in-memory by `"\(host):\(port)"`. The store loads
-/// once on first access; mutations persist atomically.
 public actor KnownHostStore {
     public static let shared = KnownHostStore()
 
@@ -49,8 +44,7 @@ public actor KnownHostStore {
         return Array(entries.values).sorted { $0.host < $1.host }
     }
 
-    /// Insert a brand-new fingerprint. No-op if one already exists at the same
-    /// `(host, port)` — callers should use `replace(...)` for that case.
+    // No-op if `(host, port)` already exists — callers use `replace` to overwrite.
     public func add(host: String, port: Int, fingerprint: String, at date: Date = Date()) throws {
         ensureLoaded()
         let k = Self.key(host: host, port: port)
@@ -59,9 +53,6 @@ public actor KnownHostStore {
         try persist()
     }
 
-    /// Overwrite the fingerprint at `(host, port)` and reset `firstSeen` to
-    /// the current moment. Used by the mismatch-recovery flow when the user
-    /// explicitly opts in to trusting the new key.
     public func replace(host: String, port: Int, fingerprint: String, at date: Date = Date()) throws {
         ensureLoaded()
         let k = Self.key(host: host, port: port)
@@ -69,8 +60,8 @@ public actor KnownHostStore {
         try persist()
     }
 
-    /// Bump `lastSeen` without touching the fingerprint. Best-effort —
-    /// failures persist a stale timestamp rather than break the connect path.
+    // Best-effort: persist failure here just leaves a stale timestamp,
+    // it must not break the connect path.
     public func touchLastSeen(host: String, port: Int, at date: Date = Date()) {
         ensureLoaded()
         let k = Self.key(host: host, port: port)

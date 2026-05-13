@@ -133,6 +133,7 @@ struct AddHostView: View {
             }
             .toast($toast)
         }
+        .presentingHostKeyChallenge()
     }
 
     private func hydrateFromExisting() {
