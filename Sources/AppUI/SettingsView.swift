@@ -44,6 +44,19 @@ public struct SettingsView: View {
                     }
                     .dsRow()
                 }
+                Section(header: DSSectionHeader("Identity")) {
+                    NavigationLink {
+                        HostFingerprintsView()
+                    } label: {
+                        HStack(spacing: DS.Spacing.md) {
+                            Image(systemName: "lock.shield")
+                                .font(.system(size: 16))
+                                .foregroundStyle(DS.Color.accent)
+                            Text("Host fingerprints").font(DS.Font.rowTitle)
+                        }
+                    }
+                    .dsRow()
+                }
                 Section {
                     HStack(spacing: DS.Spacing.sm) {
                         TextField("https://push.example.com", text: $serverURLInput)
@@ -121,6 +134,28 @@ public struct SettingsView: View {
                     }
                     .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
+                Section(header: DSSectionHeader("Terminal")) {
+                    Stepper(value: $appearance.fontSize, in: 8...22) {
+                        Text("Font size: \(appearance.fontSize) pt").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                }
+                ThemesSettingsSection(appearance: $appearance, toast: $toast)
+                Section {
+                    Picker(selection: $appearance.returnKeyStyle) {
+                        ForEach(ReturnKeyStyle.allCases, id: \.self) { s in
+                            Text(s.displayName).tag(s)
+                        }
+                    } label: {
+                        Text("Return key").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                } header: {
+                    DSSectionHeader("Keyboard")
+                } footer: {
+                    Text("Changes the bottom-right key on the software keyboard. \"Return\" is the usual ↵ arrow.")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                }
                 Section(header: DSSectionHeader("Shortcuts")) {
                     NavigationLink {
                         ShortcutGroupsListView()
@@ -143,21 +178,6 @@ public struct SettingsView: View {
                     .dsRow()
                 }
                 Section {
-                    Picker(selection: $appearance.returnKeyStyle) {
-                        ForEach(ReturnKeyStyle.allCases, id: \.self) { s in
-                            Text(s.displayName).tag(s)
-                        }
-                    } label: {
-                        Text("Return key").font(DS.Font.rowTitle)
-                    }
-                    .dsRow()
-                } header: {
-                    DSSectionHeader("Keyboard")
-                } footer: {
-                    Text("Changes the bottom-right key on the software keyboard. \"Return\" is the usual ↵ arrow.")
-                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-                }
-                Section {
                     Toggle(isOn: $sentryEnabled) {
                         Text("Send crash reports").font(DS.Font.rowTitle)
                     }
@@ -168,26 +188,6 @@ public struct SettingsView: View {
                     Text("Anonymous crash reports via Sentry. No credentials or terminal content are included. Takes effect on next app launch.")
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
-                Section(header: DSSectionHeader("Identity")) {
-                    NavigationLink {
-                        HostFingerprintsView()
-                    } label: {
-                        HStack(spacing: DS.Spacing.md) {
-                            Image(systemName: "lock.shield")
-                                .font(.system(size: 16))
-                                .foregroundStyle(DS.Color.accent)
-                            Text("Host fingerprints").font(DS.Font.rowTitle)
-                        }
-                    }
-                    .dsRow()
-                }
-                Section(header: DSSectionHeader("Terminal")) {
-                    Stepper(value: $appearance.fontSize, in: 8...22) {
-                        Text("Font size: \(appearance.fontSize) pt").font(DS.Font.rowTitle)
-                    }
-                    .dsRow()
-                }
-                ThemesSettingsSection(appearance: $appearance, toast: $toast)
                 FeedbackSettingsSection(toast: $toast)
                 if let error {
                     Section { InlineErrorText(error) }
