@@ -5,10 +5,6 @@ import UIKit
 import sshidoModels
 #endif
 
-/// Modal presented on first-connect (unknown host) or on host-key
-/// mismatch. User must explicitly tap Trust or Cancel; swipe-to-dismiss
-/// is disabled because absent input would be ambiguous and the safe
-/// default (reject) is one tap away anyway.
 struct HostKeyChallengeSheet: View {
     let challenge: HostKeyChallenge
     let onDecision: (HostKeyDecision) -> Void

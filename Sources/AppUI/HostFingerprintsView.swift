@@ -8,11 +8,6 @@ import sshidoModels
 import sshidoCore
 #endif
 
-/// Settings → Identity → Host fingerprints.
-///
-/// Lists every host whose key has been trusted via TOFU. Swipe to
-/// remove an entry — the next connect to that host will re-prompt
-/// as if it were first-seen.
 public struct HostFingerprintsView: View {
     @State private var entries: [KnownHost] = []
     @State private var loaded = false

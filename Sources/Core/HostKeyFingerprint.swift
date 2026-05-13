@@ -3,14 +3,9 @@ import Crypto
 import NIOCore
 import NIOSSH
 
-/// Compute the OpenSSH-compatible SHA256 fingerprint of a host's public
-/// key. The output matches what `ssh-keygen -l -f host_key.pub` prints
-/// on the server side — users can cross-reference the fingerprint shown
-/// in the iOS prompt against the value their server admin gives them.
-///
-/// Implementation: NIOSSH's `write(to:)` writes the canonical SSH wire
-/// format with a length-prefixed algorithm identifier and key bytes.
-/// That same byte sequence is what OpenSSH hashes for its fingerprint.
+// Output matches `ssh-keygen -l -f host_key.pub` — `NIOSSHPublicKey.write(to:)`
+// emits the canonical SSH wire format (length-prefixed algorithm identifier
+// + key bytes) that OpenSSH itself SHA256s for its fingerprint display.
 public enum HostKeyFingerprint {
     public static func sha256(_ key: NIOSSHPublicKey) -> String {
         var buffer = ByteBufferAllocator().buffer(capacity: 256)
