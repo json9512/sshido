@@ -201,7 +201,8 @@ struct AddHostView: View {
             auth: auth,
             cols: 80, rows: 24,
             bootstrapCommand: nil,
-            environment: [:]
+            environment: [:],
+            hostKeyConfirm: HostKeyChallengeBroker.shared.makeCallback()
         )
         do {
             try await probe.connect()

@@ -40,6 +40,8 @@ public enum SSHError: Error, CustomStringConvertible, Sendable {
     case authFailed(String)
     case transport(String)
     case invalidKey(String)
+    case hostKeyChanged(host: String, port: Int, expected: String, presented: String)
+    case hostKeyRejected(host: String, port: Int)
 
     public var description: String {
         switch self {
@@ -47,6 +49,10 @@ public enum SSHError: Error, CustomStringConvertible, Sendable {
         case .authFailed(let m):   return "authentication failed: \(m)"
         case .transport(let m):    return "transport error: \(m)"
         case .invalidKey(let m):   return "invalid key: \(m)"
+        case .hostKeyChanged(let h, let p, _, _):
+            return "host key for \(h):\(p) has changed — connection blocked"
+        case .hostKeyRejected(let h, let p):
+            return "host key for \(h):\(p) was not trusted — connection cancelled"
         }
     }
 }

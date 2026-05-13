@@ -24,6 +24,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     private let environment: [String: String]
     private var initialCols: Int
     private var initialRows: Int
+    private let hostKeyConfirm: HostKeyConfirmCallback
 
     private var client: SSHClient?
     private var stdin: TTYStdinWriter?
@@ -36,7 +37,8 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     public init(host: String, port: Int, user: String, auth: SSHAuth,
                 cols: Int = 80, rows: Int = 24,
                 bootstrapCommand: String? = nil,
-                environment: [String: String] = [:]) {
+                environment: [String: String] = [:],
+                hostKeyConfirm: @escaping HostKeyConfirmCallback = { _ in .reject }) {
         self.host = host
         self.port = port
         self.user = user
@@ -45,6 +47,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         self.environment = environment
         self.initialCols = cols
         self.initialRows = rows
+        self.hostKeyConfirm = hostKeyConfirm
         let outStream = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
         self.output = outStream.stream
         self.continuation = outStream.continuation
@@ -70,17 +73,26 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
             method = try Self.authFromPEM(user: user, pem: pem, passphrase: passphrase)
         }
 
+        let validator = TOFUHostKeyValidator(host: self.host, port: self.port, confirm: hostKeyConfirm)
+
         let sshClient: SSHClient
         do {
             sshClient = try await SSHClient.connect(
                 host: self.host,
                 port: self.port,
                 authenticationMethod: method,
-                hostKeyValidator: .acceptAnything(),
+                hostKeyValidator: .custom(validator),
                 reconnect: .never
             )
         } catch let e as SSHError {
             throw e
+        } catch let e as HostKeyValidationError {
+            switch e {
+            case .mismatch(let h, let p, let expected, let presented):
+                throw SSHError.hostKeyChanged(host: h, port: p, expected: expected, presented: presented)
+            case .rejectedByUser(let h, let p):
+                throw SSHError.hostKeyRejected(host: h, port: p)
+            }
         } catch {
             let msg = String(describing: error)
             if msg.contains("authentication") || msg.contains("Auth") {
