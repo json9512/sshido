@@ -126,10 +126,8 @@ public actor SessionStore {
         )
     }
 
-    /// Callback the channel calls when host-key validation requires user
-    /// input. Injected externally so `sshidoCore` doesn't depend on
-    /// `sshidoUI`; the iOS app supplies `HostKeyChallengeBroker.shared`
-    /// at startup via `setHostKeyConfirm(_:)`.
+    // Injected at app startup so sshidoCore doesn't depend on sshidoUI.
+    // Default rejects everything — anyone forgetting to wire it up fails closed.
     private var hostKeyConfirm: HostKeyConfirmCallback = { _ in .reject }
 
     public func setHostKeyConfirm(_ confirm: @escaping HostKeyConfirmCallback) {

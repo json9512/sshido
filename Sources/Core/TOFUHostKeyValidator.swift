@@ -5,14 +5,8 @@ import NIOSSH
 import sshidoModels
 #endif
 
-/// Callback the SSH stack invokes when it needs the user to make a
-/// trust decision — either for a first-seen host or for a presented
-/// key that doesn't match a previously trusted one.
 public typealias HostKeyConfirmCallback = @Sendable (HostKeyChallenge) async -> HostKeyDecision
 
-/// Trust-On-First-Use host-key validator. Pure-logic decision making
-/// lives in `TOFUDecision.decide(...)` so it can be unit-tested without
-/// standing up a NIO event loop or a real SSH server.
 public final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, Sendable {
     private let host: String
     private let port: Int
@@ -67,8 +61,6 @@ public final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegat
     }
 }
 
-/// Pure-logic decision making. No NIO, no UI, no I/O — just rules
-/// applied to inputs. Unit-testable.
 public enum TOFUDecision {
     public enum AcceptReason: Sendable, Equatable {
         case alreadyKnown

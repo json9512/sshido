@@ -15,10 +15,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         SentryBootstrap.start()
-        // Wire the host-key broker into SessionStore so SSH connections
-        // initiated through it pop the TOFU sheet rather than silently
-        // accepting any host key. The probe-style connect from AddHostView
-        // wires the broker directly.
         let callback = HostKeyChallengeBroker.shared.makeCallback()
         Task { await SessionStore.shared.setHostKeyConfirm(callback) }
         UNUserNotificationCenter.current().delegate = self
@@ -112,11 +108,7 @@ struct sshidoApp: App {
                 .sheet(isPresented: $showConsent) {
                     ConsentView { showConsent = false }
                 }
-                .sheet(item: $hostKeyBroker.pending) { challenge in
-                    HostKeyChallengeSheet(challenge: challenge) { decision in
-                        hostKeyBroker.resolve(decision)
-                    }
-                }
+                .presentingHostKeyChallenge()
                 .onAppear {
                     if !UserDefaults.standard.bool(forKey: "sshido.privacyAccepted") {
                         showConsent = true

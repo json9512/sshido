@@ -8,18 +8,6 @@ import sshidoModels
 import sshidoCore
 #endif
 
-/// Bridges the NIO-event-loop host-key callback to a SwiftUI modal sheet.
-///
-/// Flow:
-/// 1. `CitadelSSHChannel` is constructed with a callback that calls
-///    `broker.awaitDecision(for:)`.
-/// 2. The callback is invoked on a Task off the NIO event loop; it
-///    publishes `pending` and parks the continuation.
-/// 3. The root view's `.sheet(item: $broker.pending)` opens the modal.
-/// 4. User taps Trust or Cancel; modal calls `broker.resolve(decision)`,
-///    which resumes the continuation and clears `pending`.
-/// 5. The original `await` returns; the SSH stack completes the
-///    validation promise; the connection proceeds or fails.
 @MainActor
 public final class HostKeyChallengeBroker: ObservableObject {
     public static let shared = HostKeyChallengeBroker()
@@ -31,13 +19,12 @@ public final class HostKeyChallengeBroker: ObservableObject {
 
     public func awaitDecision(for challenge: HostKeyChallenge) async -> HostKeyDecision {
         await withCheckedContinuation { cont in
-            if continuation != nil {
-                // A previous prompt is still mid-flight — reject the new one
-                // rather than dropping the old continuation on the floor. In
-                // practice this only happens if the user kicks off two
-                // connections to different first-seen hosts at the same time.
-                cont.resume(returning: .reject)
-                return
+            // Self-heal an orphaned continuation (e.g., sheet failed to
+            // present, app backgrounded mid-prompt) so the broker doesn't
+            // permanently jam after one bad presentation.
+            if let stale = continuation {
+                stale.resume(returning: .reject)
+                continuation = nil
             }
             continuation = cont
             pending = challenge
@@ -51,13 +38,32 @@ public final class HostKeyChallengeBroker: ObservableObject {
         cont?.resume(returning: decision)
     }
 
-    /// Adapter callback for code that wants to inject the broker into
-    /// `CitadelSSHChannel`'s `hostKeyConfirm` parameter without importing
-    /// the broker directly.
     public nonisolated func makeCallback() -> HostKeyConfirmCallback {
         { @Sendable challenge in
             await self.awaitDecision(for: challenge)
         }
+    }
+}
+
+// Must be applied to every view that can be topmost when an SSH connect
+// starts — at minimum HostListView (sessions) and AddHostView (probe).
+// SwiftUI can only present from a visible view, so the cover has to be
+// attached where it can actually be reached.
+struct HostKeyChallengePresenter: ViewModifier {
+    @ObservedObject var broker: HostKeyChallengeBroker = .shared
+
+    func body(content: Content) -> some View {
+        content.fullScreenCover(item: $broker.pending) { challenge in
+            HostKeyChallengeSheet(challenge: challenge) { decision in
+                broker.resolve(decision)
+            }
+        }
+    }
+}
+
+extension View {
+    func presentingHostKeyChallenge() -> some View {
+        modifier(HostKeyChallengePresenter())
     }
 }
 #endif
