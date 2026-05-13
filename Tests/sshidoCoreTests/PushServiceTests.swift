@@ -41,4 +41,40 @@ final class PushServiceTests: XCTestCase {
         let host = String(repeating: "a", count: 600)
         XCTAssertFalse(PushService.isValidNotifyURL("https://\(host)/n/abc"))
     }
+
+    // MARK: - validateServerURL
+
+    func testValidateServerURLAcceptsHTTPS() throws {
+        XCTAssertEqual(try PushService.validateServerURL("https://push.sshido.com"), "https://push.sshido.com")
+        XCTAssertEqual(try PushService.validateServerURL(" https://push.sshido.com/ "), "https://push.sshido.com")
+        XCTAssertEqual(try PushService.validateServerURL("https://push.sshido.com/api"), "https://push.sshido.com/api")
+    }
+
+    func testValidateServerURLAcceptsHTTPForLANUseCase() throws {
+        XCTAssertEqual(try PushService.validateServerURL("http://192.168.1.50:8787"), "http://192.168.1.50:8787")
+        XCTAssertEqual(try PushService.validateServerURL("http://relay.tailnet"), "http://relay.tailnet")
+    }
+
+    func testValidateServerURLRejectsEmpty() {
+        XCTAssertThrowsError(try PushService.validateServerURL(""))
+        XCTAssertThrowsError(try PushService.validateServerURL("   "))
+    }
+
+    func testValidateServerURLRejectsForbiddenSchemes() {
+        XCTAssertThrowsError(try PushService.validateServerURL("file:///etc/passwd"))
+        XCTAssertThrowsError(try PushService.validateServerURL("javascript:alert(1)"))
+        XCTAssertThrowsError(try PushService.validateServerURL("ftp://example.com"))
+        XCTAssertThrowsError(try PushService.validateServerURL("ssh://example.com"))
+        XCTAssertThrowsError(try PushService.validateServerURL("data:text/plain,hi"))
+    }
+
+    func testValidateServerURLRejectsMissingScheme() {
+        XCTAssertThrowsError(try PushService.validateServerURL("push.sshido.com"))
+        XCTAssertThrowsError(try PushService.validateServerURL("//push.sshido.com"))
+    }
+
+    func testValidateServerURLRejectsMissingHost() {
+        XCTAssertThrowsError(try PushService.validateServerURL("http://"))
+        XCTAssertThrowsError(try PushService.validateServerURL("https:///path-only"))
+    }
 }
