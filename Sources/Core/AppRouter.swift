@@ -15,6 +15,7 @@ public final class AppRouter: ObservableObject {
     public enum Destination: Hashable {
         case host(RemoteHost)
         case session(Session)
+        case performance(RemoteHost)
     }
 
     public enum Sheet: Identifiable {

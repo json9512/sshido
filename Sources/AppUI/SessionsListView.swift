@@ -29,6 +29,11 @@ struct SessionsListView: View {
                 }
                 .dsRow()
                 .coachTarget(.newSession)
+                NavigationLink(value: AppRouter.Destination.performance(host)) {
+                    Label("Server performance", systemImage: "chart.line.uptrend.xyaxis")
+                        .foregroundStyle(DS.Color.textPrimary)
+                }
+                .dsRow()
             }
             if !sessions.isEmpty {
                 Section(header: DSSectionHeader("Open sessions")) {
