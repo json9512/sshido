@@ -189,6 +189,18 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         }
     }
 
+    public func executeCommand(_ command: String) async throws -> Data {
+        guard let client else { throw SSHError.notConnected }
+        do {
+            let buf = try await client.executeCommand(command, mergeStreams: false, inShell: false)
+            return Data(buffer: buf)
+        } catch let e as SSHError {
+            throw e
+        } catch {
+            throw SSHError.transport("exec failed: \(error)")
+        }
+    }
+
     public func uploadFile(data: Data, remotePath: String) async throws {
         guard let client else { throw SSHError.notConnected }
         let sftp: SFTPClient
@@ -222,7 +234,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    private static func authFromPEM(user: String, pem: String, passphrase: String?) throws -> SSHAuthenticationMethod {
+    static func authFromPEM(user: String, pem: String, passphrase: String?) throws -> SSHAuthenticationMethod {
         let decryption = passphrase.flatMap { $0.data(using: .utf8) }
         if pem.contains("BEGIN OPENSSH PRIVATE KEY") {
             if let ed = try? Curve25519.Signing.PrivateKey(sshEd25519: pem, decryptionKey: decryption) {
