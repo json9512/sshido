@@ -24,6 +24,7 @@ public struct SettingsView: View {
     @State private var groups: [ShortcutGroup] = []
     @State private var confirmClearSubscription = false
     @AppStorage(SentryBootstrap.enabledKey) private var sentryEnabled: Bool = true
+    @AppStorage(MetricsSettings.intervalKey) private var metricsIntervalSeconds: Int = MetricsSettings.defaultIntervalSeconds
 
     public init() {}
 
@@ -56,6 +57,21 @@ public struct SettingsView: View {
                         }
                     }
                     .dsRow()
+                }
+                Section {
+                    Picker(selection: $metricsIntervalSeconds) {
+                        ForEach(MetricsSettings.allowedIntervals, id: \.self) { secs in
+                            Text("\(secs) second\(secs == 1 ? "" : "s")").tag(secs)
+                        }
+                    } label: {
+                        Text("Sample interval").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                } header: {
+                    DSSectionHeader("Server performance")
+                } footer: {
+                    Text("How often the metrics screen samples CPU, memory, disk, and network. Lower values use more bandwidth and battery.")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Section {
                     HStack(spacing: DS.Spacing.sm) {

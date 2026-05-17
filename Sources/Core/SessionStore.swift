@@ -93,6 +93,7 @@ public actor SessionStore {
     }
 
     public func close(sessionID: UUID) async {
+        await MetricsStore.shared.stop(sessionID: sessionID)
         if let ch = channels.removeValue(forKey: sessionID) {
             await ch.disconnect()
         }
@@ -132,6 +133,16 @@ public actor SessionStore {
 
     public func setHostKeyConfirm(_ confirm: @escaping HostKeyConfirmCallback) {
         self.hostKeyConfirm = confirm
+    }
+
+    public func metricsChannel(for host: RemoteHost, auth: SSHAuth) -> MetricsOnlySSHChannel {
+        MetricsOnlySSHChannel(
+            host: host.hostname,
+            port: host.port,
+            user: host.username,
+            auth: auth,
+            hostKeyConfirm: hostKeyConfirm
+        )
     }
 
     private func tmuxName(host: RemoteHost, session: UUID) -> String {
