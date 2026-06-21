@@ -87,7 +87,7 @@ public final class GlyphAtlas {
         let rect = CGRect(x: cursorX, y: cursorY, width: glyphCellW, height: glyphCellH)
         entries[codepoint] = rect
         cursorX += glyphCellW
-        commitBitmap()
+        commit(rect: rect)
         return rect
     }
 
@@ -140,6 +140,22 @@ public final class GlyphAtlas {
         let region = MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0),
                                size: MTLSize(width: width, height: height, depth: 1))
         texture.replace(region: region, mipmapLevel: 0, withBytes: bitmap, bytesPerRow: bytesPerRow)
+    }
+
+    // Upload only the newly-rasterised glyph's sub-rectangle. Replacing the full
+    // 2048×2048 texture per glyph stalled the main thread during bursts of fresh
+    // glyphs (e.g. the screen right after connecting), which read as a freeze.
+    private func commit(rect: CGRect) {
+        let x = Int(rect.minX)
+        let y = Int(rect.minY)
+        let w = min(Int(rect.width), width - x)
+        let h = min(Int(rect.height), height - y)
+        guard x >= 0, y >= 0, w > 0, h > 0 else { return }
+        let region = MTLRegion(origin: MTLOrigin(x: x, y: y, z: 0),
+                               size: MTLSize(width: w, height: h, depth: 1))
+        texture.replace(region: region, mipmapLevel: 0,
+                        withBytes: bitmap.advanced(by: y * bytesPerRow + x),
+                        bytesPerRow: bytesPerRow)
     }
 
     private static func glyph(for s: String, font: CTFont) -> CGGlyph {
