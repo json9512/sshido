@@ -61,7 +61,7 @@ public final class GlyphAtlas {
         desc.storageMode = .shared
         self.texture = device.makeTexture(descriptor: desc)!
 
-        for u in 0x20...0x7e { _ = self.region(for: UInt32(u)) }
+        for u in 0x20...0x7e { _ = self.region(for: UInt32(u), uploadGlyph: false) }
         commitBitmap()
     }
 
@@ -71,6 +71,10 @@ public final class GlyphAtlas {
     }
 
     public func region(for codepoint: UInt32) -> CGRect {
+        region(for: codepoint, uploadGlyph: true)
+    }
+
+    private func region(for codepoint: UInt32, uploadGlyph: Bool) -> CGRect {
         if let r = entries[codepoint] { return r }
         let widthCells: CGFloat = isWideCodepoint(codepoint) ? 2 : 1
         let glyphCellW = metrics.cellWidth * scale * widthCells
@@ -87,7 +91,7 @@ public final class GlyphAtlas {
         let rect = CGRect(x: cursorX, y: cursorY, width: glyphCellW, height: glyphCellH)
         entries[codepoint] = rect
         cursorX += glyphCellW
-        commit(rect: rect)
+        if uploadGlyph { commit(rect: rect) }
         return rect
     }
 
