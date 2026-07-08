@@ -30,7 +30,8 @@ final class TerminalInputProxy: UITextView {
             UIKeyCommand(input: "c", modifierFlags: .control, action: #selector(kCtrlC)),
             UIKeyCommand(input: "d", modifierFlags: .control, action: #selector(kCtrlD)),
             UIKeyCommand(input: "z", modifierFlags: .control, action: #selector(kCtrlZ)),
-            UIKeyCommand(input: "l", modifierFlags: .control, action: #selector(kCtrlL))
+            UIKeyCommand(input: "l", modifierFlags: .control, action: #selector(kCtrlL)),
+            UIKeyCommand(input: "\u{8}", modifierFlags: .alternate, action: #selector(kAltDelete))
         ]
     }
     @objc private func kEsc()   { bridge?.sendBytes([0x1b]) }
@@ -43,6 +44,7 @@ final class TerminalInputProxy: UITextView {
     @objc private func kCtrlD() { bridge?.sendBytes([0x04]) }
     @objc private func kCtrlZ() { bridge?.sendBytes([0x1a]) }
     @objc private func kCtrlL() { bridge?.sendBytes([0x0c]) }
+    @objc private func kAltDelete() { bridge?.sendBytes([0x1b, 0x7f]) }
 }
 
 // Container that swallows Metal output visually on top of the UITextView input
