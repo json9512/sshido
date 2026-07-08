@@ -40,15 +40,22 @@ public struct TerminalAppearance: Codable, Hashable, Sendable {
     /// ID of the active terminal theme from `TerminalThemes`. Stored as
     /// a string so the catalog can grow without migration.
     public var themeID: String
+    public var voiceDictationEnabled: Bool
+    /// BCP-47 locale for on-device dictation; empty means the system locale.
+    public var dictationLocaleID: String
 
     public init(fontSize: Int = 12,
                 returnKeyStyle: ReturnKeyStyle = .defaultReturn,
                 showMascotCompanion: Bool = true,
-                themeID: String = TerminalThemes.defaultID) {
+                themeID: String = TerminalThemes.defaultID,
+                voiceDictationEnabled: Bool = true,
+                dictationLocaleID: String = "") {
         self.fontSize = fontSize
         self.returnKeyStyle = returnKeyStyle
         self.showMascotCompanion = showMascotCompanion
         self.themeID = themeID
+        self.voiceDictationEnabled = voiceDictationEnabled
+        self.dictationLocaleID = dictationLocaleID
     }
 
     public init(from decoder: Decoder) throws {
@@ -57,10 +64,13 @@ public struct TerminalAppearance: Codable, Hashable, Sendable {
         self.returnKeyStyle = try c.decodeIfPresent(ReturnKeyStyle.self, forKey: .returnKeyStyle) ?? .defaultReturn
         self.showMascotCompanion = try c.decodeIfPresent(Bool.self, forKey: .showMascotCompanion) ?? true
         self.themeID = try c.decodeIfPresent(String.self, forKey: .themeID) ?? TerminalThemes.defaultID
+        self.voiceDictationEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceDictationEnabled) ?? true
+        self.dictationLocaleID = try c.decodeIfPresent(String.self, forKey: .dictationLocaleID) ?? ""
     }
 
     private enum CodingKeys: String, CodingKey {
         case fontSize, returnKeyStyle, showMascotCompanion, themeID
+        case voiceDictationEnabled, dictationLocaleID
     }
 
     public var theme: TerminalTheme {

@@ -44,50 +44,52 @@ public struct AgentBar: View {
     let bridge: TerminalBridge?
     let onFocusTerminal: () -> Void
     @ObservedObject var hotkeys: HotkeyState
+    let dictator: SpeechDictator
+    let voiceEnabled: Bool
+    let dictationLocaleID: String
+    let onNotice: (String) -> Void
     @State private var items: [BarItem] = []
     @State private var keyboardVisible = true
 
     public init(channel: SSHChannel,
                 bridge: TerminalBridge? = nil,
                 hotkeys: HotkeyState,
+                dictator: SpeechDictator,
+                voiceEnabled: Bool,
+                dictationLocaleID: String,
+                onNotice: @escaping (String) -> Void = { _ in },
                 onFocusTerminal: @escaping () -> Void) {
         self.channel = channel
         self.bridge = bridge
         self.hotkeys = hotkeys
+        self.dictator = dictator
+        self.voiceEnabled = voiceEnabled
+        self.dictationLocaleID = dictationLocaleID
+        self.onNotice = onNotice
         self.onFocusTerminal = onFocusTerminal
     }
 
     public var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                Button {
-                    if keyboardVisible {
-                        UIApplication.shared.sendAction(
-                            #selector(UIResponder.resignFirstResponder),
-                            to: nil, from: nil, for: nil
-                        )
-                    } else {
-                        onFocusTerminal()
-                    }
-                } label: {
-                    Image(systemName: keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color(red: 232/255, green: 232/255, blue: 237/255))
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(Color(red: 36/255, green: 36/255, blue: 41/255), in: RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-                ForEach(items) { item in
-                    switch item {
-                    case .builtin(let btn): button(for: btn)
-                    case .group(let g):     groupButton(g)
-                    }
-                }
+        VStack(spacing: 0) {
+            if voiceEnabled, dictator.isListening {
+                transcriptStrip
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    keyboardToggleButton
+                    if voiceEnabled { micButton }
+                    ForEach(items) { item in
+                        switch item {
+                        case .builtin(let btn): button(for: btn)
+                        case .group(let g):     groupButton(g)
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+            }
+            .background(Color(red: 26/255, green: 26/255, blue: 31/255))
         }
-        .background(Color(red: 26/255, green: 26/255, blue: 31/255))
         .task { await reload() }
         .onReceive(NotificationCenter.default.publisher(for: .hotkeyLayoutChanged)) { _ in
             Task { await reload() }
@@ -98,6 +100,79 @@ public struct AgentBar: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             keyboardVisible = false
         }
+    }
+
+    private var keyboardToggleButton: some View {
+        Button {
+            if keyboardVisible {
+                UIApplication.shared.sendAction(
+                    #selector(UIResponder.resignFirstResponder),
+                    to: nil, from: nil, for: nil
+                )
+            } else {
+                onFocusTerminal()
+            }
+        } label: {
+            Image(systemName: keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard")
+                .font(.system(size: 15))
+                .foregroundStyle(Color(red: 232/255, green: 232/255, blue: 237/255))
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(Color(red: 36/255, green: 36/255, blue: 41/255), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var micButton: some View {
+        let listening = dictator.isListening
+        let accent = Color(red: 0.353, green: 0.784, blue: 0.839)
+        return Button {
+            if listening {
+                dictator.stop()
+            } else {
+                Task {
+                    guard await dictator.requestAuthorization() else {
+                        if case .unavailable(let reason) = dictator.state { onNotice(reason) }
+                        return
+                    }
+                    dictator.start(localeID: dictationLocaleID) { text in
+                        send(dictated: text)
+                    }
+                    if case .unavailable(let reason) = dictator.state { onNotice(reason) }
+                }
+            }
+        } label: {
+            Image(systemName: listening ? "mic.fill" : "mic")
+                .font(.system(size: 15))
+                .foregroundStyle(listening ? accent : Color(red: 232/255, green: 232/255, blue: 237/255))
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(
+                    listening ? accent.opacity(0.20) : Color(red: 36/255, green: 36/255, blue: 41/255),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(listening ? "Stop dictation" : "Dictate")
+    }
+
+    private var transcriptStrip: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "waveform")
+                .font(.system(size: 12))
+                .foregroundStyle(Color(red: 0.353, green: 0.784, blue: 0.839))
+            Text(dictator.partialTranscript.isEmpty ? "Listening…" : dictator.partialTranscript)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(Color(red: 232/255, green: 232/255, blue: 237/255))
+                .lineLimit(1).truncationMode(.head)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(red: 20/255, green: 20/255, blue: 24/255))
+    }
+
+    private func send(dictated text: String) {
+        guard !text.isEmpty else { return }
+        Task { try? await channel.send(Array(text.utf8)) }
     }
 
     private func reload() async {
