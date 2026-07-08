@@ -38,11 +38,6 @@ public final class AppRouter: ObservableObject {
         path.append(d)
     }
 
-    public func popToRoot() {
-        path.removeAll()
-        detailPath.removeAll()
-    }
-
     public func openSession(_ session: Session, host: RemoteHost) {
         selectedHost = host
         path = [.host(host), .session(session)]

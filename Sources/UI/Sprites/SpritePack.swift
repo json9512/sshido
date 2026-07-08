@@ -134,7 +134,6 @@ public final class SpritePack {
     public func animationDef(for mood: MascotMood) -> MascotAnimationDef {
         let sheet = sheets[mood]
 
-        // GIF packs: use data from the GIF itself
         if manifest.isGIF, let sheet {
             let count = sheet.frameCount
             let fps = sheet.extractedFPS ?? 8
@@ -142,7 +141,6 @@ public final class SpritePack {
             return MascotAnimationDef(frames: 0...(max(0, count - 1)), fps: fps, looping: looping)
         }
 
-        // PNG packs: use manifest
         guard let anims = manifest.animations, let def = anims[mood.rawValue] else {
             return MascotAnimationDef(frames: 0...0, fps: 4)
         }
@@ -171,7 +169,6 @@ public final class SpritePack {
         var sheets: [MascotMood: SpriteSheet] = [:]
 
         if manifest.isGIF {
-            // GIF-based pack
             for mood in MascotMood.allCases {
                 let gifURL = directory.appendingPathComponent("\(mood.rawValue).gif")
                 guard FileManager.default.fileExists(atPath: gifURL.path) else {
@@ -183,7 +180,6 @@ public final class SpritePack {
                 sheets[mood] = sheet
             }
         } else {
-            // PNG strip pack
             let px = manifest.frameSizePx
             let size = CGSize(width: px, height: px)
             for mood in MascotMood.allCases {

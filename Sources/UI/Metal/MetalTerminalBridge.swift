@@ -17,7 +17,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     public var terminal: SwiftTerm.Terminal!
 
     private let channel: SSHChannel
-    private var readerTask: Task<Void, Never>?
+    private var hasReceivedOutput = false
     private var hasStartedConnect = false
     private var lastReportedSize: (cols: Int, rows: Int) = (0, 0)
     private let delegateRelay = TerminalDelegateRelay()
@@ -45,7 +45,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         renderer.source = self
         v.bridge = self
         renderer.start()
-        startReader()
+        registerOutputHandler()
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .sshidoAppearanceChanged, object: nil, queue: .main
         ) { [weak self] _ in
@@ -55,7 +55,6 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     }
 
     deinit {
-        readerTask?.cancel()
         appearanceTask?.cancel()
         if let appearanceObserver {
             NotificationCenter.default.removeObserver(appearanceObserver)
@@ -141,6 +140,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
             case .newline:       return .default
             }
         }()
+        view.returnSendsNewline = (appearance.returnKeyStyle == .newline)
         view.setNeedsLayout()
         view.layoutIfNeeded()
         renderer.setNeedsRender()
@@ -237,22 +237,23 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         lastReportedSize = (0, 0)
     }
 
-    private func startReader() {
-        readerTask?.cancel()
-        readerTask = Task { [weak self] in
-            guard let self else { return }
-            var firstChunk = true
-            for await chunk in channel.output {
-                await MainActor.run {
-                    if firstChunk {
-                        firstChunk = false
-                        self.activityTracker.onConnected()
-                    }
-                    self.feed(chunk)
-                }
+    private func registerOutputHandler() {
+        channel.setOutputHandler(
+            onData: { [weak self] data in
+                await self?.handleOutput(data)
+            },
+            onClose: { [weak self] in
+                Task { @MainActor in self?.activityTracker.onDisconnected() }
             }
-            await MainActor.run { self.activityTracker.onDisconnected() }
+        )
+    }
+
+    private func handleOutput(_ data: Data) {
+        if !hasReceivedOutput {
+            hasReceivedOutput = true
+            activityTracker.onConnected()
         }
+        feed(data)
     }
 
     private func colorToVec(_ c: Attribute.Color, fallback: SIMD4<Float>) -> SIMD4<Float> {

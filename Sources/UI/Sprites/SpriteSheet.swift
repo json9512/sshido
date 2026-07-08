@@ -32,7 +32,6 @@ public final class SpriteSheet {
             resolvedBundle = .main
             #endif
         }
-        // Try GIF first, then PNG
         if let url = resolvedBundle.url(forResource: name, withExtension: "gif"),
            let loaded = SpriteSheet.loadGIF(from: url) {
             self.gifFrames = loaded.frames
@@ -98,12 +97,10 @@ public final class SpriteSheet {
     public func frame(at index: Int) -> UIImage {
         let clamped = max(0, min(index, frameCount - 1))
 
-        // GIF path: frames already extracted
         if let gifFrames {
             return gifFrames[clamped]
         }
 
-        // PNG strip path: crop on demand
         if let cached = cache[clamped] { return cached }
         guard let sheet else { return UIImage() }
         let x = clamped * Int(frameSize.width)
@@ -139,7 +136,6 @@ public final class SpriteSheet {
             guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
             frames.append(UIImage(cgImage: cgImage, scale: 1, orientation: .up))
 
-            // Extract frame duration
             if let props = CGImageSourceCopyPropertiesAtIndex(source, i, nil) as? [CFString: Any],
                let gifProps = props[kCGImagePropertyGIFDictionary] as? [CFString: Any] {
                 let delay = (gifProps[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
@@ -156,7 +152,6 @@ public final class SpriteSheet {
         let avgDelay = totalDuration / Double(frames.count)
         let fps = 1.0 / avgDelay
 
-        // Check loop count from global properties
         var looping = true
         if let globalProps = CGImageSourceCopyProperties(source, nil) as? [CFString: Any],
            let gifGlobal = globalProps[kCGImagePropertyGIFDictionary] as? [CFString: Any],

@@ -115,7 +115,7 @@ public actor SessionStore {
         } else {
             bootstrap = nil
         }
-        let env: [String: String] = ["TERM": "xterm-256color", "SSHIDO_SESSION": "1"]
+        let env: [String: String] = ["SSHIDO_SESSION": "1"]
         return CitadelSSHChannel(
             host: host.hostname,
             port: host.port,

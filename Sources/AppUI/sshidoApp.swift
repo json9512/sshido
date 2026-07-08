@@ -75,7 +75,6 @@ struct sshidoApp: App {
     @State private var showConsent = false
 
     init() {
-        // Navigation bar — dark metallic, no border
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithOpaqueBackground()
         navAppearance.backgroundColor = UIColor(DS.Color.surface0)
@@ -88,7 +87,6 @@ struct sshidoApp: App {
         UINavigationBar.appearance().compactAppearance = navAppearance
         UINavigationBar.appearance().tintColor = UIColor(DS.Color.accent)
 
-        // Segmented control — accent on surface2
         UISegmentedControl.appearance().selectedSegmentTintColor = UIColor(DS.Color.accent)
         UISegmentedControl.appearance().setTitleTextAttributes(
             [.foregroundColor: UIColor(DS.Color.surface0)], for: .selected)
@@ -96,7 +94,6 @@ struct sshidoApp: App {
             [.foregroundColor: UIColor(DS.Color.textSecondary)], for: .normal)
         UISegmentedControl.appearance().backgroundColor = UIColor(DS.Color.surface2)
 
-        // Switch/Toggle tint
         UISwitch.appearance().onTintColor = UIColor(DS.Color.accent)
     }
 

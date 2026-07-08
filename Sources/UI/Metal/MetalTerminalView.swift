@@ -69,6 +69,8 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
         }
     }
 
+    public var returnSendsNewline = false
+
     private var pinchBaseFontSize: CGFloat = 16
     private var keyboardOverlap: CGFloat = 0
     private var lastLayoutSize: CGSize = .zero
@@ -167,7 +169,7 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
         if text == "\n" || text == "\r" || text == "\r\n" {
             let tail = hangul.flush()
             if !tail.isEmpty { bridge?.sendBytes(Array(tail.utf8)) }
-            bridge?.sendBytes([0x0d])
+            bridge?.sendBytes([returnSendsNewline ? 0x0a : 0x0d])
             textView.text = ""
             return false
         }
