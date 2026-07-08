@@ -42,6 +42,10 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>sshido talks to your push-notification relay on your local network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dictate commands and prompts into your terminal session.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Transcribe your speech on-device so you can talk to your agent. Audio never leaves your device.</string>
 	<key>SentryDSNHostPath</key>
 	<string>$(SENTRY_DSN_HOSTPATH)</string>
 	<key>UIBackgroundModes</key>

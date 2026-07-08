@@ -86,11 +86,28 @@ mic → AVAudioEngine → SFSpeechRecognizer (on-device) → transcript
   (privacy policy, relay privacy page, App Store listing, screenshots) — the
   0001 constraint still holds.
 
-## Open question for the product owner
+## Resolved decision
 
-0001 said the feature is "unavailable" without an agent session. With
-transcribe-and-type it technically works into any pane (you'd dictate literal
-commands into a bare shell). Decide: gate the mic on "an agent looks active," or
-allow dictation into any pane and let the user own the outcome. Recommendation:
-**allow into any pane** — it's a dumb pipe; gating adds grounding logic we just
-said we won't build.
+**Allow dictation into any pane** (no agent-detection gating) — the mic is a
+dumb pipe; gating would add exactly the grounding logic we chose not to build.
+Interaction model: **tap-to-toggle with ~1.5 s silence auto-stop**; the final
+transcript is typed via `channel.send`, never auto-submitted.
+
+## Status: implemented
+
+Shipped in code (builds iOS target, 106 tests pass):
+- `Sources/UI/Voice/SpeechDictator.swift` — `@MainActor @Observable` wrapper;
+  `requiresOnDeviceRecognition = true`, silence auto-stop, audio-interruption
+  teardown, permission + on-device-support guards that fail loudly.
+- `Sources/UI/AgentBar.swift` — mic button + live transcript strip; raw-UTF-8
+  `send(dictated:)` with no trailing `\r`.
+- `Sources/AppUI/SessionView.swift` — owns the dictator; cancels on background
+  (`scenePhase`) and `onDisappear`.
+- `Sources/AppUI/SettingsView.swift` + `Sources/Models/TerminalAppearance.swift`
+  — a **Voice** settings section: enable toggle + on-device language picker
+  (`voiceDictationEnabled`, `dictationLocaleID`).
+- `Sources/AppUI/Info.plist` — `NSMicrophoneUsageDescription`,
+  `NSSpeechRecognitionUsageDescription`.
+
+Still open: real-device verification (mic + on-device model, incl. Korean), and
+the ADR 0001 rule that no user-facing surface advertises voice until it ships.
