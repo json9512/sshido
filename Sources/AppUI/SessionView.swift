@@ -37,6 +37,9 @@ public struct SessionView: View {
     @State private var mascotMirrored = false
     @State private var terminalSize: CGSize = .zero
     @State private var showBuddyHint = false
+    @State private var dictator = SpeechDictator()
+    @State private var voiceEnabled = true
+    @State private var dictationLocaleID = ""
     @EnvironmentObject private var router: AppRouter
     @Environment(\.dismiss) private var dismiss
 
@@ -113,7 +116,10 @@ public struct SessionView: View {
                             .allowsHitTesting(false)
                     }
                 }
-                AgentBar(channel: ch, bridge: bridge, hotkeys: hotkeys) {
+                AgentBar(channel: ch, bridge: bridge, hotkeys: hotkeys,
+                         dictator: dictator, voiceEnabled: voiceEnabled,
+                         dictationLocaleID: dictationLocaleID,
+                         onNotice: { toast = $0 }) {
                     bridge?.focus()
                 }
             } else if let error {
@@ -136,6 +142,8 @@ public struct SessionView: View {
         .task {
             let appearance = await AppearanceStore.shared.appearance
             showMascot = appearance.showMascotCompanion
+            voiceEnabled = appearance.voiceDictationEnabled
+            dictationLocaleID = appearance.dictationLocaleID
             if let pack = SpritePackManager.shared.activePack {
                 mascotState.loadPack(pack)
             }
@@ -155,8 +163,11 @@ public struct SessionView: View {
             if new == .active {
                 bridge?.requestServerRedraw()
                 startDisconnectWatcher()
+            } else {
+                dictator.cancel()
             }
         }
+        .onDisappear { dictator.cancel() }
         .onChange(of: photoItem) { _, new in
             guard let new else { return }
             Task { await uploadImage(new) }
