@@ -42,6 +42,8 @@ public struct HotkeyButton: Hashable, Codable, Sendable, Identifiable {
         HotkeyButton(label: "⌃D",  bytes: [0x04]),
         HotkeyButton(label: "⌃O",  bytes: [0x0f]),
         HotkeyButton(label: "⌃J",  bytes: [0x0a], sfSymbol: "arrow.turn.down.left"),
+        HotkeyButton(label: "⌃W",  bytes: [0x17], sfSymbol: "delete.backward"),
+        HotkeyButton(label: "⌃U",  bytes: [0x15]),
         HotkeyButton(label: "↑",   bytes: [0x1b, 0x5b, 0x41]),
         HotkeyButton(label: "↓",   bytes: [0x1b, 0x5b, 0x42]),
         HotkeyButton(label: "←",   bytes: [0x1b, 0x5b, 0x44]),
