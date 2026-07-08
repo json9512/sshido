@@ -21,7 +21,6 @@ public final class TerminalActivityTracker {
         recentOutputBytes += byteCount
         let now = Date.now
 
-        // Reset output window every 3 seconds
         if now.timeIntervalSince(outputWindowStart) > 3 {
             recentOutputBytes = byteCount
             outputWindowStart = now
@@ -40,7 +39,6 @@ public final class TerminalActivityTracker {
         connected = true
         suggestedMood = .happy
 
-        // Decay to sitting after 3 seconds
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(3))
             guard let self, self.suggestedMood == .happy else { return }
@@ -53,23 +51,17 @@ public final class TerminalActivityTracker {
         suggestedMood = .spooked
     }
 
-    public func onError() {
-        suggestedMood = .spooked
-    }
-
     // MARK: - Mood evaluation
 
     private func evaluateMood() {
         let now = Date.now
         let timeSinceInput = now.timeIntervalSince(lastUserInputAt)
 
-        // User typing: input within last 2 seconds
         if timeSinceInput < 2 {
             suggestedMood = .watching
             return
         }
 
-        // Lots of output, no user input → excited
         let windowDuration = now.timeIntervalSince(outputWindowStart)
         if windowDuration > 0 {
             let bytesPerSec = Double(recentOutputBytes) / windowDuration
@@ -86,7 +78,6 @@ public final class TerminalActivityTracker {
             }
         }
 
-        // Default to sitting (unless we're in a special state)
         if suggestedMood == .watching || suggestedMood == .excited {
             suggestedMood = .sitting
         }

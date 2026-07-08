@@ -78,7 +78,6 @@ public final class MascotSpriteState {
         }
         animations = defs
 
-        // Load extras
         extraSheets = pack.extras
         var eDefs: [String: MascotAnimationDef] = [:]
         for name in pack.extras.keys {
@@ -89,7 +88,6 @@ public final class MascotSpriteState {
         extraDefs = eDefs
         extraNames = pack.extras.keys.sorted()
 
-        // Reset to idle with new pack's frame range
         currentExtra = nil
         currentMood = .sitting
         currentFrame = currentAnimation.frames.lowerBound
@@ -108,21 +106,11 @@ public final class MascotSpriteState {
         }
     }
 
-    /// Manually set mood with a cooldown that blocks tracker overrides.
-    public func manualTransition(to mood: MascotMood, duration: TimeInterval = 5) {
-        currentExtra = nil
-        currentMood = mood
-        currentFrame = currentAnimation.frames.lowerBound
-        lastActivityDate = .now
-        manualOverrideUntil = Date.now.addingTimeInterval(duration)
-    }
-
     /// Cycle to the next mood or extra animation. Used by double-tap.
     public func cycleToNext(duration: TimeInterval = 5) {
         let allMoods = MascotMood.allCases
         let totalCount = allMoods.count + extraNames.count
 
-        // Find current position
         let currentIndex: Int
         if let extra = currentExtra, let idx = extraNames.firstIndex(of: extra) {
             currentIndex = allMoods.count + idx
@@ -130,7 +118,6 @@ public final class MascotSpriteState {
             currentIndex = allMoods.firstIndex(of: currentMood) ?? 0
         }
 
-        // Advance to next
         let nextIndex = (currentIndex + 1) % totalCount
         lastActivityDate = .now
         manualOverrideUntil = Date.now.addingTimeInterval(duration)
@@ -156,10 +143,6 @@ public final class MascotSpriteState {
         } else {
             currentFrame = next
         }
-    }
-
-    public func noteActivity() {
-        lastActivityDate = .now
     }
 
     private func scheduleSleepCheck() {

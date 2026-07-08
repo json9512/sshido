@@ -171,8 +171,6 @@ public struct ServerPerformanceView: View {
         }
     }
 
-    // MARK: cards
-
     @ViewBuilder
     private var hostHeader: some View {
         PerfCard(title: "Host") {
