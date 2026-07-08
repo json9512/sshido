@@ -23,6 +23,17 @@ public struct SettingsView: View {
     @State private var appearance: TerminalAppearance = .default
     @State private var groups: [ShortcutGroup] = []
     @State private var confirmClearSubscription = false
+    static let dictationLocales: [(String, String)] = [
+        ("", "System default"),
+        ("en-US", "English (US)"),
+        ("en-GB", "English (UK)"),
+        ("ko-KR", "한국어"),
+        ("ja-JP", "日本語"),
+        ("zh-Hans", "中文 (简体)"),
+        ("es-ES", "Español"),
+        ("fr-FR", "Français"),
+        ("de-DE", "Deutsch")
+    ]
     @AppStorage(SentryBootstrap.enabledKey) private var sentryEnabled: Bool = true
     @AppStorage(MetricsSettings.intervalKey) private var metricsIntervalSeconds: Int = MetricsSettings.defaultIntervalSeconds
 
@@ -170,6 +181,27 @@ public struct SettingsView: View {
                     DSSectionHeader("Keyboard")
                 } footer: {
                     Text("Changes the bottom-right key on the software keyboard. \"Return\" is the usual ↵ arrow.")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                }
+                Section {
+                    Toggle(isOn: $appearance.voiceDictationEnabled) {
+                        Text("Voice dictation").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                    if appearance.voiceDictationEnabled {
+                        Picker(selection: $appearance.dictationLocaleID) {
+                            ForEach(Self.dictationLocales, id: \.0) { id, label in
+                                Text(label).tag(id)
+                            }
+                        } label: {
+                            Text("Language").font(DS.Font.rowTitle)
+                        }
+                        .dsRow()
+                    }
+                } header: {
+                    DSSectionHeader("Voice")
+                } footer: {
+                    Text("Adds a mic button to the terminal toolbar. Speech is transcribed on-device and typed into the active session — audio never leaves your device.")
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Section(header: DSSectionHeader("Shortcuts")) {
