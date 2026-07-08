@@ -6,8 +6,7 @@ import sshidoModels
 #endif
 
 public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
-    public let output: AsyncStream<Data>
-    private let outputContinuation: AsyncStream<Data>.Continuation
+    private var onClose: (@Sendable () -> Void)?
 
     private let host: String
     private let port: Int
@@ -29,12 +28,14 @@ public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
         self.user = user
         self.auth = auth
         self.hostKeyConfirm = hostKeyConfirm
-        let stream = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
-        self.output = stream.stream
-        self.outputContinuation = stream.continuation
     }
 
     public var isConnected: Bool { get async { connected } }
+
+    public func setOutputHandler(onData: @escaping @Sendable (Data) async -> Void,
+                                 onClose: @escaping @Sendable () -> Void) {
+        self.onClose = onClose
+    }
 
     public func connect() async throws {
         let method: SSHAuthenticationMethod
@@ -79,7 +80,7 @@ public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
         }
         client = nil
         connected = false
-        outputContinuation.finish()
+        onClose?()
     }
 
     public func send(_ bytes: [UInt8]) async throws {

@@ -13,8 +13,9 @@ public enum SSHAuth: Sendable {
 }
 
 public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
-    public let output: AsyncStream<Data>
-    private let continuation: AsyncStream<Data>.Continuation
+    private var onData: (@Sendable (Data) async -> Void)?
+    private var onClose: (@Sendable () -> Void)?
+    private var didClose = false
 
     private let host: String
     private let port: Int
@@ -48,15 +49,18 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         self.initialCols = cols
         self.initialRows = rows
         self.hostKeyConfirm = hostKeyConfirm
-        let outStream = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
-        self.output = outStream.stream
-        self.continuation = outStream.continuation
         let writeStream = AsyncStream<[UInt8]>.makeStream(bufferingPolicy: .unbounded)
         self.writeQueue = writeStream.stream
         self.writeContinuation = writeStream.continuation
     }
 
     public var isConnected: Bool { get async { connected } }
+
+    public func setOutputHandler(onData: @escaping @Sendable (Data) async -> Void,
+                                 onClose: @escaping @Sendable () -> Void) {
+        self.onData = onData
+        self.onClose = onClose
+    }
 
     public func setInitialSize(cols: Int, rows: Int) {
         guard !connected else { return }
@@ -141,18 +145,16 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
                     defer { drainTask.cancel() }
                     for try await chunk in inbound {
                         switch chunk {
-                        case .stdout(let buf):
-                            self.emit(Data(buffer: buf))
-                        case .stderr(let buf):
-                            self.emit(Data(buffer: buf))
+                        case .stdout(let buf), .stderr(let buf):
+                            await self.deliver(Data(buffer: buf))
                         }
                     }
                 }
             } catch {
-                self.emit("\r\n[session ended: \(error)]\r\n")
+                await self.deliver(Data("\r\n[session ended: \(error)]\r\n".utf8))
             }
             self.connected = false
-            self.continuation.finish()
+            self.closeOnce()
         }
     }
 
@@ -164,7 +166,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         if let c = client { try? await c.close() }
         client = nil
         connected = false
-        continuation.finish()
+        closeOnce()
     }
 
     public func send(_ bytes: [UInt8]) async throws {
@@ -227,8 +229,16 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         try? await sftp.close()
     }
 
-    private func emit(_ s: String) { continuation.yield(Data(s.utf8)) }
-    private func emit(_ d: Data)   { continuation.yield(d) }
+    private func deliver(_ d: Data) async {
+        guard !didClose else { return }
+        await onData?(d)
+    }
+
+    private func closeOnce() {
+        guard !didClose else { return }
+        didClose = true
+        onClose?()
+    }
 
     private static func shellQuote(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
