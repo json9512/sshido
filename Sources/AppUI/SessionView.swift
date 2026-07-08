@@ -22,6 +22,7 @@ public struct SessionView: View {
     @State private var liveTitle: String
     @StateObject private var hotkeys = HotkeyState()
     @State private var photoItem: PhotosPickerItem?
+    @State private var showPhotoPicker = false
     @State private var uploading = false
     @State private var showStuckRecovery = false
     @State private var stuckTimer: Task<Void, Never>?
@@ -160,6 +161,7 @@ public struct SessionView: View {
             guard let new else { return }
             Task { await uploadImage(new) }
         }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         .navigationTitle(liveTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -174,37 +176,38 @@ public struct SessionView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { Task { await openAuthorizeSheet() } } label: {
-                    Image(systemName: "lock.shield")
+                Button { Task { await smartCopy() } } label: {
+                    Image(systemName: "doc.on.clipboard")
                 }
-                .accessibilityLabel("Authorize sign-in")
+                .accessibilityLabel("Copy")
+
+                Button { Task { await pasteIntoTerminal() } } label: {
+                    Image(systemName: "arrow.down.doc")
+                }
+                .accessibilityLabel("Paste")
+
                 Menu {
-                    Button { Task { await openURLPicker() } } label: {
-                        Label("Find URL…", systemImage: "link")
+                    Button { Task { await copyEntireScreen() } } label: {
+                        Label("Copy whole screen", systemImage: "rectangle.on.rectangle")
                     }
-                    Button { Task { await openAuthorizeSheet() } } label: {
-                        Label("Authorize sign-in…", systemImage: "lock.shield")
+                    Button { Task { await openURLPicker() } } label: {
+                        Label("Find link…", systemImage: "link")
                     }
                     Divider()
-                    Button { Task { await copyEntireScreen() } } label: {
-                        Label("Copy entire screen", systemImage: "rectangle.on.rectangle")
+                    Button { showPhotoPicker = true } label: {
+                        Label("Upload image…", systemImage: "photo")
+                    }
+                    Button { Task { await openAuthorizeSheet() } } label: {
+                        Label("Sign in / authorize…", systemImage: "lock.shield")
                     }
                 } label: {
-                    Image(systemName: "doc.on.clipboard")
-                } primaryAction: {
-                    Task { await smartCopy() }
-                }
-                Button { Task { await pasteIntoTerminal() } } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                PhotosPicker(selection: $photoItem, matching: .images) {
                     if uploading {
                         ProgressView().scaleEffect(0.7)
                     } else {
-                        Image(systemName: "photo")
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
-                .disabled(uploading)
+                .accessibilityLabel("More actions")
             }
         }
         .toast($toast)

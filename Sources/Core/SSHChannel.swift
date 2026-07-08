@@ -12,7 +12,8 @@ public protocol SSHChannel: AnyObject, Sendable {
     func uploadFile(data: Data, remotePath: String) async throws
     func openForwardedChannel(host: String, port: Int) async throws -> SSHForwardedChannel
     func executeCommand(_ command: String) async throws -> Data
-    var output: AsyncStream<Data> { get }
+    func setOutputHandler(onData: @escaping @Sendable (Data) async -> Void,
+                          onClose: @escaping @Sendable () -> Void)
     var isConnected: Bool { get async }
 }
 

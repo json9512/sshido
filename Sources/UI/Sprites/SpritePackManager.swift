@@ -53,14 +53,12 @@ public final class SpritePackManager {
     public func loadInstalledPacks() {
         var packs: [SpritePack] = []
 
-        // Built-in packs
         for loader in builtinLoaders {
             if let pack = loader() {
                 packs.append(pack)
             }
         }
 
-        // Downloaded packs
         if fm.fileExists(atPath: packsRoot.path) {
             let contents = (try? fm.contentsOfDirectory(
                 at: packsRoot, includingPropertiesForKeys: nil
@@ -102,14 +100,12 @@ public final class SpritePackManager {
     private func loadBuiltinGIF(prefix: String, name: String, id: String, author: String, license: String, group: String? = nil, variant: String? = nil, extraNames: [String] = []) -> SpritePack? {
         var sheets: [MascotMood: SpriteSheet] = [:]
         for mood in MascotMood.allCases {
-            // SpriteSheet(named:) tries .gif then .png
             if let sheet = SpriteSheet(named: "\(prefix)_\(mood.rawValue)", frameSize: .zero) {
                 sheets[mood] = sheet
             }
         }
         guard sheets.count == MascotMood.allCases.count else { return nil }
 
-        // Load extra animations
         var extras: [String: SpriteSheet] = [:]
         for extraName in extraNames {
             if let sheet = SpriteSheet(named: "\(prefix)_\(extraName)", frameSize: .zero) {
@@ -147,13 +143,11 @@ public final class SpritePackManager {
         do {
             let session = URLSession.shared
 
-            // 1. Download and parse manifest
             let manifestURL = baseURL.appendingPathComponent("manifest.json")
             let (manifestData, _) = try await session.data(from: manifestURL)
             let manifest = try JSONDecoder().decode(SpriteManifest.self, from: manifestData)
             try manifest.validate()
 
-            // 2. Create pack directory
             let packID = sanitize(manifest.name)
             let packDir = packsRoot.appendingPathComponent(packID)
             if fm.fileExists(atPath: packDir.path) {
@@ -161,10 +155,8 @@ public final class SpritePackManager {
             }
             try fm.createDirectory(at: packDir, withIntermediateDirectories: true)
 
-            // 3. Save manifest
             try manifestData.write(to: packDir.appendingPathComponent("manifest.json"))
 
-            // 4. Download all mood sprites (GIF or PNG)
             let ext = manifest.isGIF ? "gif" : "png"
             for mood in SpriteManifest.requiredMoods {
                 let fileURL = baseURL.appendingPathComponent("\(mood).\(ext)")
@@ -172,16 +164,13 @@ public final class SpritePackManager {
                 try fileData.write(to: packDir.appendingPathComponent("\(mood).\(ext)"))
             }
 
-            // 5. Try to download preview (optional)
             if let (previewData, resp) = try? await session.data(from: baseURL.appendingPathComponent("preview.png")),
                (resp as? HTTPURLResponse)?.statusCode == 200 {
                 try? previewData.write(to: packDir.appendingPathComponent("preview.png"))
             }
 
-            // 6. Validate the full pack loads correctly
             let pack = try SpritePack.load(from: packDir)
 
-            // 7. Reload and activate
             loadInstalledPacks()
             if let installed = installedPacks.first(where: { $0.id == packID }) {
                 setActive(installed)

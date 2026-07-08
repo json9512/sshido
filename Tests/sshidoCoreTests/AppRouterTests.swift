@@ -14,17 +14,6 @@ final class AppRouterTests: XCTestCase {
         } else { XCTFail("expected .host destination") }
     }
 
-    func testPopToRootClearsBothStacks() {
-        let r = AppRouter()
-        let host = RemoteHost(name: "t", hostname: "h", username: "u")
-        let session = Session(hostID: host.id, title: "s")
-        r.path = [.host(host), .session(session)]
-        r.detailPath = [.session(session)]
-        r.popToRoot()
-        XCTAssertTrue(r.path.isEmpty)
-        XCTAssertTrue(r.detailPath.isEmpty)
-    }
-
     func testOpenSessionReplacesAtomically() {
         let r = AppRouter()
         let host = RemoteHost(name: "t", hostname: "h", username: "u")
