@@ -450,6 +450,10 @@ final class HangulComposer {
             jong = jIdx
             return ""
         }
+        if let jIdx = jongIdx, let combined = jongCompound[jong]?[jIdx] {
+            jong = combined
+            return ""
+        }
         let prev = flush()
         if let c = choIdx { cho = c; return prev }
         return prev + String(raw)
@@ -467,14 +471,23 @@ final class HangulComposer {
         if jong != 0 {
             // Jong becomes initial of new syllable with this vowel.
             if let newCho = jongToCho[jong] {
-                let oldJong = jong
                 jong = 0
                 let prev = currentSyllable()
-                cho = newCho; jung = jungIdx; _ = oldJong
+                cho = newCho; jung = jungIdx
+                return prev
+            }
+            if let (remain, movedCho) = jongSplit[jong] {
+                jong = remain
+                let prev = currentSyllable()
+                cho = movedCho; jung = jungIdx; jong = 0
                 return prev
             }
             let prev = flush()
             return prev + String(raw)
+        }
+        if let j = jung, let combined = jungCompound[j]?[jungIdx] {
+            jung = combined
+            return ""
         }
         let prev = flush()
         return prev + String(raw)
@@ -500,6 +513,29 @@ final class HangulComposer {
         0x313E: 13, 0x313F: 14, 0x3140: 15, 0x3141: 16, 0x3142: 17, 0x3144: 18,
         0x3145: 19, 0x3146: 20, 0x3147: 21, 0x3148: 22, 0x314A: 23, 0x314B: 24,
         0x314C: 25, 0x314D: 26, 0x314E: 27
+    ]
+
+    // ㅗ+ㅏ=ㅘ ㅗ+ㅐ=ㅙ ㅗ+ㅣ=ㅚ ㅜ+ㅓ=ㅝ ㅜ+ㅔ=ㅞ ㅜ+ㅣ=ㅟ ㅡ+ㅣ=ㅢ
+    private let jungCompound: [Int: [Int: Int]] = [
+        8: [0: 9, 1: 10, 20: 11],
+        13: [4: 14, 5: 15, 20: 16],
+        18: [20: 19]
+    ]
+
+    // ㄱ+ㅅ=ㄳ ㄴ+ㅈ=ㄵ ㄴ+ㅎ=ㄶ ㄹ+ㄱ=ㄺ ㄹ+ㅁ=ㄻ ㄹ+ㅂ=ㄼ ㄹ+ㅅ=ㄽ
+    // ㄹ+ㅌ=ㄾ ㄹ+ㅍ=ㄿ ㄹ+ㅎ=ㅀ ㅂ+ㅅ=ㅄ
+    private let jongCompound: [Int: [Int: Int]] = [
+        1: [19: 3],
+        4: [22: 5, 27: 6],
+        8: [1: 9, 16: 10, 17: 11, 19: 12, 25: 13, 26: 14, 27: 15],
+        17: [19: 18]
+    ]
+
+    // Compound jong → (remaining jong, choseong of moved consonant).
+    private let jongSplit: [Int: (Int, Int)] = [
+        3: (1, 9), 5: (4, 12), 6: (4, 18), 9: (8, 0), 10: (8, 6),
+        11: (8, 7), 12: (8, 9), 13: (8, 16), 14: (8, 17), 15: (8, 18),
+        18: (17, 9)
     ]
 
     // Reverse lookup: which choseong does this jongseong convert to when
