@@ -110,6 +110,67 @@ final class TerminalURLExtractorTests: XCTestCase {
         )
     }
 
+    func testClaudeCodeMCPAuthScreenAt60Cols() {
+        let rows = [
+            "",
+            " If your browser doesn't open automatically, copy(c to",
+            " this URL manually                               copy)",
+            "",
+            " https://mcp.linear.app/authorize?response_type=code&client",
+            " _id=https%3A%2F%2Fclaude.ai%2Foauth%2Fclaude-code-client-m",
+            " etadata&code_challenge=Idv9dENGgpN-R6h5f4MUd2pDZSNwDGxOs7B",
+            " 66njmiB4&code_challenge_method=S256&redirect_uri=http%3A%2",
+            " F%2Flocalhost%3A56177%2Fcallback&state=b9k17BWJoOZ7s57Mokw",
+            " QGkNg6tDdkYsyKlh8AYhHqpE&scope=read+write&resource=https%3",
+            " A%2F%2Fmcp.linear.app%2Fmcp",
+            "",
+            "",
+            " If the redirect page shows a connection error, paste the",
+            " URL from your browser's address bar:",
+            " URL >"
+        ]
+        let expected = "https://mcp.linear.app/authorize?response_type=code&client_id=https%3A%2F%2Fclaude.ai%2Foauth%2Fclaude-code-client-metadata&code_challenge=Idv9dENGgpN-R6h5f4MUd2pDZSNwDGxOs7B66njmiB4&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A56177%2Fcallback&state=b9k17BWJoOZ7s57MokwQGkNg6tDdkYsyKlh8AYhHqpE&scope=read+write&resource=https%3A%2F%2Fmcp.linear.app%2Fmcp"
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 60)
+        XCTAssertEqual(urls.map(\.url.absoluteString), [expected])
+        XCTAssertEqual(OAuthURLDetector.detect(expected)?.port, 56177)
+    }
+
+    func testClaudeCodeMCPAuthScreenAt80Cols() {
+        let rows = [
+            "",
+            " If your browser doesn't open automatically, copy this URL manually (c to copy)",
+            " https://mcp.linear.app/authorize?response_type=code&client_id=https%3A%2F%2Fcl",
+            " aude.ai%2Foauth%2Fclaude-code-client-metadata&code_challenge=v7akWcP3OJqaXZ5Ks",
+            " uf0ZUKOAUGeSlgBWI1t5SPgl4Q&code_challenge_method=S256&redirect_uri=http%3A%2F%",
+            " 2Flocalhost%3A49379%2Fcallback&state=nlcJnd_bhzuCajmAoppzpzWaW-k8E7ieWzXad17X2",
+            " Jw&scope=read+write&resource=https%3A%2F%2Fmcp.linear.app%2Fmcp",
+            ""
+        ]
+        let expected = "https://mcp.linear.app/authorize?response_type=code&client_id=https%3A%2F%2Fclaude.ai%2Foauth%2Fclaude-code-client-metadata&code_challenge=v7akWcP3OJqaXZ5Ksuf0ZUKOAUGeSlgBWI1t5SPgl4Q&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A49379%2Fcallback&state=nlcJnd_bhzuCajmAoppzpzWaW-k8E7ieWzXad17X2Jw&scope=read+write&resource=https%3A%2F%2Fmcp.linear.app%2Fmcp"
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 80)
+        XCTAssertEqual(urls.map(\.url.absoluteString), [expected])
+        XCTAssertEqual(OAuthURLDetector.detect(expected)?.port, 49379)
+    }
+
+    func testShellPromptAfterNearFullURLRowNotGlued() {
+        let row0 = "https://claude.ai/oauth/aut"
+        let row1 = "horize?code=abc&state=xyz"
+        let urls = TerminalURLExtractor.extract(from: [row0, row1, "% "], cols: 27)
+        XCTAssertEqual(
+            urls.map(\.url.absoluteString),
+            ["https://claude.ai/oauth/authorize?code=abc&state=xyz"]
+        )
+    }
+
+    func testIndentMismatchNotGlued() {
+        let rows = [
+            "  https://example.com/aaaaaa",
+            "bbbb more"
+        ]
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 30)
+        XCTAssertEqual(urls.map(\.url.absoluteString), ["https://example.com/aaaaaa"])
+    }
+
     func testStripTrailingPunctuationDirect() {
         XCTAssertEqual(TerminalURLExtractor.stripTrailingPunctuation("https://example.com."), "https://example.com")
         XCTAssertEqual(TerminalURLExtractor.stripTrailingPunctuation("https://example.com,"), "https://example.com")

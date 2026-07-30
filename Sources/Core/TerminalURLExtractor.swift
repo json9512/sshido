@@ -53,8 +53,8 @@ public enum TerminalURLExtractor {
                 continue
             }
             let prev = rows[idx - 1]
-            if isSoftWrapped(prev: prev, cols: cols) {
-                out.append(row)
+            if let glued = continuation(of: prev, next: row, cols: cols) {
+                out.append(glued)
             } else {
                 out.append("\n")
                 out.append(row)
@@ -63,10 +63,27 @@ public enum TerminalURLExtractor {
         return out
     }
 
-    private static func isSoftWrapped(prev: String, cols: Int) -> Bool {
-        guard prev.count >= cols else { return false }
-        guard let last = prev.last else { return false }
-        return urlAllowedTrailing.contains(last)
+    // TUI apps (e.g. Claude Code) wrap URLs below full terminal width with a per-row indent.
+    private static let wrapSlack = 4
+
+    private static func continuation(of prev: String, next: String, cols: Int) -> String? {
+        guard let last = prev.last, urlAllowedTrailing.contains(last) else { return nil }
+        if prev.count >= cols { return next }
+        guard cols > wrapSlack, prev.count >= cols - wrapSlack else { return nil }
+        let stripped = next.drop(while: { $0 == " " })
+        let nextIndent = next.count - stripped.count
+        guard nextIndent == leadingSpaceCount(of: prev),
+              leadingURLRunLength(of: stripped) >= 2
+        else { return nil }
+        return String(stripped)
+    }
+
+    private static func leadingSpaceCount(of s: String) -> Int {
+        s.prefix(while: { $0 == " " }).count
+    }
+
+    private static func leadingURLRunLength(of s: Substring) -> Int {
+        s.prefix(while: { urlAllowedTrailing.contains($0) }).count
     }
 
     private static let urlAllowedTrailing: Set<Character> = {
