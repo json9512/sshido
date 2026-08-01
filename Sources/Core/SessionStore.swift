@@ -43,6 +43,47 @@ public actor SessionStore {
         return session
     }
 
+    public func adoptRemoteSession(for host: RemoteHost, auth: SSHAuth, remote: RemoteTmuxSession) -> Session {
+        let session = Session(hostID: host.id, title: remote.name, tmuxName: remote.name)
+        sessions[session.id] = session
+        persistLogged()
+        channels[session.id] = makeChannel(for: host, auth: auth, sessionID: session.id)
+        return session
+    }
+
+    public func listRemoteTmuxSessions(for host: RemoteHost, auth: SSHAuth) async throws -> [RemoteTmuxSession] {
+        let output: Data
+        if let ch = await connectedChannel(for: host.id) {
+            output = try await ch.executeCommand(TmuxSessionList.command)
+        } else {
+            let ch = metricsChannel(for: host, auth: auth)
+            try await ch.connect()
+            do {
+                output = try await ch.executeCommand(TmuxSessionList.command)
+            } catch {
+                await ch.disconnect()
+                throw error
+            }
+            await ch.disconnect()
+        }
+        let known = localTmuxNames(for: host)
+        return TmuxSessionList.parse(String(decoding: output, as: UTF8.self))
+            .filter { !known.contains($0.name) }
+    }
+
+    private func connectedChannel(for hostID: UUID) async -> SSHChannel? {
+        for s in sessions(for: hostID) {
+            if let ch = channels[s.id], await ch.isConnected {
+                return ch
+            }
+        }
+        return nil
+    }
+
+    private func localTmuxNames(for host: RemoteHost) -> Set<String> {
+        Set(sessions(for: host.id).map { $0.tmuxName ?? tmuxName(host: host, session: $0.id) })
+    }
+
     public func channel(for sessionID: UUID) -> SSHChannel? {
         channels[sessionID]
     }
@@ -110,7 +151,7 @@ public actor SessionStore {
     private func makeChannel(for host: RemoteHost, auth: SSHAuth, sessionID: UUID) -> SSHChannel {
         let bootstrap: String?
         if host.useTmux {
-            let name = shellEscape(tmuxName(host: host, session: sessionID))
+            let name = shellEscape(sessions[sessionID]?.tmuxName ?? tmuxName(host: host, session: sessionID))
             bootstrap = "if command -v tmux >/dev/null 2>&1; then unset TMUX TMUX_PANE; tmux setenv -g SSHIDO_SESSION 1 2>/dev/null || true; exec tmux new -A -s \(name) -e SSHIDO_SESSION=1; fi"
         } else {
             bootstrap = nil
