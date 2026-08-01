@@ -58,6 +58,19 @@ final class TmuxSessionListTests: XCTestCase {
         XCTAssertTrue(cmd.hasPrefix("'/opt/it'\\''s/tmux' ls"))
     }
 
+    func testKillCommandUsesExactTargetMatch() {
+        let cmd = TmuxSessionList.killCommand(tmuxPath: "/usr/bin/tmux", sessionName: "sshido-1863CC30")
+        XCTAssertTrue(cmd.contains("kill-session -t '=sshido-1863CC30'"),
+                      "missing '=' prefix would let tmux prefix-match and kill a different session; got: \(cmd)")
+        XCTAssertTrue(cmd.hasSuffix("; true"))
+        XCTAssertTrue(cmd.hasPrefix("'/usr/bin/tmux' "))
+    }
+
+    func testKillCommandEscapesSessionName() {
+        let cmd = TmuxSessionList.killCommand(tmuxPath: "/usr/bin/tmux", sessionName: "it's; rm -rf /")
+        XCTAssertTrue(cmd.contains("'=it'\\''s; rm -rf /'"), "session name not safely quoted; got: \(cmd)")
+    }
+
     func testResolveCommandTriesLoginShellThenCandidates() {
         let cmd = TmuxSessionList.resolveCommand
         XCTAssertTrue(cmd.hasPrefix("${SHELL:-/bin/sh} -lc 'command -v tmux'"))

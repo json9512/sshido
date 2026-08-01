@@ -49,6 +49,12 @@ public enum TmuxSessionList {
         return "\(quoted) ls -F '#{session_created}:#{session_windows}:#{session_attached}:#{session_name}' 2>/dev/null; true"
     }
 
+    // `=` forces an exact target match; without it tmux prefix-matches and would
+    // kill a longer session that merely starts with this name.
+    public static func killCommand(tmuxPath: String, sessionName: String) -> String {
+        "\(shellQuote(tmuxPath)) kill-session -t \(shellQuote("=" + sessionName)) 2>/dev/null; true"
+    }
+
     static func shellQuote(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
