@@ -9,6 +9,7 @@ public actor SessionStore {
     private let url: URL
     private var sessions: [UUID: Session] = [:]
     private var channels: [UUID: SSHChannel] = [:]
+    private var tmuxPaths: [UUID: String] = [:]
 
     public init() {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -52,23 +53,45 @@ public actor SessionStore {
     }
 
     public func listRemoteTmuxSessions(for host: RemoteHost, auth: SSHAuth) async throws -> [RemoteTmuxSession] {
-        let output: Data
-        if let ch = await connectedChannel(for: host.id) {
-            output = try await ch.executeCommand(TmuxSessionList.command)
-        } else {
-            let ch = metricsChannel(for: host, auth: auth)
-            try await ch.connect()
-            do {
-                output = try await ch.executeCommand(TmuxSessionList.command)
-            } catch {
-                await ch.disconnect()
-                throw error
-            }
-            await ch.disconnect()
+        let raw = try await withExecChannel(for: host, auth: auth) { ch in
+            guard let path = try await self.resolveTmuxPath(for: host.id, using: ch) else { return "" }
+            let out = try await ch.executeCommand(TmuxSessionList.listCommand(tmuxPath: path))
+            return String(decoding: out, as: UTF8.self)
         }
         let known = localTmuxNames(for: host)
-        return TmuxSessionList.parse(String(decoding: output, as: UTF8.self))
-            .filter { !known.contains($0.name) }
+        return TmuxSessionList.parse(raw).filter { !known.contains($0.name) }
+    }
+
+    private func resolveTmuxPath(for hostID: UUID, using channel: SSHChannel) async throws -> String? {
+        if let cached = tmuxPaths[hostID] { return cached }
+        let out = try await channel.executeCommand(TmuxSessionList.resolveCommand)
+        guard let path = TmuxSessionList.parseResolvedPath(String(decoding: out, as: UTF8.self)) else {
+            Log.session.info("tmux not found on host \(hostID.uuidString.prefix(8), privacy: .public)")
+            return nil
+        }
+        tmuxPaths[hostID] = path
+        Log.session.info("resolved tmux at \(path, privacy: .public)")
+        return path
+    }
+
+    private func withExecChannel<T>(
+        for host: RemoteHost,
+        auth: SSHAuth,
+        _ body: (SSHChannel) async throws -> T
+    ) async throws -> T {
+        if let ch = await connectedChannel(for: host.id) {
+            return try await body(ch)
+        }
+        let ch = metricsChannel(for: host, auth: auth)
+        try await ch.connect()
+        do {
+            let result = try await body(ch)
+            await ch.disconnect()
+            return result
+        } catch {
+            await ch.disconnect()
+            throw error
+        }
     }
 
     private func connectedChannel(for hostID: UUID) async -> SSHChannel? {
@@ -152,7 +175,8 @@ public actor SessionStore {
         let bootstrap: String?
         if host.useTmux {
             let name = shellEscape(sessions[sessionID]?.tmuxName ?? tmuxName(host: host, session: sessionID))
-            bootstrap = "if command -v tmux >/dev/null 2>&1; then unset TMUX TMUX_PANE; tmux setenv -g SSHIDO_SESSION 1 2>/dev/null || true; exec tmux new -A -s \(name) -e SSHIDO_SESSION=1; fi"
+            let tmux = tmuxPaths[host.id].map(shellEscape) ?? "tmux"
+            bootstrap = "if command -v \(tmux) >/dev/null 2>&1; then unset TMUX TMUX_PANE; \(tmux) setenv -g SSHIDO_SESSION 1 2>/dev/null || true; exec \(tmux) new -A -s \(name) -e SSHIDO_SESSION=1; fi"
         } else {
             bootstrap = nil
         }
