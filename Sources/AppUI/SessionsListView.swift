@@ -16,8 +16,26 @@ struct SessionsListView: View {
     @State private var connectedIDs: Set<UUID> = []
     @State private var remoteSessions: [RemoteTmuxSession] = []
     @State private var error: String?
-    @State private var pendingSessionDelete: Session?
+    @State private var pending: PendingAction?
     @EnvironmentObject private var router: AppRouter
+
+    private enum PendingAction: Identifiable {
+        case detach(Session)
+        case kill(Session)
+
+        var session: Session {
+            switch self {
+            case .detach(let s), .kill(let s): return s
+            }
+        }
+
+        var isKill: Bool {
+            if case .kill = self { return true }
+            return false
+        }
+
+        var id: String { "\(isKill ? "kill" : "detach")-\(session.id.uuidString)" }
+    }
 
     var body: some View {
         List {
@@ -62,11 +80,16 @@ struct SessionsListView: View {
                         .dsRow()
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button {
-                                pendingSessionDelete = session
+                                pending = .kill(session)
                             } label: {
-                                Label("Delete", systemImage: "trash").labelStyle(.iconOnly)
+                                Label("Kill", systemImage: "trash").labelStyle(.iconOnly)
                             }
                             .tint(DS.Color.error)
+                            Button {
+                                pending = .detach(session)
+                            } label: {
+                                Label("Detach", systemImage: "eject").labelStyle(.iconOnly)
+                            }
                         }
                     }
                 }
@@ -120,26 +143,30 @@ struct SessionsListView: View {
         }
         .coachmarks()
         .confirmationDialog(
-            pendingSessionDelete.map { "Close \($0.title)?" } ?? "Close session?",
+            pending.map { ($0.isKill ? "Kill " : "Detach from ") + $0.session.title + "?" } ?? "",
             isPresented: Binding(
-                get: { pendingSessionDelete != nil },
-                set: { if !$0 { pendingSessionDelete = nil } }
+                get: { pending != nil },
+                set: { if !$0 { pending = nil } }
             ),
             titleVisibility: .visible,
-            presenting: pendingSessionDelete
-        ) { session in
-            Button("Close session", role: .destructive) {
-                let sid = session.id
-                Task {
-                    await SessionStore.shared.close(sessionID: sid)
-                    await MainActor.run { BridgeStore.shared.remove(sessionID: sid) }
-                    await reload()
+            presenting: pending
+        ) { action in
+            if action.isKill {
+                Button("Kill session", role: .destructive) {
+                    Task { await kill(action.session) }
+                    pending = nil
                 }
-                pendingSessionDelete = nil
+            } else {
+                Button("Detach") {
+                    Task { await detach(action.session) }
+                    pending = nil
+                }
             }
-            Button("Cancel", role: .cancel) { pendingSessionDelete = nil }
-        } message: { _ in
-            Text("Disconnects this session. The tmux window on the server remains and can be reopened.")
+            Button("Cancel", role: .cancel) { pending = nil }
+        } message: { action in
+            Text(action.isKill
+                 ? "Ends the tmux session on the server and stops whatever is running inside it. This cannot be undone."
+                 : "Disconnects this device. The tmux session keeps running on the server and stays listed under \"On this server\".")
         }
     }
 
@@ -170,6 +197,25 @@ struct SessionsListView: View {
         } catch {
             self.error = String(describing: error)
         }
+    }
+
+    private func detach(_ session: Session) async {
+        await SessionStore.shared.close(sessionID: session.id)
+        BridgeStore.shared.remove(sessionID: session.id)
+        await reload()
+        await sweep()
+    }
+
+    private func kill(_ session: Session) async {
+        do {
+            let auth = try await resolveAuth()
+            try await SessionStore.shared.killRemoteSession(session, host: host, auth: auth)
+            BridgeStore.shared.remove(sessionID: session.id)
+        } catch {
+            self.error = String(describing: error)
+        }
+        await reload()
+        await sweep()
     }
 
     private func sweep() async {
