@@ -62,6 +62,15 @@ public actor SessionStore {
         return TmuxSessionList.parse(raw).filter { !known.contains($0.name) }
     }
 
+    public func killRemoteSession(_ session: Session, host: RemoteHost, auth: SSHAuth) async throws {
+        let name = session.tmuxName ?? tmuxName(host: host, session: session.id)
+        try await withExecChannel(for: host, auth: auth) { ch in
+            guard let path = try await self.resolveTmuxPath(for: host.id, using: ch) else { return }
+            _ = try await ch.executeCommand(TmuxSessionList.killCommand(tmuxPath: path, sessionName: name))
+        }
+        await close(sessionID: session.id)
+    }
+
     private func resolveTmuxPath(for hostID: UUID, using channel: SSHChannel) async throws -> String? {
         if let cached = tmuxPaths[hostID] { return cached }
         let out = try await channel.executeCommand(TmuxSessionList.resolveCommand)
