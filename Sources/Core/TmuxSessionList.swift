@@ -16,12 +16,43 @@ public struct RemoteTmuxSession: Hashable, Sendable, Identifiable {
 }
 
 public enum TmuxSessionList {
-    // Runs through a login shell so tmux is found on the same PATH the interactive
-    // session uses (Homebrew installs outside the bare exec-channel PATH). Trailing
-    // `true` keeps the exit status 0 — Citadel throws CommandFailed on non-zero exit,
-    // and `tmux ls` exits 1 when no server is running.
-    public static let command =
-        "${SHELL:-/bin/sh} -lc 'command -v tmux >/dev/null 2>&1 && tmux ls -F \"#{session_created}:#{session_windows}:#{session_attached}:#{session_name}\" 2>/dev/null'; true"
+    static let candidatePaths = [
+        "/opt/homebrew/bin/tmux",
+        "/usr/local/bin/tmux",
+        "/usr/bin/tmux",
+        "/bin/tmux",
+        "/opt/local/bin/tmux",
+        "/snap/bin/tmux",
+        "$HOME/.local/bin/tmux",
+        "/usr/pkg/bin/tmux",
+        "/data/data/com.termux/files/usr/bin/tmux",
+    ]
+
+    // Asks the login shell first so tmux resolves on the same PATH the interactive
+    // session uses, then probes known install prefixes for shells that reject `-lc`
+    // (csh/tcsh) or omit the directory. Trailing `true` keeps the exit status 0 —
+    // Citadel throws CommandFailed on non-zero exit.
+    public static var resolveCommand: String {
+        let probes = candidatePaths.map { "\"\($0)\"" }.joined(separator: " ")
+        return "${SHELL:-/bin/sh} -lc 'command -v tmux' 2>/dev/null || "
+            + "for p in \(probes); do [ -x \"$p\" ] && { echo \"$p\"; break; }; done; true"
+    }
+
+    public static func parseResolvedPath(_ output: String) -> String? {
+        guard let line = output.split(separator: "\n").first(where: {
+            $0.hasPrefix("/") && !$0.contains(" ")
+        }) else { return nil }
+        return String(line)
+    }
+
+    public static func listCommand(tmuxPath: String) -> String {
+        let quoted = shellQuote(tmuxPath)
+        return "\(quoted) ls -F '#{session_created}:#{session_windows}:#{session_attached}:#{session_name}' 2>/dev/null; true"
+    }
+
+    static func shellQuote(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
 
     public static func parse(_ output: String) -> [RemoteTmuxSession] {
         output.split(separator: "\n").compactMap { line in

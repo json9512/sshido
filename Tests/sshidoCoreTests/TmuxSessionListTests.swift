@@ -41,13 +41,46 @@ final class TmuxSessionListTests: XCTestCase {
         XCTAssertTrue(sessions[0].attached)
     }
 
-    func testCommandAlwaysExitsZeroShape() {
-        XCTAssertTrue(TmuxSessionList.command.hasSuffix("; true"))
-        XCTAssertTrue(TmuxSessionList.command.contains("#{session_created}:#{session_windows}:#{session_attached}:#{session_name}"))
+    func testListCommandAlwaysExitsZeroShape() {
+        let cmd = TmuxSessionList.listCommand(tmuxPath: "/usr/bin/tmux")
+        XCTAssertTrue(cmd.hasSuffix("; true"))
+        XCTAssertTrue(cmd.contains("#{session_created}:#{session_windows}:#{session_attached}:#{session_name}"))
+        XCTAssertTrue(cmd.hasPrefix("'/usr/bin/tmux' ls -F"))
     }
 
-    func testCommandRunsThroughLoginShell() {
-        XCTAssertTrue(TmuxSessionList.command.hasPrefix("${SHELL:-/bin/sh} -lc "))
+    func testListCommandQuotesPathWithSpaces() {
+        let cmd = TmuxSessionList.listCommand(tmuxPath: "/opt/my tools/tmux")
+        XCTAssertTrue(cmd.hasPrefix("'/opt/my tools/tmux' ls"))
+    }
+
+    func testListCommandEscapesSingleQuote() {
+        let cmd = TmuxSessionList.listCommand(tmuxPath: "/opt/it's/tmux")
+        XCTAssertTrue(cmd.hasPrefix("'/opt/it'\\''s/tmux' ls"))
+    }
+
+    func testResolveCommandTriesLoginShellThenCandidates() {
+        let cmd = TmuxSessionList.resolveCommand
+        XCTAssertTrue(cmd.hasPrefix("${SHELL:-/bin/sh} -lc 'command -v tmux'"))
+        XCTAssertTrue(cmd.contains("/opt/homebrew/bin/tmux"))
+        XCTAssertTrue(cmd.contains("/usr/bin/tmux"))
+        XCTAssertTrue(cmd.hasSuffix("; true"))
+    }
+
+    func testParseResolvedPath() {
+        XCTAssertEqual(TmuxSessionList.parseResolvedPath("/opt/homebrew/bin/tmux\n"), "/opt/homebrew/bin/tmux")
+        XCTAssertEqual(TmuxSessionList.parseResolvedPath("/usr/bin/tmux"), "/usr/bin/tmux")
+    }
+
+    func testParseResolvedPathRejectsNonPaths() {
+        XCTAssertNil(TmuxSessionList.parseResolvedPath(""))
+        XCTAssertNil(TmuxSessionList.parseResolvedPath("\n\n"))
+        XCTAssertNil(TmuxSessionList.parseResolvedPath("tmux not found"))
+        XCTAssertNil(TmuxSessionList.parseResolvedPath("Unknown option: `-lc'"))
+    }
+
+    func testParseResolvedPathSkipsLeadingNoise() {
+        let output = "Welcome to the host!\n/opt/homebrew/bin/tmux\n"
+        XCTAssertEqual(TmuxSessionList.parseResolvedPath(output), "/opt/homebrew/bin/tmux")
     }
 
     func testSessionDecodesLegacyJSONWithoutTmuxName() throws {
