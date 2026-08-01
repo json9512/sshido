@@ -28,10 +28,9 @@ public enum TmuxSessionList {
         "/data/data/com.termux/files/usr/bin/tmux",
     ]
 
-    // Asks the login shell first so tmux resolves on the same PATH the interactive
-    // session uses, then probes known install prefixes for shells that reject `-lc`
-    // (csh/tcsh) or omit the directory. Trailing `true` keeps the exit status 0 —
-    // Citadel throws CommandFailed on non-zero exit.
+    // Login shell first so tmux resolves on the PATH the interactive session uses;
+    // the probe covers shells that reject `-lc`. Trailing `true` keeps exit status 0 —
+    // Citadel throws CommandFailed otherwise.
     public static var resolveCommand: String {
         let probes = candidatePaths.map { "\"\($0)\"" }.joined(separator: " ")
         return "${SHELL:-/bin/sh} -lc 'command -v tmux' 2>/dev/null || "
