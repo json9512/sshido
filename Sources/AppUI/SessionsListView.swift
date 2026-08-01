@@ -14,6 +14,7 @@ struct SessionsListView: View {
     let host: RemoteHost
     @State private var sessions: [Session] = []
     @State private var connectedIDs: Set<UUID> = []
+    @State private var remoteSessions: [RemoteTmuxSession] = []
     @State private var error: String?
     @State private var pendingSessionDelete: Session?
     @EnvironmentObject private var router: AppRouter
@@ -70,6 +71,35 @@ struct SessionsListView: View {
                     }
                 }
             }
+            if !remoteSessions.isEmpty {
+                Section(header: DSSectionHeader("On this server")) {
+                    ForEach(remoteSessions) { remote in
+                        Button {
+                            Task { await adopt(remote) }
+                        } label: {
+                            HStack(spacing: DS.Spacing.md) {
+                                ZStack {
+                                    Image(systemName: "terminal")
+                                        .font(.title3).foregroundStyle(DS.Color.textSecondary)
+                                    DSStatusIndicator(style: .dot(active: remote.attached))
+                                        .scaleEffect(0.7)
+                                        .offset(x: 10, y: -10)
+                                }
+                                .frame(width: 24)
+                                VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                                    Text(remote.name)
+                                        .font(DS.Font.headline)
+                                        .foregroundStyle(DS.Color.textPrimary)
+                                        .dynamicTypeSize(.xSmall ... .accessibility2)
+                                    Text("\(remote.windows) window\(remote.windows == 1 ? "" : "s") · \(remote.createdAt.formatted(.relative(presentation: .named)))")
+                                        .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                                }
+                            }
+                        }
+                        .dsRow()
+                    }
+                }
+            }
             if let error {
                 Section { InlineErrorText(error) }
             }
@@ -80,9 +110,13 @@ struct SessionsListView: View {
         .task {
             await reload()
             OnboardingCoach.shared.advance(past: .tapHost)
+            await sweep()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            Task { await reload() }
+            Task {
+                await reload()
+                await sweep()
+            }
         }
         .coachmarks()
         .confirmationDialog(
@@ -116,25 +150,49 @@ struct SessionsListView: View {
 
     private func openNew() async {
         do {
-            let auth: SSHAuth
-            switch host.authMethod {
-            case .password:
-                let pw = try KeychainKeyStore().loadPassword(hostID: host.id)
-                auth = .password(pw)
-            case .key:
-                guard let identityID = host.identityID else {
-                    error = "host has no key attached (authMethod=.key)"
-                    return
-                }
-                let pem = try await IdentityStore.shared.loadPEM(for: identityID)
-                auth = .privateKeyPEM(pem, passphrase: nil)
-            }
+            let auth = try await resolveAuth()
             let session = await SessionStore.shared.openSession(for: host, auth: auth)
             await reload()
             OnboardingCoach.shared.advance(past: .newSession)
             router.push(.session(session))
         } catch {
             self.error = String(describing: error)
+        }
+    }
+
+    private func adopt(_ remote: RemoteTmuxSession) async {
+        do {
+            let auth = try await resolveAuth()
+            let session = await SessionStore.shared.adoptRemoteSession(for: host, auth: auth, remote: remote)
+            remoteSessions.removeAll { $0.name == remote.name }
+            await reload()
+            router.push(.session(session))
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+
+    private func sweep() async {
+        guard host.useTmux else { return }
+        do {
+            let auth = try await resolveAuth()
+            remoteSessions = try await SessionStore.shared.listRemoteTmuxSessions(for: host, auth: auth)
+        } catch {
+            remoteSessions = []
+            Log.session.error("tmux sweep failed host=\(host.name, privacy: .public): \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    private func resolveAuth() async throws -> SSHAuth {
+        switch host.authMethod {
+        case .password:
+            return .password(try KeychainKeyStore().loadPassword(hostID: host.id))
+        case .key:
+            guard let identityID = host.identityID else {
+                throw SSHError.invalidKey("host has no key attached (authMethod=.key)")
+            }
+            let pem = try await IdentityStore.shared.loadPEM(for: identityID)
+            return .privateKeyPEM(pem, passphrase: nil)
         }
     }
 }
