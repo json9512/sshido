@@ -16,10 +16,12 @@ public struct RemoteTmuxSession: Hashable, Sendable, Identifiable {
 }
 
 public enum TmuxSessionList {
-    // Trailing `true` keeps the exit status 0 — Citadel throws CommandFailed on
-    // non-zero exit, and `tmux ls` exits 1 when no server is running.
+    // Runs through a login shell so tmux is found on the same PATH the interactive
+    // session uses (Homebrew installs outside the bare exec-channel PATH). Trailing
+    // `true` keeps the exit status 0 — Citadel throws CommandFailed on non-zero exit,
+    // and `tmux ls` exits 1 when no server is running.
     public static let command =
-        "command -v tmux >/dev/null 2>&1 && tmux ls -F '#{session_created}:#{session_windows}:#{session_attached}:#{session_name}' 2>/dev/null; true"
+        "${SHELL:-/bin/sh} -lc 'command -v tmux >/dev/null 2>&1 && tmux ls -F \"#{session_created}:#{session_windows}:#{session_attached}:#{session_name}\" 2>/dev/null'; true"
 
     public static func parse(_ output: String) -> [RemoteTmuxSession] {
         output.split(separator: "\n").compactMap { line in

@@ -46,6 +46,10 @@ final class TmuxSessionListTests: XCTestCase {
         XCTAssertTrue(TmuxSessionList.command.contains("#{session_created}:#{session_windows}:#{session_attached}:#{session_name}"))
     }
 
+    func testCommandRunsThroughLoginShell() {
+        XCTAssertTrue(TmuxSessionList.command.hasPrefix("${SHELL:-/bin/sh} -lc "))
+    }
+
     func testSessionDecodesLegacyJSONWithoutTmuxName() throws {
         let legacy = """
         {"id":"3F2A1B9C-0000-0000-0000-000000000000","hostID":"00000000-0000-0000-0000-000000000001","title":"Session 1","createdAt":0}
