@@ -28,9 +28,8 @@ public enum TmuxSessionList {
         "/data/data/com.termux/files/usr/bin/tmux",
     ]
 
-    // Login shell first so tmux resolves on the PATH the interactive session uses;
-    // the probe covers shells that reject `-lc`. Trailing `true` keeps exit status 0 —
-    // Citadel throws CommandFailed otherwise.
+    // Login shell first so tmux resolves on the interactive session's PATH; the probe
+    // covers shells that reject `-lc`. Trailing `true` keeps exit 0 — Citadel throws otherwise.
     public static var resolveCommand: String {
         let probes = candidatePaths.map { "\"\($0)\"" }.joined(separator: " ")
         return "${SHELL:-/bin/sh} -lc 'command -v tmux' 2>/dev/null || "
@@ -49,8 +48,7 @@ public enum TmuxSessionList {
         return "\(quoted) ls -F '#{session_created}:#{session_windows}:#{session_attached}:#{session_name}' 2>/dev/null; true"
     }
 
-    // `=` forces an exact target match; without it tmux prefix-matches and would
-    // kill a longer session that merely starts with this name.
+    // `=` forces exact match; tmux otherwise prefix-matches and would kill a longer session.
     public static func killCommand(tmuxPath: String, sessionName: String) -> String {
         "\(shellQuote(tmuxPath)) kill-session -t \(shellQuote("=" + sessionName)) 2>/dev/null; true"
     }
