@@ -19,7 +19,7 @@ public struct SessionView: View {
     @State private var bridge: TerminalBridge?
     @State private var error: String?
     @State private var toast: String?
-    @State private var liveTitle: String
+    @State private var sessionName: String
     @StateObject private var hotkeys = HotkeyState()
     @State private var photoItem: PhotosPickerItem?
     @State private var showPhotoPicker = false
@@ -50,7 +50,7 @@ public struct SessionView: View {
     public init(session: Session, host: RemoteHost) {
         self.session = session
         self.host = host
-        self._liveTitle = State(initialValue: session.title)
+        self._sessionName = State(initialValue: session.displayName(on: host))
     }
 
     @Environment(\.scenePhase) private var scenePhase
@@ -61,13 +61,7 @@ public struct SessionView: View {
             if let ch = channel {
                 ZStack(alignment: .bottomTrailing) {
                     TerminalView(channel: ch, sessionID: session.id) { b in
-                        Task { @MainActor in
-                            self.bridge = b
-                            b.onTitleChange = { newTitle in
-                                self.liveTitle = newTitle
-                                Task { await SessionStore.shared.renameSession(id: session.id, title: newTitle) }
-                            }
-                        }
+                        Task { @MainActor in self.bridge = b }
                     }
                     if showMascot, let pack = SpritePackManager.shared.activePack {
                         MascotSpriteView(
@@ -140,6 +134,11 @@ public struct SessionView: View {
         }
         .task { await load() }
         .task {
+            if let latest = await SessionStore.shared.session(session.id) {
+                sessionName = latest.displayName(on: host)
+            }
+        }
+        .task {
             let appearance = await AppearanceStore.shared.appearance
             showMascot = appearance.showMascotCompanion
             voiceEnabled = appearance.voiceDictationEnabled
@@ -161,7 +160,7 @@ public struct SessionView: View {
         }
         .onChange(of: scenePhase) { _, new in
             if new == .active {
-                bridge?.requestServerRedraw()
+                bridge?.refit()
                 startDisconnectWatcher()
             } else {
                 dictator.cancel()
@@ -173,12 +172,12 @@ public struct SessionView: View {
             Task { await uploadImage(new) }
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
-        .navigationTitle(liveTitle)
+        .navigationTitle(sessionName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
-                    Text(liveTitle).font(DS.Font.headline)
+                    Text(sessionName).font(DS.Font.headline)
                         .foregroundStyle(DS.Color.textPrimary)
                         .lineLimit(1).truncationMode(.middle)
                     DSStatusIndicator(style: .pill(phase: connectPillPhase))
@@ -382,7 +381,7 @@ public struct SessionView: View {
     }
 
     private var loadingLabel: String {
-        let name = liveTitle.isEmpty ? session.title : liveTitle
+        let name = sessionName
         return isReconnecting ? "Reconnecting to \(name)…" : "Opening \(name)…"
     }
 
