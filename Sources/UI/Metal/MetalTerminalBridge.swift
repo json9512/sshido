@@ -28,8 +28,7 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     public let activityTracker = TerminalActivityTracker()
     public var onTitleChange: ((String) -> Void)?
 
-    /// Answers whether the host's active pane will consume wheel events. Injected because
-    /// the bridge has no host or session of its own.
+    /// Injected: the bridge has no host or session of its own to ask.
     public var wheelPolicyProbe: (() async -> Bool)?
     private var wheelForwarding = true
     private var wheelPolicyCheckedAt: Date?
@@ -37,8 +36,8 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
 
     public var forwardsWheelEvents: Bool { wheelForwarding }
 
-    /// Re-probes when the cached answer is older than `staleAfter`; `onSettled` runs only when
-    /// a probe actually ran, so a caller can hold scrolls back and release them afterwards.
+    /// `onSettled` runs only when a probe actually ran, so a caller can hold scrolls back
+    /// and release them afterwards.
     public func refreshWheelPolicy(staleAfter: TimeInterval = 2, onSettled: (() -> Void)? = nil) {
         if let checked = wheelPolicyCheckedAt, Date().timeIntervalSince(checked) < staleAfter {
             return

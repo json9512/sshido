@@ -223,8 +223,7 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
 
     private func emitScroll(lines: Int) {
         guard let bridge else { return }
-        // Hold the scroll rather than drop it while the pane is being probed, so a stale
-        // policy costs latency instead of a swallowed gesture.
+        // Holding beats dropping: a stale policy then costs latency, not the gesture.
         if bridge.terminal.mouseMode != .off {
             bridge.refreshWheelPolicy { [weak self] in
                 guard let self, let bridge = self.bridge else { return }

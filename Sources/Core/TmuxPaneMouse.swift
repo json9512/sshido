@@ -29,9 +29,8 @@ public enum TmuxPaneMouse {
         return nil
     }
 
-    /// A pane still flagged for mouse reporting while a shell sits in it is a TUI that exited
-    /// without clearing the flag. tmux forwards wheel bytes there and the shell echoes them as
-    /// text, so those are the only events worth withholding — everything else scrolls as before.
+    /// A shell sitting in a pane still flagged for mouse reporting means a TUI exited without
+    /// clearing it: tmux forwards wheel bytes there and the shell echoes them as text.
     public static func forwardsWheel(_ state: PaneMouseState) -> Bool {
         guard state.appWantsMouse else { return true }
         return !isShell(state.command)

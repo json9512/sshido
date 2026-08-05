@@ -130,8 +130,7 @@ public actor SessionStore {
         return sessions[sessionID]?.tmuxSessionID
     }
 
-    /// Whether a scroll gesture should be forwarded to the host as a wheel event.
-    /// Fails open: anything unexpected keeps today's behaviour rather than eating the scroll.
+    /// Fails open — anything unexpected keeps today's behaviour rather than eating a scroll.
     public func paneForwardsWheel(for session: Session, host: RemoteHost, auth: SSHAuth) async -> Bool {
         guard host.useTmux else { return true }
         let current = sessions[session.id] ?? session
