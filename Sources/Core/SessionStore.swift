@@ -130,6 +130,29 @@ public actor SessionStore {
         return sessions[sessionID]?.tmuxSessionID
     }
 
+    /// Whether a scroll gesture should be forwarded to the host as a wheel event.
+    /// Fails open: anything unexpected keeps today's behaviour rather than eating the scroll.
+    public func paneForwardsWheel(for session: Session, host: RemoteHost, auth: SSHAuth) async -> Bool {
+        guard host.useTmux else { return true }
+        let current = sessions[session.id] ?? session
+        let target = current.tmuxSessionID
+            ?? current.tmuxName
+            ?? tmuxName(host: host, session: session.id)
+        do {
+            return try await withExecChannel(for: host, auth: auth) { ch in
+                guard let path = try await self.resolveTmuxPath(for: host.id, using: ch) else { return true }
+                let out = try await ch.executeCommand(
+                    TmuxPaneMouse.stateCommand(tmuxPath: path, target: target)
+                )
+                guard let state = TmuxPaneMouse.parse(String(decoding: out, as: UTF8.self)) else { return true }
+                return TmuxPaneMouse.forwardsWheel(state)
+            }
+        } catch {
+            Log.session.error("pane mouse probe failed: \(String(describing: error), privacy: .public)")
+            return true
+        }
+    }
+
     @discardableResult
     public func renameSession(
         _ session: Session,

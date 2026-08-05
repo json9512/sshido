@@ -200,6 +200,8 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
         switch g.state {
         case .began:
             panAccum = 0
+            heldScrollLines = 0
+            bridge?.refreshWheelPolicy()
             if let bridge {
                 let p = g.location(in: self)
                 let col = max(0, min(bridge.cols - 1, Int(p.x / cellW)))
@@ -217,18 +219,45 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
         }
     }
 
+    private var heldScrollLines = 0
+
     private func emitScroll(lines: Int) {
         guard let bridge else { return }
+        // Hold the scroll rather than drop it while the pane is being probed, so a stale
+        // policy costs latency instead of a swallowed gesture.
         if bridge.terminal.mouseMode != .off {
-            let button = lines > 0 ? 64 : 65
-            let cols = bridge.terminal.cols
-            let rows = bridge.terminal.rows
-            let col = lastTapCell.map { max(0, min(cols - 1, $0.col)) } ?? max(0, cols / 2)
-            let row = lastTapCell.map { max(0, min(rows - 1, $0.row)) } ?? max(0, rows / 2)
-            let reps = min(max(abs(lines) / 2, 1), 6)
-            for _ in 0..<reps {
-                bridge.terminal.sendEvent(buttonFlags: button, x: col, y: row)
+            bridge.refreshWheelPolicy { [weak self] in
+                guard let self, let bridge = self.bridge else { return }
+                let held = self.heldScrollLines
+                self.heldScrollLines = 0
+                if held != 0, bridge.forwardsWheelEvents {
+                    self.sendWheel(lines: held, bridge: bridge)
+                }
             }
+            if bridge.isProbingWheelPolicy {
+                heldScrollLines += lines
+                return
+            }
+            guard bridge.forwardsWheelEvents else { return }
+        }
+        applyScroll(lines: lines, bridge: bridge)
+    }
+
+    private func sendWheel(lines: Int, bridge: MetalTerminalBridge) {
+        let button = lines > 0 ? 64 : 65
+        let cols = bridge.terminal.cols
+        let rows = bridge.terminal.rows
+        let col = lastTapCell.map { max(0, min(cols - 1, $0.col)) } ?? max(0, cols / 2)
+        let row = lastTapCell.map { max(0, min(rows - 1, $0.row)) } ?? max(0, rows / 2)
+        let reps = min(max(abs(lines) / 2, 1), 6)
+        for _ in 0..<reps {
+            bridge.terminal.sendEvent(buttonFlags: button, x: col, y: row)
+        }
+    }
+
+    private func applyScroll(lines: Int, bridge: MetalTerminalBridge) {
+        if bridge.terminal.mouseMode != .off {
+            sendWheel(lines: lines, bridge: bridge)
         } else if bridge.terminal.isCurrentBufferAlternate {
             return
         } else {
