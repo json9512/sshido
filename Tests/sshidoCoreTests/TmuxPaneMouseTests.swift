@@ -45,8 +45,8 @@ final class TmuxPaneMouseTests: XCTestCase {
         }
     }
 
-    // The bug: a TUI exited without clearing the flag, so tmux hands wheel bytes to the
-    // shell that inherited the pane and the shell echoes them as text.
+    // The bug: a TUI exited without clearing the flag, so the shell that inherited the
+    // pane echoes the wheel bytes as text.
     func testWithholdsFromAShellLeftHoldingTheFlag() {
         for shell in ["bash", "zsh", "sh", "fish", "dash", "-zsh", "/bin/bash", "ZSH"] {
             XCTAssertFalse(
