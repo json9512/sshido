@@ -229,10 +229,6 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         renderer.setNeedsRender()
     }
 
-    public func requestServerRedraw() {
-        channel.enqueueInput(Array("\u{0c}".utf8))
-    }
-
     public func invalidateReportedSize() {
         lastReportedSize = (0, 0)
     }

@@ -17,6 +17,7 @@ struct SessionsListView: View {
     @State private var remoteSessions: [RemoteTmuxSession] = []
     @State private var error: String?
     @State private var pending: PendingAction?
+    @State private var infoSession: Session?
     @EnvironmentObject private var router: AppRouter
 
     private enum PendingAction: Identifiable {
@@ -68,7 +69,7 @@ struct SessionsListView: View {
                                 }
                                 .frame(width: 24)
                                 VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
-                                    Text(session.title)
+                                    Text(session.displayName(on: host))
                                         .font(DS.Font.headline)
                                         .foregroundStyle(DS.Color.textPrimary)
                                         .dynamicTypeSize(.xSmall ... .accessibility2)
@@ -90,6 +91,14 @@ struct SessionsListView: View {
                             } label: {
                                 Label("Detach", systemImage: "eject").labelStyle(.iconOnly)
                             }
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            Button {
+                                infoSession = session
+                            } label: {
+                                Label("Info", systemImage: "info.circle").labelStyle(.iconOnly)
+                            }
+                            .tint(DS.Color.accent)
                         }
                     }
                 }
@@ -142,8 +151,22 @@ struct SessionsListView: View {
             }
         }
         .coachmarks()
+        .sheet(item: $infoSession) { session in
+            SessionInfoSheet(
+                session: session,
+                host: host,
+                connected: connectedIDs.contains(session.id)
+            ) { newName in
+                let auth = try await resolveAuth()
+                let updated = try await SessionStore.shared.renameSession(
+                    session, host: host, auth: auth, to: newName
+                )
+                await reload()
+                return updated
+            }
+        }
         .confirmationDialog(
-            pending.map { ($0.isKill ? "Kill " : "Detach from ") + $0.session.title + "?" } ?? "",
+            pending.map { ($0.isKill ? "Kill " : "Detach from ") + $0.session.displayName(on: host) + "?" } ?? "",
             isPresented: Binding(
                 get: { pending != nil },
                 set: { if !$0 { pending = nil } }
@@ -222,7 +245,8 @@ struct SessionsListView: View {
         guard host.useTmux else { return }
         do {
             let auth = try await resolveAuth()
-            remoteSessions = try await SessionStore.shared.listRemoteTmuxSessions(for: host, auth: auth)
+            remoteSessions = try await SessionStore.shared.syncRemoteSessions(for: host, auth: auth)
+            await reload()
         } catch {
             remoteSessions = []
             Log.session.error("tmux sweep failed host=\(host.name, privacy: .public): \(String(describing: error), privacy: .public)")
