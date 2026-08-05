@@ -61,7 +61,10 @@ public struct SessionView: View {
             if let ch = channel {
                 ZStack(alignment: .bottomTrailing) {
                     TerminalView(channel: ch, sessionID: session.id) { b in
-                        Task { @MainActor in self.bridge = b }
+                        Task { @MainActor in
+                            self.bridge = b
+                            (b as? MetalTerminalBridge)?.wheelPolicyProbe = wheelPolicyProbe
+                        }
                     }
                     if showMascot, let pack = SpritePackManager.shared.activePack {
                         MascotSpriteView(
@@ -378,6 +381,25 @@ public struct SessionView: View {
         bridge = nil
         channel = nil
         Task { await load() }
+    }
+
+    private var wheelPolicyProbe: () async -> Bool {
+        let session = self.session
+        let host = self.host
+        return {
+            let auth: SSHAuth
+            switch host.authMethod {
+            case .password:
+                guard let pw = try? KeychainKeyStore().loadPassword(hostID: host.id) else { return true }
+                auth = .password(pw)
+            case .key:
+                guard let identityID = host.identityID,
+                      let pem = try? await IdentityStore.shared.loadPEM(for: identityID)
+                else { return true }
+                auth = .privateKeyPEM(pem, passphrase: nil)
+            }
+            return await SessionStore.shared.paneForwardsWheel(for: session, host: host, auth: auth)
+        }
     }
 
     private var loadingLabel: String {
