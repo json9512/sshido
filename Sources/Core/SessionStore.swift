@@ -3,6 +3,20 @@ import Foundation
 import sshidoModels
 #endif
 
+public enum TmuxRenameError: LocalizedError, Equatable {
+    case emptyName
+    case sessionGone
+    case rejected(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .emptyName: return "Session name can't be empty."
+        case .sessionGone: return "That session is no longer open."
+        case .rejected(let reason): return reason
+        }
+    }
+}
+
 public actor SessionStore {
     public static let shared = SessionStore()
 
@@ -34,9 +48,13 @@ public actor SessionStore {
 
     public func openSession(for host: RemoteHost, auth: SSHAuth, title: String? = nil) -> Session {
         let count = sessions(for: host.id).count + 1
+        let id = UUID()
+        let tmux = host.useTmux ? tmuxName(host: host, session: id) : nil
         let session = Session(
+            id: id,
             hostID: host.id,
-            title: title ?? "Session \(count)"
+            title: title ?? tmux ?? "Session \(count)",
+            tmuxName: tmux
         )
         sessions[session.id] = session
         persistLogged()
@@ -45,28 +63,124 @@ public actor SessionStore {
     }
 
     public func adoptRemoteSession(for host: RemoteHost, auth: SSHAuth, remote: RemoteTmuxSession) -> Session {
-        let session = Session(hostID: host.id, title: remote.name, tmuxName: remote.name)
+        let session = Session(
+            hostID: host.id,
+            title: remote.name,
+            tmuxName: remote.name,
+            tmuxSessionID: remote.sessionID,
+            tmuxCreatedAt: remote.createdAt
+        )
         sessions[session.id] = session
         persistLogged()
         channels[session.id] = makeChannel(for: host, auth: auth, sessionID: session.id)
         return session
     }
 
-    public func listRemoteTmuxSessions(for host: RemoteHost, auth: SSHAuth) async throws -> [RemoteTmuxSession] {
+    /// Learns each session's tmux id, picks up renames made on the server, and returns
+    /// the sessions this device isn't tracking.
+    public func syncRemoteSessions(for host: RemoteHost, auth: SSHAuth) async throws -> [RemoteTmuxSession] {
         let raw = try await withExecChannel(for: host, auth: auth) { ch in
             guard let path = try await self.resolveTmuxPath(for: host.id, using: ch) else { return "" }
             let out = try await ch.executeCommand(TmuxSessionList.listCommand(tmuxPath: path))
             return String(decoding: out, as: UTF8.self)
         }
-        let known = localTmuxNames(for: host)
-        return TmuxSessionList.parse(raw).filter { !known.contains($0.name) }
+        return reconcile(remotes: TmuxSessionList.parse(raw), host: host)
+    }
+
+    private func reconcile(remotes: [RemoteTmuxSession], host: RemoteHost) -> [RemoteTmuxSession] {
+        let plan = TmuxReconciler.plan(
+            locals: sessions(for: host.id),
+            remotes: remotes,
+            derivedName: { self.tmuxName(host: host, session: $0.id) }
+        )
+        for binding in plan.bindings {
+            guard var s = sessions[binding.localID] else { continue }
+            if s.tmuxName != binding.remote.name {
+                Log.session.info("tmux session now named \(binding.remote.name, privacy: .public)")
+            }
+            s.tmuxName = binding.remote.name
+            s.title = binding.remote.name
+            s.tmuxSessionID = binding.remote.sessionID
+            s.tmuxCreatedAt = binding.remote.createdAt
+            sessions[binding.localID] = s
+        }
+        // Unbound means gone from the server; dropping the id keeps a recycled "$0"
+        // from later pointing at a session that isn't ours.
+        let bound = Set(plan.bindings.map(\.localID))
+        for s in sessions(for: host.id) where !bound.contains(s.id) && s.tmuxSessionID != nil {
+            var stale = s
+            stale.tmuxSessionID = nil
+            stale.tmuxCreatedAt = nil
+            sessions[s.id] = stale
+        }
+        persistLogged()
+        return plan.unknown
+    }
+
+    /// `nil` when the session is not on the host. Acting on a stale id either does nothing
+    /// (`kill-session` exits quietly) or hits whichever session inherited the id.
+    private func refreshedTarget(
+        for sessionID: UUID,
+        host: RemoteHost,
+        path: String,
+        channel: SSHChannel
+    ) async throws -> String? {
+        let out = try await channel.executeCommand(TmuxSessionList.listCommand(tmuxPath: path))
+        _ = reconcile(remotes: TmuxSessionList.parse(String(decoding: out, as: UTF8.self)), host: host)
+        return sessions[sessionID]?.tmuxSessionID
+    }
+
+    @discardableResult
+    public func renameSession(
+        _ session: Session,
+        host: RemoteHost,
+        auth: SSHAuth,
+        to newName: String
+    ) async throws -> Session {
+        let wanted = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !wanted.isEmpty else { throw TmuxRenameError.emptyName }
+        guard host.useTmux else { return try applyRename(session.id, to: wanted, tmux: false) }
+
+        let output = try await withExecChannel(for: host, auth: auth) { ch -> String? in
+            guard let path = try await self.resolveTmuxPath(for: host.id, using: ch),
+                  let target = try await self.refreshedTarget(
+                      for: session.id, host: host, path: path, channel: ch
+                  )
+            else { return nil }
+            let out = try await ch.executeCommand(
+                TmuxSessionList.renameCommand(tmuxPath: path, target: target, newName: wanted)
+            )
+            return String(decoding: out, as: UTF8.self)
+        }
+        // Nothing to rename on the host, so the next connect creates it under this name.
+        guard let output else { return try applyRename(session.id, to: wanted, tmux: true) }
+
+        switch TmuxSessionList.parseRenameResult(output) {
+        case .renamed(let actual):
+            return try applyRename(session.id, to: actual, tmux: true)
+        case .failed(let reason):
+            Log.session.error("tmux rename failed: \(reason, privacy: .public)")
+            throw TmuxRenameError.rejected(reason)
+        }
+    }
+
+    private func applyRename(_ id: UUID, to name: String, tmux: Bool) throws -> Session {
+        guard var s = sessions[id] else { throw TmuxRenameError.sessionGone }
+        s.title = name
+        if tmux { s.tmuxName = name }
+        sessions[id] = s
+        persistLogged()
+        return s
     }
 
     public func killRemoteSession(_ session: Session, host: RemoteHost, auth: SSHAuth) async throws {
-        let name = session.tmuxName ?? tmuxName(host: host, session: session.id)
         try await withExecChannel(for: host, auth: auth) { ch in
-            guard let path = try await self.resolveTmuxPath(for: host.id, using: ch) else { return }
-            _ = try await ch.executeCommand(TmuxSessionList.killCommand(tmuxPath: path, sessionName: name))
+            guard let path = try await self.resolveTmuxPath(for: host.id, using: ch),
+                  let target = try await self.refreshedTarget(
+                      for: session.id, host: host, path: path, channel: ch
+                  )
+            else { return }
+            _ = try await ch.executeCommand(TmuxSessionList.killCommand(tmuxPath: path, target: target))
         }
         await close(sessionID: session.id)
     }
@@ -112,10 +226,6 @@ public actor SessionStore {
         return nil
     }
 
-    private func localTmuxNames(for host: RemoteHost) -> Set<String> {
-        Set(sessions(for: host.id).map { $0.tmuxName ?? tmuxName(host: host, session: $0.id) })
-    }
-
     public func channel(for sessionID: UUID) -> SSHChannel? {
         channels[sessionID]
     }
@@ -158,13 +268,6 @@ public actor SessionStore {
         sessions[id]
     }
 
-    public func renameSession(id: UUID, title: String) {
-        guard var s = sessions[id], s.title != title else { return }
-        s.title = title
-        sessions[id] = s
-        persistLogged()
-    }
-
     public func close(sessionID: UUID) async {
         await MetricsStore.shared.stop(sessionID: sessionID)
         if let ch = channels.removeValue(forKey: sessionID) {
@@ -183,9 +286,12 @@ public actor SessionStore {
     private func makeChannel(for host: RemoteHost, auth: SSHAuth, sessionID: UUID) -> SSHChannel {
         let bootstrap: String?
         if host.useTmux {
-            let name = shellEscape(sessions[sessionID]?.tmuxName ?? tmuxName(host: host, session: sessionID))
-            let tmux = tmuxPaths[host.id].map(shellEscape) ?? "tmux"
-            bootstrap = "if command -v \(tmux) >/dev/null 2>&1; then unset TMUX TMUX_PANE; \(tmux) setenv -g SSHIDO_SESSION 1 2>/dev/null || true; exec \(tmux) new -A -s \(name) -e SSHIDO_SESSION=1; fi"
+            let session = sessions[sessionID]
+            bootstrap = TmuxSessionList.bootstrapCommand(
+                tmuxPath: tmuxPaths[host.id] ?? "tmux",
+                sessionName: session?.tmuxName ?? tmuxName(host: host, session: sessionID),
+                sessionID: session?.tmuxSessionID
+            )
         } else {
             bootstrap = nil
         }
@@ -220,13 +326,7 @@ public actor SessionStore {
     }
 
     private func tmuxName(host: RemoteHost, session: UUID) -> String {
-        let prefix = host.tmuxSession.isEmpty ? "sshido" : host.tmuxSession
-        let short = String(session.uuidString.prefix(8))
-        return "\(prefix)-\(short)"
-    }
-
-    private nonisolated func shellEscape(_ s: String) -> String {
-        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        TmuxSessionList.sessionName(prefix: host.tmuxSession, sessionID: session)
     }
 
     private func persist() throws {

@@ -11,7 +11,6 @@ public protocol TerminalBridge: AnyObject {
     func applyAppearance() async
     func copyFromTerminal(_ kind: CopyKind) async -> String
     func snapshotBufferLines(beforeViewport: Int, afterViewport: Int) -> [String]
-    func requestServerRedraw()
     var hasSelection: Bool { get }
     var cols: Int { get }
     var isApplicationCursor: Bool { get }
