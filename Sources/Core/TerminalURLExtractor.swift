@@ -119,13 +119,16 @@ public enum TerminalURLExtractor {
         out.reserveCapacity(rows.reduce(0) { $0 + $1.count + 1 })
 
         var prev: String?
-        for row in rows {
+        for (i, row) in rows.enumerated() {
             if isRuleRow(row) {
                 out.append("\n")
                 prev = nil
                 continue
             }
-            if let prev, let glued = continuation(of: prev, next: row, cols: cols) {
+            if let prev,
+               let glued = continuation(
+                   of: prev, next: row, cols: cols, inRun: isHardWrapRun(rows, i)
+               ) {
                 out.append(glued)
             } else {
                 if !out.isEmpty { out.append("\n") }
@@ -136,12 +139,26 @@ public enum TerminalURLExtractor {
         return out
     }
 
+    // A tmux window narrower than the client wraps rows short of `cols`; the real
+    // wrap column shows up as adjacent rows sharing one exact width.
+    private static func isHardWrapRun(_ rows: [String], _ i: Int) -> Bool {
+        let width = rows[i - 1].count
+        guard width >= minPaneWidth else { return false }
+        if rows[i].count == width { return true }
+        return i >= 2 && rows[i - 2].count == width
+    }
+
     // TUI apps (e.g. Claude Code) wrap URLs below full terminal width with a per-row indent.
     private static let wrapSlack = 4
 
-    private static func continuation(of prev: String, next: String, cols: Int) -> String? {
+    private static func continuation(
+        of prev: String, next: String, cols: Int, inRun: Bool
+    ) -> String? {
         guard let last = prev.last, urlAllowedTrailing.contains(last) else { return nil }
         if prev.count >= cols { return next }
+        if inRun, !startsNewURL(next), leadingURLRunLength(of: Substring(next)) >= 2 {
+            return next
+        }
         guard cols > wrapSlack, prev.count >= cols - wrapSlack else { return nil }
         let stripped = next.drop(while: { $0 == " " })
         let nextIndent = next.count - stripped.count
@@ -149,6 +166,11 @@ public enum TerminalURLExtractor {
               leadingURLRunLength(of: stripped) >= 2
         else { return nil }
         return String(stripped)
+    }
+
+    private static func startsNewURL(_ s: String) -> Bool {
+        let lowered = s.lowercased()
+        return lowered.hasPrefix("http://") || lowered.hasPrefix("https://")
     }
 
     private static func leadingSpaceCount(of s: String) -> Int {
