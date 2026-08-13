@@ -171,6 +171,40 @@ final class TerminalURLExtractorTests: XCTestCase {
         XCTAssertEqual(urls.map(\.url.absoluteString), ["https://example.com/aaaaaa"])
     }
 
+    func testHardWrapNarrowerThanClientCols() {
+        let wrapped = [
+            "https://cc0d4607c5e8b2c1cab18a539969d3d2.r2.clo",
+            "udflarestorage.com/yojeong/households/6d87135f-",
+            "1d11-4321-b8cf-de59d51ff5f3/devices/621c186f-57",
+            "47-405e-8cd2-44f45733b44c/2026/08/06/clip-17860",
+            "03488600.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X",
+            "-Amz-Credential=f6b1b967740f58980a0b9cdf65c1c82",
+            "5%2F20260806%2Fauto%2Fs3%2Faws4_request&X-Amz-D",
+            "ate=20260806T080530Z&X-Amz-Expires=14400&X-Amz-",
+            "SignedHeaders=host&X-Amz-Signature=a94428767b34",
+            "5c8474b01ace8a1ae33c297aeb41dd10d20aaa07ba24502",
+            "87f17",
+        ]
+        for w in wrapped.dropLast() { XCTAssertEqual(w.count, 47) }
+        let rows = ["클립 링크 (폰에서 바로 열립니다)", ""] + wrapped + ["", "오늘 21:05 KST까지 유효합니다"]
+        for cols in [47, 49, 54, 80] {
+            let urls = TerminalURLExtractor.extract(from: rows, cols: cols)
+            XCTAssertEqual(urls.map(\.raw), [wrapped.joined()], "cols=\(cols)")
+        }
+    }
+
+    func testEqualLengthRepeatedURLRowsNotGlued() {
+        let rows = [
+            "https://example.com/foo",
+            "https://example.com/bar",
+        ]
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 80)
+        XCTAssertEqual(urls.map(\.url.absoluteString), [
+            "https://example.com/foo",
+            "https://example.com/bar",
+        ])
+    }
+
     func testStripTrailingPunctuationDirect() {
         XCTAssertEqual(TerminalURLExtractor.stripTrailingPunctuation("https://example.com."), "https://example.com")
         XCTAssertEqual(TerminalURLExtractor.stripTrailingPunctuation("https://example.com,"), "https://example.com")
