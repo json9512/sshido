@@ -250,7 +250,7 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
         let row = lastTapCell.map { max(0, min(rows - 1, $0.row)) } ?? max(0, rows / 2)
         let reps = min(max(abs(lines) / 2, 1), 6)
         for _ in 0..<reps {
-            bridge.terminal.sendEvent(buttonFlags: button, x: col, y: row)
+            bridge.sendWheelEvent(button: button, col: col, row: row)
         }
     }
 

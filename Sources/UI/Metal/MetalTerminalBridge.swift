@@ -33,8 +33,22 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     private var wheelForwarding = true
     private var wheelPolicyCheckedAt: Date?
     private var wheelProbeInFlight = false
+    private var wheelEchoDetector = WheelEchoDetector()
+    private var wheelEchoTrippedAt: Date?
+    private static let wheelEchoCooldown: TimeInterval = 30
 
-    public var forwardsWheelEvents: Bool { wheelForwarding }
+    public var forwardsWheelEvents: Bool {
+        if let tripped = wheelEchoTrippedAt,
+           Date().timeIntervalSince(tripped) < Self.wheelEchoCooldown {
+            return false
+        }
+        return wheelForwarding
+    }
+
+    public func sendWheelEvent(button: Int, col: Int, row: Int) {
+        wheelEchoDetector.recordSent(WheelEchoDetector.payload(button: button, col: col, row: row))
+        terminal.sendEvent(buttonFlags: button, x: col, y: row)
+    }
 
     /// `onSettled` runs only when a probe actually ran, so a caller can hold scrolls back
     /// and release them afterwards.
@@ -138,6 +152,25 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         terminal.feed(byteArray: Array(data))
         renderer.setNeedsRender()
         activityTracker.onDataReceived(byteCount: data.count)
+        if wheelEchoDetector.isWatching(),
+           wheelEchoDetector.tripped(by: cursorNeighborhoodText()) {
+            wheelEchoTrippedAt = Date()
+            Log.ui.error("wheel report echoed back as text — withholding wheel forwarding")
+        }
+    }
+
+    // yDisp + y is the cursor's absolute row while forwarding: local scrollback
+    // moves only in the mouseMode-off branch, so the viewport stays pinned.
+    private func cursorNeighborhoodText() -> String {
+        let cursorRow = terminal.buffer.yDisp + terminal.buffer.y
+        return rowText(cursorRow - 1) + rowText(cursorRow)
+    }
+
+    /// The remote that enabled these modes died with the channel; a reconnect lands
+    /// in a plain login shell that echoes wheel reports.
+    private func clearStaleMouseModes() {
+        let resets = "\u{1b}[?1003l\u{1b}[?1002l\u{1b}[?1000l\u{1b}[?1006l\u{1b}[?1005l\u{1b}[?1015l"
+        terminal.feed(byteArray: Array(resets.utf8))
     }
 
     public func refit() {
@@ -203,23 +236,22 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
 
         var rows: [String] = []
         rows.reserveCapacity(end - start)
-        let cols = terminal.cols
         for r in start..<end {
-            guard let line = terminal.getScrollInvariantLine(row: r) else { continue }
-            var s = ""
-            s.reserveCapacity(cols)
-            for c in 0..<cols {
-                let cd = line[c]
-                let ch = cd.getCharacter()
-                if ch == "\0" {
-                    s.append(" ")
-                } else {
-                    s.append(ch)
-                }
-            }
-            rows.append(rightTrim(s))
+            rows.append(rightTrim(rowText(r)))
         }
         return rows
+    }
+
+    private func rowText(_ row: Int) -> String {
+        guard row >= 0, let line = terminal.getScrollInvariantLine(row: row) else { return "" }
+        let cols = terminal.cols
+        var s = ""
+        s.reserveCapacity(cols)
+        for c in 0..<cols {
+            let ch = line[c].getCharacter()
+            s.append(ch == "\0" ? " " : ch)
+        }
+        return s
     }
 
     private func rightTrim(_ s: String) -> String {
@@ -266,7 +298,10 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
                 await self?.handleOutput(data)
             },
             onClose: { [weak self] in
-                Task { @MainActor in self?.activityTracker.onDisconnected() }
+                Task { @MainActor in
+                    self?.activityTracker.onDisconnected()
+                    self?.clearStaleMouseModes()
+                }
             }
         )
     }
