@@ -32,7 +32,7 @@ public final class ChromeRenderer {
         startTime = CACurrentMediaTime()
         let link = CADisplayLink(target: ChromeDisplayProxy(owner: self),
                                  selector: #selector(ChromeDisplayProxy.tick))
-        // Run at reduced frame rate — shimmer is slow, 15fps is plenty
+        // Shimmer is slow — 15fps is plenty.
         link.preferredFramesPerSecond = 15
         link.add(to: .main, forMode: .common)
         self.displayLink = link

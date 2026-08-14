@@ -46,7 +46,6 @@ public struct SpriteManifest: Codable, Sendable {
             throw PackError.unsupportedVersion(version)
         }
         if !isGIF {
-            // PNG packs require explicit frameSize and animations
             guard let fs = frameSize, fs.count == 2, fs[0] == fs[1] else {
                 throw PackError.invalidFrameSize(frameSize ?? [])
             }
