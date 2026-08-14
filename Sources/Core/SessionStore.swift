@@ -143,7 +143,11 @@ public actor SessionStore {
                 let out = try await ch.executeCommand(
                     TmuxPaneMouse.stateCommand(tmuxPath: path, target: target)
                 )
-                guard let state = TmuxPaneMouse.parse(String(decoding: out, as: UTF8.self)) else { return true }
+                let raw = String(decoding: out, as: UTF8.self)
+                guard let state = TmuxPaneMouse.parse(raw) else {
+                    Log.session.error("pane mouse probe unparsable, failing open: \(raw.prefix(80), privacy: .public)")
+                    return true
+                }
                 return TmuxPaneMouse.forwardsWheel(state)
             }
         } catch {
