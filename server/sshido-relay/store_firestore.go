@@ -30,7 +30,7 @@ func newFirestoreStore(ctx context.Context, projectID, collection string) (*fire
 	return &firestoreStore{client: client, coll: collection}, nil
 }
 
-func (s *firestoreStore) UpsertByDeviceToken(ctx context.Context, deviceToken string, newIDFn func() string, now int64) (Subscriber, error) {
+func (s *firestoreStore) UpsertByDeviceToken(ctx context.Context, deviceToken string, newIDFn func() string, now int64, muted *bool) (Subscriber, error) {
 	iter := s.client.Collection(s.coll).Where("device_token", "==", deviceToken).Limit(1).Documents(ctx)
 	doc, err := iter.Next()
 	iter.Stop()
@@ -41,7 +41,12 @@ func (s *firestoreStore) UpsertByDeviceToken(ctx context.Context, deviceToken st
 		}
 		sub.ID = doc.Ref.ID
 		sub.UpdatedAt = now
-		if _, err := doc.Ref.Update(ctx, []firestore.Update{{Path: "updated_at", Value: now}}); err != nil {
+		updates := []firestore.Update{{Path: "updated_at", Value: now}}
+		if muted != nil {
+			sub.Muted = *muted
+			updates = append(updates, firestore.Update{Path: "muted", Value: *muted})
+		}
+		if _, err := doc.Ref.Update(ctx, updates); err != nil {
 			return Subscriber{}, fmt.Errorf("update: %w", err)
 		}
 		return sub, nil
@@ -55,12 +60,14 @@ func (s *firestoreStore) UpsertByDeviceToken(ctx context.Context, deviceToken st
 		DeviceToken: deviceToken,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+		Muted:       muted != nil && *muted,
 	}
 	if _, err := s.client.Collection(s.coll).Doc(id).Set(ctx, map[string]any{
 		"device_token": sub.DeviceToken,
 		"created_at":   sub.CreatedAt,
 		"updated_at":   sub.UpdatedAt,
 		"notify_count": int64(0),
+		"muted":        sub.Muted,
 	}); err != nil {
 		return Subscriber{}, fmt.Errorf("insert: %w", err)
 	}
@@ -82,6 +89,7 @@ func (s *firestoreStore) LookupByID(ctx context.Context, id string) (Subscriber,
 		CreatedAt:   asInt64(data["created_at"]),
 		UpdatedAt:   asInt64(data["updated_at"]),
 		NotifyCount: asInt64(data["notify_count"]),
+		Muted:       data["muted"] == true,
 	}, nil
 }
 

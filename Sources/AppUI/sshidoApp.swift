@@ -28,10 +28,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let event = Self.agentEvent(for: notification)
-        Task { @MainActor in
-            if let event { AgentEventFeedback.shared.fire(event) }
+        Task {
+            // Backstop for a relay that doesn't honor the muted flag yet.
+            guard await PushService.shared.settings.notificationsEnabled else {
+                completionHandler([])
+                return
+            }
+            await MainActor.run {
+                if let event { AgentEventFeedback.shared.fire(event) }
+            }
+            completionHandler([.banner, .sound, .badge, .list])
         }
-        completionHandler([.banner, .sound, .badge, .list])
     }
 
     /// Map an incoming push into an AgentEvent. Priority is the primary

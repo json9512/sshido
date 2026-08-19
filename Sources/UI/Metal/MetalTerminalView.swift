@@ -74,7 +74,6 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
     public var returnSendsNewline = false
 
     private var pinchBaseFontSize: CGFloat = 16
-    private var keyboardOverlap: CGFloat = 0
     private var lastLayoutSize: CGSize = .zero
     private var lastTapCell: (col: Int, row: Int)?
 
@@ -114,14 +113,6 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
         long.minimumPressDuration = 0.4
         addGestureRecognizer(long)
 
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(keyboardWillShow(_:)),
-            name: UIResponder.keyboardWillShowNotification, object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(keyboardWillHide(_:)),
-            name: UIResponder.keyboardWillHideNotification, object: nil
-        )
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -361,24 +352,9 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
         return (b, a)
     }
 
-    @objc private func keyboardWillShow(_ note: Notification) {
-        guard let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-        let mine = convert(bounds, to: nil)
-        keyboardOverlap = max(0, mine.maxY - f.minY)
-        setNeedsLayout()
-        layoutIfNeeded()
-    }
-
-    @objc private func keyboardWillHide(_ note: Notification) {
-        keyboardOverlap = 0
-        setNeedsLayout()
-        layoutIfNeeded()
-    }
-
     public override func layoutSubviews() {
         super.layoutSubviews()
-        let availableHeight = max(1, bounds.height - keyboardOverlap)
-        let f = CGRect(x: 0, y: 0, width: bounds.width, height: availableHeight)
+        let f = CGRect(x: 0, y: 0, width: bounds.width, height: max(1, bounds.height))
         inputProxy.frame = f
         metalOverlay.frame = f
         renderer.metalLayer.frame = metalOverlay.bounds
@@ -403,9 +379,8 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
         let cellW = renderer.glyphMetrics.cellWidth
         let cellH = renderer.glyphMetrics.cellHeight
         guard cellW > 0, cellH > 0, bounds.width > 0 else { return }
-        let availableHeight = max(1, bounds.height - keyboardOverlap)
         let cols = max(1, Int(bounds.width / cellW))
-        let rows = max(1, Int(availableHeight / cellH))
+        let rows = max(1, Int(bounds.height / cellH))
         bridge?.resizeIfChanged(cols: cols, rows: rows)
     }
 }

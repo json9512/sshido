@@ -41,10 +41,14 @@ On a real server use a systemd unit (Linux) or launchd (macOS).
 
 ## APIs
 
-- `POST /subscribe` — body `{"deviceToken":"..."}` → returns `{"id":"...","notifyURL":"..."}`.
-  Called by the sshido iPhone app after APNs registration.
+- `POST /subscribe` — body `{"deviceToken":"...", "muted":false}` → returns `{"id":"...","notifyURL":"..."}`.
+  Called by the sshido iPhone app after APNs registration. `muted` is optional:
+  `true`/`false` sets the device's mute state (the app's Notifications toggle);
+  omitting it preserves the current state, so old clients never unmute a device.
 - `POST /n/<id>` — body `{"title":"...", "body":"...", "priority":"normal|high", "sessionRef":"...", "hostRef":"..."}`.
   Called by your Claude Code hook (or any CLI wrapper) to push an alert.
+  Returns 204 without pushing when the subscriber is muted, so hooks keep
+  succeeding while the phone stays quiet.
 
 ## Required flags
 

@@ -9,6 +9,8 @@ public actor OAuthTunnel {
     }
 
     private let port: Int
+    private let remoteHost: String
+    private let remotePort: Int
     private let sshChannel: SSHChannel
     private let queue: DispatchQueue
     private var listener: NWListener?
@@ -17,8 +19,10 @@ public actor OAuthTunnel {
     private var forwarded: [SSHForwardedChannel] = []
     private var pumpTasks: [Task<Void, Never>] = []
 
-    public init(port: Int, sshChannel: SSHChannel) {
+    public init(port: Int, sshChannel: SSHChannel, remoteHost: String = "127.0.0.1", remotePort: Int? = nil) {
         self.port = port
+        self.remoteHost = remoteHost
+        self.remotePort = remotePort ?? port
         self.sshChannel = sshChannel
         self.queue = DispatchQueue(label: "app.sshido.oauth-tunnel.\(port)")
     }
@@ -66,7 +70,7 @@ public actor OAuthTunnel {
         guard state == .listening else { conn.cancel(); return }
         let fwd: SSHForwardedChannel
         do {
-            fwd = try await sshChannel.openForwardedChannel(host: "127.0.0.1", port: port)
+            fwd = try await sshChannel.openForwardedChannel(host: remoteHost, port: remotePort)
         } catch {
             conn.cancel()
             return

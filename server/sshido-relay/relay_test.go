@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,7 +48,7 @@ func TestSubscribeBodyCap(t *testing.T) {
 func TestNotifyBodyCap(t *testing.T) {
 	s := newTestServer(t)
 	// Seed a subscriber so LookupByID succeeds before we hit the body cap.
-	sub, err := s.store.UpsertByDeviceToken(t.Context(), "devtok123", func() string { return "fixedID" }, time.Now().Unix())
+	sub, err := s.store.UpsertByDeviceToken(t.Context(), "devtok123", func() string { return "fixedID" }, time.Now().Unix(), nil)
 	if err != nil {
 		t.Fatalf("seed subscriber: %v", err)
 	}
@@ -72,6 +73,92 @@ func TestSubscribeHappyPath(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"id":`) || !strings.Contains(w.Body.String(), `"notifyURL":`) {
 		t.Fatalf("unexpected response body: %q", w.Body.String())
+	}
+}
+
+func TestSQLiteMigrationAddsMutedColumn(t *testing.T) {
+	path := t.TempDir() + "/old.db"
+	old, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := old.Exec(`
+        CREATE TABLE subscribers (
+            id           TEXT PRIMARY KEY,
+            device_token TEXT NOT NULL,
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL,
+            notify_count INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO subscribers(id,device_token,created_at,updated_at) VALUES('oldID','oldTok',1,1);
+    `); err != nil {
+		t.Fatalf("seed old schema: %v", err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	store, err := newSQLiteStore(path)
+	if err != nil {
+		t.Fatalf("newSQLiteStore on old schema: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	sub, err := store.LookupByID(t.Context(), "oldID")
+	if err != nil {
+		t.Fatalf("lookup migrated row: %v", err)
+	}
+	if sub.Muted {
+		t.Fatalf("migrated row should default to unmuted")
+	}
+	muted := true
+	if _, err := store.UpsertByDeviceToken(t.Context(), "oldTok", func() string { return "x" }, 2, &muted); err != nil {
+		t.Fatalf("upsert muted: %v", err)
+	}
+	sub, err = store.LookupByID(t.Context(), "oldID")
+	if err != nil || !sub.Muted {
+		t.Fatalf("expected muted after upsert; err=%v muted=%v", err, sub.Muted)
+	}
+}
+
+func TestMutedSubscriberDropsNotify(t *testing.T) {
+	s := newTestServer(t)
+
+	notify := func(id string) int {
+		req := httptest.NewRequest(http.MethodPost, "/n/"+id, strings.NewReader(`{"title":"t"}`))
+		w := httptest.NewRecorder()
+		s.notify(w, req)
+		return w.Code
+	}
+	subscribe := func(body string) {
+		req := httptest.NewRequest(http.MethodPost, "/subscribe", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		s.subscribe(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("subscribe %q: got %d body=%q", body, w.Code, w.Body.String())
+		}
+	}
+
+	sub, err := s.store.UpsertByDeviceToken(t.Context(), "devtokM", func() string { return "muteID" }, time.Now().Unix(), nil)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// apns == nil → an unmuted notify returns 202 "queued"; a muted one 204.
+	if code := notify(sub.ID); code != http.StatusAccepted {
+		t.Fatalf("unmuted notify: got %d, want 202", code)
+	}
+	subscribe(`{"deviceToken":"devtokM","muted":true}`)
+	if code := notify(sub.ID); code != http.StatusNoContent {
+		t.Fatalf("muted notify: got %d, want 204", code)
+	}
+	// A subscribe without the muted field (old client / app relaunch) must
+	// not silently unmute.
+	subscribe(`{"deviceToken":"devtokM"}`)
+	if code := notify(sub.ID); code != http.StatusNoContent {
+		t.Fatalf("notify after muted-preserving resubscribe: got %d, want 204", code)
+	}
+	subscribe(`{"deviceToken":"devtokM","muted":false}`)
+	if code := notify(sub.ID); code != http.StatusAccepted {
+		t.Fatalf("unmuted-again notify: got %d, want 202", code)
 	}
 }
 
