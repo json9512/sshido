@@ -218,10 +218,8 @@ final class TerminalURLExtractorTests: XCTestCase {
         return rows
     }
 
-    /// Claude Code wraps long URLs with a two-space hanging indent inside a
-    /// tmux window narrower than the client grid; no border column exists to
-    /// shrink cols down to the window width (captured from a real 47-col
-    /// window on a 52-col client).
+    /// Claude Code's two-space hanging indent inside a 47-col window on a
+    /// 52-col client, with no border column to shrink cols (real capture).
     func testIndentedHardWrapRunNarrowerThanClientCols() {
         let rows = ["❯ Reply with these lines:", ""]
             + Self.hardWrap(Self.r2URL, width: 46, indent: "  ")
@@ -233,8 +231,7 @@ final class TerminalURLExtractorTests: XCTestCase {
         ])
     }
 
-    /// A URL short enough to wrap onto only two rows never forms an
-    /// equal-width run, so the pair needs its own evidence-based glue.
+    /// Two wrapped rows never form an equal-width run.
     func testTwoRowHardWrapNarrowerThanClientCols() {
         let rows = [
             "Artifact published (open on your phone):",
@@ -247,9 +244,28 @@ final class TerminalURLExtractorTests: XCTestCase {
         ])
     }
 
-    /// NSDataDetector drops the entire query string when unrelated text
-    /// follows the URL on the same corpus line (an echoed shell command,
-    /// a full-width row glued to the next text row).
+    func testTwoRowLANURLAcrossClientWidths() {
+        let rows = [
+            "The lesson is live on your local network. On",
+            "your phone (same Wi-Fi as this Mac), open:",
+            "",
+            "http://192.168.219.105:8642/lessons/0003-na-ha-",
+            "rows.html",
+            "",
+            "I verified from the LAN address that both the",
+        ]
+        for cols in [47, 48, 50, 52, 54, 56, 58] {
+            let urls = TerminalURLExtractor.extract(from: rows, cols: cols)
+            XCTAssertEqual(
+                urls.map(\.raw),
+                ["http://192.168.219.105:8642/lessons/0003-na-ha-rows.html"],
+                "cols=\(cols)"
+            )
+        }
+    }
+
+    /// NSDataDetector drops the whole query string when unrelated text
+    /// follows the URL on the same corpus line.
     func testDetectorQueryTruncationRepaired() {
         var rows = Self.hardWrap(Self.r2URL + "; echo", width: 52)
         rows.append("done")
@@ -257,8 +273,6 @@ final class TerminalURLExtractorTests: XCTestCase {
         XCTAssertEqual(urls.map(\.raw), [Self.r2URL])
     }
 
-    /// When glue legitimately fails, a wrapped row still matches on its own
-    /// as a bare domain; such fragments are noise once the full URL is found.
     func testSchemelessFragmentOfLongerURLDropped() {
         let rows = [
             "  x https://long.example.com/path/abcdef",

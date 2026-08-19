@@ -63,12 +63,9 @@ public actor PushService {
         try await syncSubscription()
     }
 
-    /// Persists the toggle locally, then propagates it to the relay as a
-    /// `muted` flag on the existing subscription so the notify URL (already
-    /// baked into remote hosts' ~/.sshido/notify.url) stays valid across
-    /// disable/enable cycles. Local persistence must survive a dead relay,
-    /// so sync failures are reported but do not roll the setting back —
-    /// willPresent suppression still covers the foreground case.
+    /// Mutes on the relay instead of unsubscribing so the notify URL baked
+    /// into remote hosts stays valid. Sync failures throw but never roll the
+    /// local setting back — willPresent still covers the foreground case.
     public func setNotificationsEnabled(_ enabled: Bool) async throws {
         settings.notificationsEnabled = enabled
         try persistSettings()

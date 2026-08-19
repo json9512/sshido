@@ -173,7 +173,7 @@ public enum TerminalURLExtractor {
     private static let wrapSlack = 4
 
     // How far a row filling a desktop-sized tmux window can fall short of the phone grid.
-    private static let narrowWindowSlack = 8
+    private static let narrowWindowSlack = 12
 
     private static func continuation(
         of prev: String, next: String, cols: Int, inRun: Bool

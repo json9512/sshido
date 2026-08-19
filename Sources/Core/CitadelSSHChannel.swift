@@ -188,8 +188,6 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
 
     public func resize(cols: Int, rows: Int) async throws {
         guard let w = stdin else {
-            // The PTY isn't open yet (mid-connect); losing this leaves the
-            // remote at a size the local grid no longer has.
             pendingResize = (cols, rows)
             NSLog("[sshido] resize \(cols)x\(rows) before PTY ready — deferred")
             return

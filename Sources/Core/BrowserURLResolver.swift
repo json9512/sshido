@@ -1,8 +1,7 @@
 import Foundation
 
-/// Decides how a URL picked from the terminal should be opened in the
-/// in-app browser: directly, or through an SSH tunnel when the address is
-/// only reachable from the connected host's network.
+/// Local-network addresses are only reachable through the connected host,
+/// so they open via an SSH tunnel instead of directly.
 public enum BrowserURLResolver {
     public enum Target: Equatable, Sendable {
         case direct(URL)
@@ -22,7 +21,6 @@ public enum BrowserURLResolver {
         else { return nil }
 
         guard isHostLocal(host) else {
-            // Schemeless public URLs default to https.
             if withScheme != trimmed { comps.scheme = "https" }
             return comps.url.map { .direct($0) }
         }

@@ -29,8 +29,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let event = Self.agentEvent(for: notification)
         Task {
-            // Local backstop for the relay-side mute: an out-of-date relay
-            // still pushes, but a muted device shows nothing in-app.
+            // Backstop for a relay that doesn't honor the muted flag yet.
             guard await PushService.shared.settings.notificationsEnabled else {
                 completionHandler([])
                 return
