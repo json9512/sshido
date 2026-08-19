@@ -244,6 +244,30 @@ final class TerminalURLExtractorTests: XCTestCase {
         ])
     }
 
+    /// Captured from a live 49-col window: the indented URL row fills the
+    /// grid exactly (2 + 47 == cols), hitting the full-width glue branch
+    /// which must strip the repeated hanging indent.
+    func testIndentedRowFillingExactClientWidth() {
+        let rows = [
+            "⏺ The lesson is live on your local network. On",
+            "  your phone (same Wi-Fi as this Mac), open:",
+            "",
+            "  http://192.168.219.105:8642/lessons/0003-na-ha-",
+            "  rows.html",
+            "",
+            "  I verified from the LAN address that both the",
+        ]
+        XCTAssertEqual(rows[3].count, 49)
+        for cols in [49, 50, 52, 56] {
+            let urls = TerminalURLExtractor.extract(from: rows, cols: cols)
+            XCTAssertEqual(
+                urls.map(\.raw),
+                ["http://192.168.219.105:8642/lessons/0003-na-ha-rows.html"],
+                "cols=\(cols)"
+            )
+        }
+    }
+
     func testTwoRowLANURLAcrossClientWidths() {
         let rows = [
             "The lesson is live on your local network. On",
