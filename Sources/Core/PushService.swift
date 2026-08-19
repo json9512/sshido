@@ -63,6 +63,16 @@ public actor PushService {
         try await syncSubscription()
     }
 
+    /// Mutes on the relay instead of unsubscribing so the notify URL baked
+    /// into remote hosts stays valid. Sync failures throw but never roll the
+    /// local setting back — willPresent still covers the foreground case.
+    public func setNotificationsEnabled(_ enabled: Bool) async throws {
+        settings.notificationsEnabled = enabled
+        try persistSettings()
+        guard subscription != nil, deviceToken != nil else { return }
+        try await syncSubscription()
+    }
+
     public func clearSubscription() throws {
         self.subscription = nil
         do {
@@ -83,7 +93,10 @@ public actor PushService {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 10
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["deviceToken": token])
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "deviceToken": token,
+            "muted": !settings.notificationsEnabled,
+        ])
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PushError.serverRejected

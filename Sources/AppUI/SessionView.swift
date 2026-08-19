@@ -31,6 +31,8 @@ public struct SessionView: View {
     @State private var lastReconnectAt: Date?
     @StateObject private var authorize = AuthorizeSignInController()
     @State private var urlPickerURLs: [DetectedURL]?
+    @State private var browserTarget: BrowserSheetTarget?
+    @State private var browserTunnel: OAuthTunnel?
     @State private var mascotState = MascotSpriteState()
     @State private var showMascot = true
     @State private var mascotOffset: CGSize = .zero
@@ -88,7 +90,6 @@ public struct SessionView: View {
                         )
                     }
                 }
-                .ignoresSafeArea(.keyboard)
                 .background(
                     GeometryReader { geo in
                         Color.clear.onAppear { terminalSize = geo.size }
@@ -258,7 +259,46 @@ public struct SessionView: View {
             CopyURLPickerSheet(urls: urlPickerURLs ?? []) { picked in
                 UIPasteboard.general.string = picked.raw
                 toast = "Copied URL"
+            } onOpen: { picked in
+                Task { await openInBrowser(picked) }
             }
+        }
+        .sheet(item: $browserTarget, onDismiss: {
+            let tunnel = browserTunnel
+            browserTunnel = nil
+            Task { await tunnel?.stop() }
+        }) { target in
+            SafariSheet(url: target.url) { browserTarget = nil }
+                .ignoresSafeArea()
+        }
+    }
+
+    private func openInBrowser(_ picked: DetectedURL) async {
+        guard let resolved = BrowserURLResolver.resolve(picked.raw) else {
+            toast = "Can't open this URL"
+            return
+        }
+        switch resolved {
+        case .direct(let url):
+            browserTarget = BrowserSheetTarget(url: url)
+        case .tunneled(let open, let remoteHost, let port):
+            guard let ch = channel else {
+                toast = "Not connected"
+                return
+            }
+            if let old = browserTunnel {
+                browserTunnel = nil
+                await old.stop()
+            }
+            let tunnel = OAuthTunnel(port: port, sshChannel: ch, remoteHost: remoteHost)
+            do {
+                try await tunnel.start()
+            } catch {
+                toast = "Tunnel to \(remoteHost):\(port) failed"
+                return
+            }
+            browserTunnel = tunnel
+            browserTarget = BrowserSheetTarget(url: open)
         }
     }
 
@@ -518,5 +558,10 @@ public struct SessionView: View {
         try? await ch.send(Array(text.utf8))
     }
 
+}
+
+struct BrowserSheetTarget: Identifiable, Equatable {
+    let id = UUID()
+    let url: URL
 }
 #endif

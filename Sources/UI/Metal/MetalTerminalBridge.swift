@@ -20,6 +20,8 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
     private var hasReceivedOutput = false
     private var hasStartedConnect = false
     private var lastReportedSize: (cols: Int, rows: Int) = (0, 0)
+    private var pendingRemoteSize: (cols: Int, rows: Int)?
+    private var remoteResizeTask: Task<Void, Never>?
     private let delegateRelay = TerminalDelegateRelay()
     private var appearanceObserver: NSObjectProtocol?
     private var appearanceTask: Task<Void, Never>?
@@ -283,9 +285,24 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
             hasStartedConnect = true
             Task { try? await channel.connect() }
         } else {
-            Task { try? await channel.resize(cols: cols, rows: rows) }
+            pendingRemoteSize = (cols, rows)
+            pumpRemoteResize()
         }
         renderer.setNeedsRender()
+    }
+
+    // Concurrent window-change requests land in arbitrary order and can leave
+    // the PTY at a transient size; send serially, latest size wins.
+    private func pumpRemoteResize() {
+        guard remoteResizeTask == nil else { return }
+        remoteResizeTask = Task { [weak self] in
+            while let size = self?.pendingRemoteSize {
+                self?.pendingRemoteSize = nil
+                guard let channel = self?.channel else { break }
+                try? await channel.resize(cols: size.cols, rows: size.rows)
+            }
+            self?.remoteResizeTask = nil
+        }
     }
 
     public func invalidateReportedSize() {

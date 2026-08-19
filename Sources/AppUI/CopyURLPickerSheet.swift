@@ -7,6 +7,7 @@ import sshidoCore
 struct CopyURLPickerSheet: View {
     let urls: [DetectedURL]
     let onPick: (DetectedURL) -> Void
+    let onOpen: (DetectedURL) -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -58,6 +59,17 @@ struct CopyURLPickerSheet: View {
             Image(systemName: "doc.on.doc")
                 .foregroundStyle(DS.Color.accent)
                 .accessibilityLabel("Copy URL")
+            Button {
+                onOpen(detected)
+                dismiss()
+            } label: {
+                Image(systemName: "safari")
+                    .foregroundStyle(DS.Color.accent)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Open in in-app browser")
         }
         .contentShape(Rectangle())
     }

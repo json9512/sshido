@@ -205,6 +205,95 @@ final class TerminalURLExtractorTests: XCTestCase {
         ])
     }
 
+    private static let r2URL = "https://cc0d4607c5e8b2c1cab18a539969d3d2.r2.cloudflarestorage.com/yojeong/households/6d87135f-1d11-4321-b8cf-de59d51ff5f3/devices/621c186f-5747-405e-8cd2-44f45733b44c/2026/08/06/clip-1786003488600.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=f6b1b967740f58980a0b9cdf65c1c825%2F20260806%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260806T080530Z&X-Amz-Expires=14400&X-Amz-SignedHeaders=host&X-Amz-Signature=a94428767b345c8474b01ace8a1ae33c297aeb41dd10d20aaa07ba2450287f17"
+
+    private static func hardWrap(_ text: String, width: Int, indent: String = "") -> [String] {
+        var rows: [String] = []
+        var rest = Substring(text)
+        while !rest.isEmpty {
+            let chunk = rest.prefix(width - indent.count)
+            rows.append(indent + chunk)
+            rest = rest.dropFirst(chunk.count)
+        }
+        return rows
+    }
+
+    /// Claude Code's two-space hanging indent inside a 47-col window on a
+    /// 52-col client, with no border column to shrink cols (real capture).
+    func testIndentedHardWrapRunNarrowerThanClientCols() {
+        let rows = ["❯ Reply with these lines:", ""]
+            + Self.hardWrap(Self.r2URL, width: 46, indent: "  ")
+            + ["", "  https://claude.ai/public/artifacts/0198c9c2", "  -ab12-7cc0-9f6d-1234567890ab"]
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 52)
+        XCTAssertEqual(urls.map(\.raw), [
+            Self.r2URL,
+            "https://claude.ai/public/artifacts/0198c9c2-ab12-7cc0-9f6d-1234567890ab",
+        ])
+    }
+
+    /// Two wrapped rows never form an equal-width run.
+    func testTwoRowHardWrapNarrowerThanClientCols() {
+        let rows = [
+            "Artifact published (open on your phone):",
+            "  https://claude.ai/public/artifacts/0198c9c2-ab",
+            "  -12-7cc0-9f6d-1234567890ab",
+        ]
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 52)
+        XCTAssertEqual(urls.map(\.raw), [
+            "https://claude.ai/public/artifacts/0198c9c2-ab-12-7cc0-9f6d-1234567890ab",
+        ])
+    }
+
+    func testTwoRowLANURLAcrossClientWidths() {
+        let rows = [
+            "The lesson is live on your local network. On",
+            "your phone (same Wi-Fi as this Mac), open:",
+            "",
+            "http://192.168.219.105:8642/lessons/0003-na-ha-",
+            "rows.html",
+            "",
+            "I verified from the LAN address that both the",
+        ]
+        for cols in [47, 48, 50, 52, 54, 56, 58] {
+            let urls = TerminalURLExtractor.extract(from: rows, cols: cols)
+            XCTAssertEqual(
+                urls.map(\.raw),
+                ["http://192.168.219.105:8642/lessons/0003-na-ha-rows.html"],
+                "cols=\(cols)"
+            )
+        }
+    }
+
+    /// NSDataDetector drops the whole query string when unrelated text
+    /// follows the URL on the same corpus line.
+    func testDetectorQueryTruncationRepaired() {
+        var rows = Self.hardWrap(Self.r2URL + "; echo", width: 52)
+        rows.append("done")
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 52)
+        XCTAssertEqual(urls.map(\.raw), [Self.r2URL])
+    }
+
+    func testSchemelessFragmentOfLongerURLDropped() {
+        let rows = [
+            "  x https://long.example.com/path/abcdef",
+            "long.example.com/path/abc",
+        ]
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 80)
+        XCTAssertEqual(urls.map(\.url.absoluteString), ["https://long.example.com/path/abcdef"])
+    }
+
+    func testStandaloneBareDomainAfterURLRowNotGlued() {
+        let rows = [
+            "see https://foo.example.com/aaaa",
+            "other.example.com/bbb",
+        ]
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 80)
+        XCTAssertEqual(urls.map(\.raw), [
+            "https://foo.example.com/aaaa",
+            "other.example.com/bbb",
+        ])
+    }
+
     func testStripTrailingPunctuationDirect() {
         XCTAssertEqual(TerminalURLExtractor.stripTrailingPunctuation("https://example.com."), "https://example.com")
         XCTAssertEqual(TerminalURLExtractor.stripTrailingPunctuation("https://example.com,"), "https://example.com")
