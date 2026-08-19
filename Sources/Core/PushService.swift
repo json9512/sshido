@@ -63,6 +63,19 @@ public actor PushService {
         try await syncSubscription()
     }
 
+    /// Persists the toggle locally, then propagates it to the relay as a
+    /// `muted` flag on the existing subscription so the notify URL (already
+    /// baked into remote hosts' ~/.sshido/notify.url) stays valid across
+    /// disable/enable cycles. Local persistence must survive a dead relay,
+    /// so sync failures are reported but do not roll the setting back —
+    /// willPresent suppression still covers the foreground case.
+    public func setNotificationsEnabled(_ enabled: Bool) async throws {
+        settings.notificationsEnabled = enabled
+        try persistSettings()
+        guard subscription != nil, deviceToken != nil else { return }
+        try await syncSubscription()
+    }
+
     public func clearSubscription() throws {
         self.subscription = nil
         do {
@@ -83,7 +96,10 @@ public actor PushService {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 10
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["deviceToken": token])
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "deviceToken": token,
+            "muted": !settings.notificationsEnabled,
+        ])
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PushError.serverRejected

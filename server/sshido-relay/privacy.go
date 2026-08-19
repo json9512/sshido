@@ -53,7 +53,7 @@ a{color:#4fd1c5}
 <p>SSH credentials are encrypted at rest in the iOS Keychain and accessible only while your device is unlocked. Host configs, sessions, and preferences are stored locally in the app sandbox. None of this is uploaded.</p>
 
 <h2>Push notifications (optional)</h2>
-<p>If enabled, your APNs device token is sent to push.sshido.com over HTTPS. The relay stores only a random subscriber ID, the token, and a notification count. No credentials, terminal content, or personal info is stored. You may self-host the relay.</p>
+<p>If enabled, your APNs device token is sent to push.sshido.com over HTTPS. The relay stores only a random subscriber ID, the token, a notification count, and a mute flag. No credentials, terminal content, or personal info is stored. You may self-host the relay.</p>
 
 <h2>Crash reporting</h2>
 <p>sshido uses <a href="https://sentry.io">Sentry</a> to collect crash reports and performance diagnostics. Sentry may receive device model, OS version, stack traces, and breadcrumb logs. No SSH credentials, terminal content, or personal data is included in crash reports. See <a href="https://sentry.io/privacy/">Sentry's privacy policy</a>.</p>

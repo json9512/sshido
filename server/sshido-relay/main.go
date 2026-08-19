@@ -171,6 +171,7 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 
 type subscribeReq struct {
 	DeviceToken string `json:"deviceToken"`
+	Muted       *bool  `json:"muted"`
 }
 type subscribeResp struct {
 	ID        string `json:"id"`
@@ -197,7 +198,7 @@ func (s *server) subscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad body", 400)
 		return
 	}
-	sub, err := s.store.UpsertByDeviceToken(r.Context(), req.DeviceToken, randomID, time.Now().Unix())
+	sub, err := s.store.UpsertByDeviceToken(r.Context(), req.DeviceToken, randomID, time.Now().Unix(), req.Muted)
 	if err != nil {
 		log.Printf("subscribe err: %v", err)
 		http.Error(w, "store error", 500)
@@ -237,6 +238,11 @@ func (s *server) notify(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		http.Error(w, "store error", 500)
+		return
+	}
+	if sub.Muted {
+		log.Printf("notify muted id=%s — dropped without push", id)
+		w.WriteHeader(204)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10) // 4 KiB — APNs payload max

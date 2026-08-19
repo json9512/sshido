@@ -25,7 +25,16 @@ public enum TerminalURLExtractor {
             collect(from: join(rows: paneRows, cols: pane.count),
                     detector: detector, seen: &seen, into: &out)
         }
-        return out
+        return dropContainedFragments(out)
+    }
+
+    // A wrapped row that failed to glue still matches alone as a bare domain
+    // ("udflarestorage.com/…"); drop it once a longer candidate contains it.
+    private static func dropContainedFragments(_ candidates: [DetectedURL]) -> [DetectedURL] {
+        candidates.filter { c in
+            if c.raw.lowercased().hasPrefix("http") { return true }
+            return !candidates.contains { $0.raw.count > c.raw.count && $0.raw.contains(c.raw) }
+        }
     }
 
     private static func collect(
@@ -43,12 +52,24 @@ public enum TerminalURLExtractor {
             let scheme = original.scheme?.lowercased()
             guard scheme == "http" || scheme == "https" else { continue }
 
-            let raw = String(corpus[range])
+            let raw = extendTruncatedMatch(corpus: corpus, range: range)
             let trimmed = stripTrailingPunctuation(raw)
             guard let cleanURL = URL(string: trimmed) else { continue }
             guard seen.insert(cleanURL.absoluteString).inserted else { continue }
             out.append(DetectedURL(url: cleanURL, raw: trimmed))
         }
+    }
+
+    // NSDataDetector silently drops a long URL's query string when unrelated
+    // text follows on the same line ("…87f17; echo" matches only to the path).
+    private static func extendTruncatedMatch(corpus: String, range: Range<String.Index>) -> String {
+        let matched = corpus[range]
+        guard matched.lowercased().hasPrefix("http") else { return String(matched) }
+        var end = range.upperBound
+        while end < corpus.endIndex, urlAllowedTrailing.contains(corpus[end]) {
+            end = corpus.index(after: end)
+        }
+        return String(corpus[range.lowerBound..<end])
     }
 
     static let minPaneWidth = 8
@@ -151,24 +172,48 @@ public enum TerminalURLExtractor {
     // TUI apps (e.g. Claude Code) wrap URLs below full terminal width with a per-row indent.
     private static let wrapSlack = 4
 
+    // How far a row filling a desktop-sized tmux window can fall short of the phone grid.
+    private static let narrowWindowSlack = 8
+
     private static func continuation(
         of prev: String, next: String, cols: Int, inRun: Bool
     ) -> String? {
         guard let last = prev.last, urlAllowedTrailing.contains(last) else { return nil }
         if prev.count >= cols { return next }
-        if inRun, !startsNewURL(next), leadingURLRunLength(of: Substring(next)) >= 2 {
-            return next
-        }
-        guard cols > wrapSlack, prev.count >= cols - wrapSlack else { return nil }
         let stripped = next.drop(while: { $0 == " " })
-        let nextIndent = next.count - stripped.count
-        guard nextIndent == leadingSpaceCount(of: prev),
+        guard next.count - stripped.count == leadingSpaceCount(of: prev),
+              !startsNewURL(stripped),
               leadingURLRunLength(of: stripped) >= 2
+        else { return nil }
+        if inRun { return String(stripped) }
+        if cols > wrapSlack, prev.count >= cols - wrapSlack { return String(stripped) }
+        // Two-row hard wrap: no equal-width run proves the wrap column, so
+        // demand a URL running off a near-full row onto a purely-URL tail.
+        guard prev.count >= max(minPaneWidth, cols - narrowWindowSlack),
+              next.count < prev.count,
+              urlRunsToRowEnd(prev),
+              stripped.allSatisfy({ urlAllowedTrailing.contains($0) }),
+              !isStandaloneLink(String(stripped))
         else { return nil }
         return String(stripped)
     }
 
-    private static func startsNewURL(_ s: String) -> Bool {
+    private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    // A tail that is a complete link on its own is the next URL, not a wrap remainder.
+    private static func isStandaloneLink(_ s: String) -> Bool {
+        guard let detector = linkDetector else { return false }
+        let range = NSRange(s.startIndex..., in: s)
+        return detector.firstMatch(in: s, options: [], range: range).map { $0.range == range } ?? false
+    }
+
+    private static func urlRunsToRowEnd(_ row: String) -> Bool {
+        guard let r = row.range(of: #"https?://"#, options: [.regularExpression, .caseInsensitive])
+        else { return false }
+        return row[r.lowerBound...].allSatisfy { urlAllowedTrailing.contains($0) }
+    }
+
+    private static func startsNewURL(_ s: some StringProtocol) -> Bool {
         let lowered = s.lowercased()
         return lowered.hasPrefix("http://") || lowered.hasPrefix("https://")
     }

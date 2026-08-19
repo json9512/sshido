@@ -31,6 +31,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     private var stdin: TTYStdinWriter?
     private var ttyTask: Task<Void, Error>?
     private var connected = false
+    private var pendingResize: (cols: Int, rows: Int)?
 
     private let writeQueue: AsyncStream<[UInt8]>
     private let writeContinuation: AsyncStream<[UInt8]>.Continuation
@@ -124,6 +125,14 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
                 )
                 try await sshClient.withPTY(ptyRequest) { inbound, outbound in
                     self.stdin = outbound
+                    if let p = self.pendingResize {
+                        self.pendingResize = nil
+                        if p.cols != self.initialCols || p.rows != self.initialRows {
+                            try? await outbound.changeSize(
+                                cols: p.cols, rows: p.rows, pixelWidth: 0, pixelHeight: 0
+                            )
+                        }
+                    }
                     var bootstrapPieces: [String] = []
                     for (k, v) in self.environment {
                         bootstrapPieces.append("export \(k)=\(Self.shellQuote(v))")
@@ -178,7 +187,13 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     }
 
     public func resize(cols: Int, rows: Int) async throws {
-        guard let w = stdin else { return }
+        guard let w = stdin else {
+            // The PTY isn't open yet (mid-connect); losing this leaves the
+            // remote at a size the local grid no longer has.
+            pendingResize = (cols, rows)
+            NSLog("[sshido] resize \(cols)x\(rows) before PTY ready — deferred")
+            return
+        }
         try await w.changeSize(cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
     }
 

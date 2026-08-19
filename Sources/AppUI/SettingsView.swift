@@ -23,6 +23,7 @@ public struct SettingsView: View {
     @State private var appearance: TerminalAppearance = .default
     @State private var groups: [ShortcutGroup] = []
     @State private var confirmClearSubscription = false
+    @State private var pushEnabled = true
     static let dictationLocales: [(String, String)] = [
         ("", "System default"),
         ("en-US", "English (US)"),
@@ -85,6 +86,23 @@ public struct SettingsView: View {
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Section {
+                    Toggle(isOn: $pushEnabled) {
+                        Text("Notifications").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                    .onChange(of: pushEnabled) { _, enabled in
+                        guard enabled != settings.notificationsEnabled else { return }
+                        Task {
+                            do {
+                                try await PushService.shared.setNotificationsEnabled(enabled)
+                                await reload()
+                                toast = enabled ? "Push notifications on" : "Push notifications off"
+                            } catch {
+                                self.error = String(describing: error)
+                                await reload()
+                            }
+                        }
+                    }
                     HStack(spacing: DS.Spacing.sm) {
                         TextField("https://push.example.com", text: $serverURLInput)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -154,7 +172,7 @@ public struct SettingsView: View {
                     DSSectionHeader("Push notifications")
                 } footer: {
                     VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
-                        Text("Enter your push server URL and tap send. Then copy the agent setup prompt and paste it into Claude Code.")
+                        Text("Enter your push server URL and tap send. Then copy the agent setup prompt and paste it into Claude Code. Turning notifications off mutes this device on the relay — hosts keep working notify URLs for when you turn it back on.")
                         Link("Run your own relay →",
                              destination: URL(string: "https://sshido.com/self-host")!)
                             .foregroundStyle(DS.Color.accent)
@@ -318,6 +336,7 @@ public struct SettingsView: View {
 
     private func reload() async {
         settings = await PushService.shared.settings
+        pushEnabled = settings.notificationsEnabled
         subscription = await PushService.shared.subscription
         deviceToken = await PushService.shared.deviceToken
         appearance = await AppearanceStore.shared.appearance
