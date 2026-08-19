@@ -179,7 +179,14 @@ public enum TerminalURLExtractor {
         of prev: String, next: String, cols: Int, inRun: Bool
     ) -> String? {
         guard let last = prev.last, urlAllowedTrailing.contains(last) else { return nil }
-        if prev.count >= cols { return next }
+        if prev.count >= cols {
+            // indent + text can fill the row exactly; the repeated hanging
+            // indent must not leak spaces into the glued URL
+            let stripped = next.drop(while: { $0 == " " })
+            let indent = next.count - stripped.count
+            if indent > 0, indent == leadingSpaceCount(of: prev) { return String(stripped) }
+            return next
+        }
         let stripped = next.drop(while: { $0 == " " })
         guard next.count - stripped.count == leadingSpaceCount(of: prev),
               !startsNewURL(stripped),
