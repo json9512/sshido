@@ -335,12 +335,12 @@ public actor SessionStore {
         )
         return ShellBootstrap(
             prepare: TmuxSessionList.prepareCommand(
-                tmuxPath: tmuxPath, sessionName: name, sessionID: id
+                tmuxPathHint: tmuxPath, sessionName: name, sessionID: id
             ),
             typed: { output in
                 switch output.flatMap(TmuxSessionList.parseAttachTarget) {
-                case .attach(let target):
-                    return TmuxSessionList.attachCommand(tmuxPath: tmuxPath, target: target)
+                case .attach(let resolved, let target):
+                    return TmuxSessionList.attachCommand(tmuxPath: resolved, target: target)
                 case .noTmux:
                     return Self.exportSessionEnv
                 case nil:
