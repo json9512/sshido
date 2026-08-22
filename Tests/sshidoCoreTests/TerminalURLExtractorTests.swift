@@ -318,6 +318,29 @@ final class TerminalURLExtractorTests: XCTestCase {
         ])
     }
 
+    func testFullWidthRowWithHangingIndentContinuation() {
+        let rows = [
+            "\u{258C} \u{29C9} https://claude.ai/code/artifact/db214df4-cbb9",
+            "  -453c-8fac-0f9e2c290fad",
+            "",
+        ]
+        XCTAssertEqual(rows[0].count, 49)
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 49)
+        XCTAssertEqual(urls.map(\.raw),
+                       ["https://claude.ai/code/artifact/db214df4-cbb9-453c-8fac-0f9e2c290fad"])
+    }
+
+    func testFullWidthURLRowFollowedByIndentedProseNotGlued() {
+        let rows = [
+            "run: https://example.com/a/b/c/dddddddddddddddd",
+            "  then check the output",
+            "",
+        ]
+        XCTAssertEqual(rows[0].count, 47)
+        let urls = TerminalURLExtractor.extract(from: rows, cols: 47)
+        XCTAssertEqual(urls.map(\.raw), ["https://example.com/a/b/c/dddddddddddddddd"])
+    }
+
     func testStripTrailingPunctuationDirect() {
         XCTAssertEqual(TerminalURLExtractor.stripTrailingPunctuation("https://example.com."), "https://example.com")
         XCTAssertEqual(TerminalURLExtractor.stripTrailingPunctuation("https://example.com,"), "https://example.com")
