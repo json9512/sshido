@@ -31,6 +31,8 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     private var ttyTask: Task<Void, Error>?
     private var connected = false
     private var connectTask: Task<Void, Error>?
+    private var inputGateOpen = false
+    private(set) var heldInput: [[UInt8]] = []
     private var pendingResize: (cols: Int, rows: Int)?
 
     private let writeQueue: AsyncStream<[UInt8]>
@@ -145,8 +147,9 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
                         }
                     }
                     if let line = self.bootstrap?.typed(prepared), !line.isEmpty {
-                        self.enqueueInput(Array((line + "\r").utf8))
+                        self.writeContinuation.yield(Array((line + "\r").utf8))
                     }
+                    self.openInputGate()
                     let drainTask = Task { [writeQueue = self.writeQueue, outbound] in
                         for await chunk in writeQueue {
                             var buf = ByteBufferAllocator().buffer(capacity: chunk.count)
@@ -213,7 +216,18 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     }
 
     public func enqueueInput(_ bytes: [UInt8]) {
+        guard inputGateOpen else {
+            heldInput.append(bytes)
+            return
+        }
         writeContinuation.yield(bytes)
+    }
+
+    func openInputGate() {
+        inputGateOpen = true
+        let held = heldInput
+        heldInput = []
+        for chunk in held { writeContinuation.yield(chunk) }
     }
 
     public func resize(cols: Int, rows: Int) async throws {
