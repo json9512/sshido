@@ -342,6 +342,7 @@ public struct SessionView: View {
                     return
                 }
                 NSLog("[sshido] SessionView.load: first-connect timed out, tearing down and retrying")
+                await ch.disconnect()
                 BridgeStore.shared.remove(sessionID: session.id)
                 bridge = nil
                 channel = nil

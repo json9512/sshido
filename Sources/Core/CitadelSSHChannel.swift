@@ -21,8 +21,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     private let port: Int
     private let user: String
     private let auth: SSHAuth
-    private let bootstrapCommand: String?
-    private let environment: [String: String]
+    private let bootstrap: ShellBootstrap?
     private var initialCols: Int
     private var initialRows: Int
     private let hostKeyConfirm: HostKeyConfirmCallback
@@ -31,6 +30,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     private var stdin: TTYStdinWriter?
     private var ttyTask: Task<Void, Error>?
     private var connected = false
+    private var connectTask: Task<Void, Error>?
     private var pendingResize: (cols: Int, rows: Int)?
 
     private let writeQueue: AsyncStream<[UInt8]>
@@ -38,15 +38,13 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
 
     public init(host: String, port: Int, user: String, auth: SSHAuth,
                 cols: Int = 80, rows: Int = 24,
-                bootstrapCommand: String? = nil,
-                environment: [String: String] = [:],
+                bootstrap: ShellBootstrap? = nil,
                 hostKeyConfirm: @escaping HostKeyConfirmCallback = { _ in .reject }) {
         self.host = host
         self.port = port
         self.user = user
         self.auth = auth
-        self.bootstrapCommand = bootstrapCommand
-        self.environment = environment
+        self.bootstrap = bootstrap
         self.initialCols = cols
         self.initialRows = rows
         self.hostKeyConfirm = hostKeyConfirm
@@ -70,6 +68,18 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     }
 
     public func connect() async throws {
+        if let connectTask { return try await connectTask.value }
+        let task = Task { try await self.openShell() }
+        connectTask = task
+        do {
+            try await task.value
+        } catch {
+            connectTask = nil
+            throw error
+        }
+    }
+
+    private func openShell() async throws {
         let method: SSHAuthenticationMethod
         switch auth {
         case .password(let pw):
@@ -107,6 +117,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         }
         self.client = sshClient
         self.connected = true
+        let prepared = await runPrepare(on: sshClient)
 
         ttyTask = Task { [weak self, sshClient] in
             guard let self else { return }
@@ -133,16 +144,8 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
                             )
                         }
                     }
-                    var bootstrapPieces: [String] = []
-                    for (k, v) in self.environment {
-                        bootstrapPieces.append("export \(k)=\(Self.shellQuote(v))")
-                    }
-                    if let cmd = self.bootstrapCommand {
-                        bootstrapPieces.append(cmd)
-                    }
-                    if !bootstrapPieces.isEmpty {
-                        let line = bootstrapPieces.joined(separator: "; ") + "\r"
-                        self.enqueueInput(Array(line.utf8))
+                    if let line = self.bootstrap?.typed(prepared), !line.isEmpty {
+                        self.enqueueInput(Array((line + "\r").utf8))
                     }
                     let drainTask = Task { [writeQueue = self.writeQueue, outbound] in
                         for await chunk in writeQueue {
@@ -164,6 +167,33 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
             }
             self.connected = false
             self.closeOnce()
+        }
+    }
+
+    private func runPrepare(on client: SSHClient) async -> String? {
+        guard let prepare = bootstrap?.prepare else { return nil }
+        do {
+            let out = try await Self.withTimeout(seconds: 8) {
+                try await client.executeCommand(prepare, mergeStreams: false, inShell: false)
+            }
+            return String(decoding: Data(buffer: out), as: UTF8.self)
+        } catch {
+            Log.session.error("session prepare failed: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+
+    private static func withTimeout<T: Sendable>(
+        seconds: Double, _ body: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await body() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw SSHError.transport("timed out after \(seconds)s")
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
         }
     }
 
@@ -251,10 +281,6 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         guard !didClose else { return }
         didClose = true
         onClose?()
-    }
-
-    private static func shellQuote(_ s: String) -> String {
-        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     static func authFromPEM(user: String, pem: String, passphrase: String?) throws -> SSHAuthenticationMethod {

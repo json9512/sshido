@@ -280,3 +280,56 @@ final class TmuxSessionListTests: XCTestCase {
         XCTAssertEqual(decoded.tmuxName, "work")
     }
 }
+
+final class TmuxBootstrapSplitTests: XCTestCase {
+    private let path = "/opt/homebrew/bin/tmux"
+
+    func testTypedAttachLineFitsTwoRowsOnAPhoneGrid() {
+        let line = TmuxSessionList.attachCommand(tmuxPath: path, target: "=sshido-b2b")
+        XCTAssertEqual(line, "unset TMUX TMUX_PANE; exec '/opt/homebrew/bin/tmux' attach -t '=sshido-b2b'")
+        XCTAssertLessThanOrEqual(line.count, 98)
+    }
+
+    func testPrepareCarriesTheSetupThatUsedToBeTyped() {
+        let prep = TmuxSessionList.prepareCommand(tmuxPath: path, sessionName: "s", sessionID: "$3")
+        XCTAssertTrue(prep.contains("export SSHIDO_SESSION=1"))
+        XCTAssertTrue(prep.contains("setenv -g SSHIDO_SESSION 1"))
+        XCTAssertTrue(prep.contains("new-session -d -s 's' -e SSHIDO_SESSION=1"))
+        XCTAssertTrue(prep.contains("mouse on"))
+        XCTAssertTrue(prep.contains("has-session -t '$3'"))
+        XCTAssertFalse(prep.contains("attach"))
+    }
+
+    func testPrepareWithoutSessionIDSkipsTheIDBranch() {
+        let prep = TmuxSessionList.prepareCommand(tmuxPath: path, sessionName: "s", sessionID: nil)
+        XCTAssertFalse(prep.contains("has-session -t '$"))
+    }
+
+    func testParseAttachTargetByID() {
+        XCTAssertEqual(TmuxSessionList.parseAttachTarget("SSHIDO_ATTACH:$3\n"), .attach("$3"))
+    }
+
+    func testParseAttachTargetByName() {
+        XCTAssertEqual(TmuxSessionList.parseAttachTarget("noise\nSSHIDO_ATTACH:=sshido-b2b\n"),
+                       .attach("=sshido-b2b"))
+    }
+
+    func testEmptyTargetMeansNoTmuxOnTheHost() {
+        XCTAssertEqual(TmuxSessionList.parseAttachTarget("SSHIDO_ATTACH:\n"), .noTmux)
+    }
+
+    func testMissingMarkerIsUnknownNotNoTmux() {
+        XCTAssertNil(TmuxSessionList.parseAttachTarget("bash: tmux: command not found\n"))
+        XCTAssertNil(TmuxSessionList.parseAttachTarget(""))
+    }
+
+    func testLastMarkerWins() {
+        XCTAssertEqual(TmuxSessionList.parseAttachTarget("SSHIDO_ATTACH:$1\nSSHIDO_ATTACH:$2\n"),
+                       .attach("$2"))
+    }
+
+    func testSingleQuotesInSessionNameAreQuoted() {
+        let prep = TmuxSessionList.prepareCommand(tmuxPath: path, sessionName: "it's", sessionID: nil)
+        XCTAssertTrue(prep.contains("-s 'it'\\''s'"))
+    }
+}

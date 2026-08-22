@@ -310,26 +310,43 @@ public actor SessionStore {
     }
 
     private func makeChannel(for host: RemoteHost, auth: SSHAuth, sessionID: UUID) -> SSHChannel {
-        let bootstrap: String?
-        if host.useTmux {
-            let session = sessions[sessionID]
-            bootstrap = TmuxSessionList.bootstrapCommand(
-                tmuxPath: tmuxPaths[host.id] ?? "tmux",
-                sessionName: session?.tmuxName ?? tmuxName(host: host, session: sessionID),
-                sessionID: session?.tmuxSessionID
-            )
-        } else {
-            bootstrap = nil
-        }
-        let env: [String: String] = ["SSHIDO_SESSION": "1"]
-        return CitadelSSHChannel(
+        CitadelSSHChannel(
             host: host.hostname,
             port: host.port,
             user: host.username,
             auth: auth,
-            bootstrapCommand: bootstrap,
-            environment: env,
+            bootstrap: bootstrap(for: host, sessionID: sessionID),
             hostKeyConfirm: hostKeyConfirm
+        )
+    }
+
+    private static let exportSessionEnv = "export SSHIDO_SESSION='1'"
+
+    private func bootstrap(for host: RemoteHost, sessionID: UUID) -> ShellBootstrap {
+        guard host.useTmux else {
+            return ShellBootstrap(prepare: nil, typed: { _ in Self.exportSessionEnv })
+        }
+        let tmuxPath = tmuxPaths[host.id] ?? "tmux"
+        let session = sessions[sessionID]
+        let name = session?.tmuxName ?? tmuxName(host: host, session: sessionID)
+        let id = session?.tmuxSessionID
+        let blind = Self.exportSessionEnv + "; " + TmuxSessionList.bootstrapCommand(
+            tmuxPath: tmuxPath, sessionName: name, sessionID: id
+        )
+        return ShellBootstrap(
+            prepare: TmuxSessionList.prepareCommand(
+                tmuxPath: tmuxPath, sessionName: name, sessionID: id
+            ),
+            typed: { output in
+                switch output.flatMap(TmuxSessionList.parseAttachTarget) {
+                case .attach(let target):
+                    return TmuxSessionList.attachCommand(tmuxPath: tmuxPath, target: target)
+                case .noTmux:
+                    return Self.exportSessionEnv
+                case nil:
+                    return blind
+                }
+            }
         )
     }
 

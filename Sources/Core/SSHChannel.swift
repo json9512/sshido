@@ -35,6 +35,16 @@ public extension SSHChannel {
     }
 }
 
+public struct ShellBootstrap: Sendable {
+    public let prepare: String?
+    public let typed: @Sendable (String?) -> String?
+
+    public init(prepare: String?, typed: @escaping @Sendable (String?) -> String?) {
+        self.prepare = prepare
+        self.typed = typed
+    }
+}
+
 public protocol SSHForwardedChannel: AnyObject, Sendable {
     var inbound: AsyncStream<Data> { get }
     func send(_ data: Data) async throws

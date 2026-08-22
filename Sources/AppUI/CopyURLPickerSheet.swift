@@ -52,8 +52,7 @@ struct CopyURLPickerSheet: View {
                 Text(detected.raw)
                     .font(DS.Font.monoSmall)
                     .foregroundStyle(DS.Color.textTertiary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             Image(systemName: "doc.on.doc")

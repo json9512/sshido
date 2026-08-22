@@ -201,8 +201,6 @@ struct AddHostView: View {
             user: host.username,
             auth: auth,
             cols: 80, rows: 24,
-            bootstrapCommand: nil,
-            environment: [:],
             hostKeyConfirm: HostKeyChallengeBroker.shared.makeCallback()
         )
         do {

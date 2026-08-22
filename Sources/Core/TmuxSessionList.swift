@@ -24,6 +24,11 @@ public enum TmuxRenameResult: Equatable, Sendable {
     case failed(String)
 }
 
+public enum TmuxAttachTarget: Equatable, Sendable {
+    case attach(String)
+    case noTmux
+}
+
 public enum TmuxSessionList {
     static let candidatePaths = [
         "/opt/homebrew/bin/tmux",
@@ -38,6 +43,7 @@ public enum TmuxSessionList {
     ]
 
     static let renameMarker = "SSHIDO_RENAMED:"
+    static let attachMarker = "SSHIDO_ATTACH:"
 
     // Login shell first so tmux resolves on the interactive session's PATH; the probe
     // covers shells that reject `-lc`. Trailing `true` keeps exit 0 — Citadel throws otherwise.
@@ -93,6 +99,49 @@ public enum TmuxSessionList {
         steps.append("\(tmux) set -t \(name) mouse on 2>/dev/null || true")
         steps.append("exec \(tmux) attach -t \(exact)")
         return "if command -v \(tmux) >/dev/null 2>&1; then \(steps.joined(separator: "; ")); fi"
+    }
+
+    public static func prepareCommand(tmuxPath: String, sessionName: String, sessionID: String?) -> String {
+        let tmux = shellQuote(tmuxPath)
+        let name = shellQuote(sessionName)
+        let exact = shellQuote("=" + sessionName)
+        var steps = [
+            "export SSHIDO_SESSION=1",
+            "command -v \(tmux) >/dev/null 2>&1 || { \(announce("")); exit 0; }",
+            "\(tmux) setenv -g SSHIDO_SESSION 1 2>/dev/null || true",
+        ]
+        if let sessionID {
+            let id = shellQuote(sessionID)
+            steps.append(
+                "if \(tmux) has-session -t \(id) 2>/dev/null; then "
+                + "\(tmux) set -t \(id) mouse on 2>/dev/null || true; "
+                + "\(announce(sessionID)); exit 0; fi"
+            )
+        }
+        steps.append(
+            "\(tmux) has-session -t \(exact) 2>/dev/null || "
+            + "\(tmux) new-session -d -s \(name) -e SSHIDO_SESSION=1"
+        )
+        steps.append("\(tmux) set -t \(name) mouse on 2>/dev/null || true")
+        steps.append(announce("=" + sessionName))
+        return steps.joined(separator: "; ")
+    }
+
+    private static func announce(_ target: String) -> String {
+        "printf '%s%s\\n' \(shellQuote(attachMarker)) \(shellQuote(target))"
+    }
+
+    public static func attachCommand(tmuxPath: String, target: String) -> String {
+        "unset TMUX TMUX_PANE; exec \(shellQuote(tmuxPath)) attach -t \(shellQuote(target))"
+    }
+
+    public static func parseAttachTarget(_ output: String) -> TmuxAttachTarget? {
+        for line in output.split(separator: "\n", omittingEmptySubsequences: false).reversed() {
+            guard let marker = line.range(of: attachMarker) else { continue }
+            let target = line[marker.upperBound...].trimmingCharacters(in: .whitespaces)
+            return target.isEmpty ? .noTmux : .attach(target)
+        }
+        return nil
     }
 
     public static func renameCommand(tmuxPath: String, target: String, newName: String) -> String {
