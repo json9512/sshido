@@ -179,14 +179,7 @@ public enum TerminalURLExtractor {
         of prev: String, next: String, cols: Int, inRun: Bool
     ) -> String? {
         guard let last = prev.last, urlAllowedTrailing.contains(last) else { return nil }
-        if prev.count >= cols {
-            // indent + text can fill the row exactly; the repeated hanging
-            // indent must not leak spaces into the glued URL
-            let stripped = next.drop(while: { $0 == " " })
-            let indent = next.count - stripped.count
-            if indent > 0, indent == leadingSpaceCount(of: prev) { return String(stripped) }
-            return next
-        }
+        if prev.count >= cols { return fullWidthContinuation(of: prev, next: next) }
         let stripped = next.drop(while: { $0 == " " })
         guard next.count - stripped.count == leadingSpaceCount(of: prev),
               !startsNewURL(stripped),
@@ -202,6 +195,20 @@ public enum TerminalURLExtractor {
               stripped.allSatisfy({ urlAllowedTrailing.contains($0) }),
               !isStandaloneLink(String(stripped))
         else { return nil }
+        return String(stripped)
+    }
+
+    private static func fullWidthContinuation(of prev: String, next: String) -> String {
+        let stripped = next.drop(while: { $0 == " " })
+        let indent = next.count - stripped.count
+        guard indent > 0 else { return next }
+        if indent == leadingSpaceCount(of: prev) { return String(stripped) }
+        guard urlRunsToRowEnd(prev),
+              !stripped.isEmpty,
+              stripped.allSatisfy({ urlAllowedTrailing.contains($0) }),
+              !startsNewURL(stripped),
+              !isStandaloneLink(String(stripped))
+        else { return next }
         return String(stripped)
     }
 
