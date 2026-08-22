@@ -25,7 +25,7 @@ public enum TmuxRenameResult: Equatable, Sendable {
 }
 
 public enum TmuxAttachTarget: Equatable, Sendable {
-    case attach(String)
+    case attach(tmuxPath: String, target: String)
     case noTmux
 }
 
@@ -101,34 +101,43 @@ public enum TmuxSessionList {
         return "if command -v \(tmux) >/dev/null 2>&1; then \(steps.joined(separator: "; ")); fi"
     }
 
-    public static func prepareCommand(tmuxPath: String, sessionName: String, sessionID: String?) -> String {
-        let tmux = shellQuote(tmuxPath)
+    public static func prepareCommand(tmuxPathHint: String, sessionName: String, sessionID: String?) -> String {
         let name = shellQuote(sessionName)
         let exact = shellQuote("=" + sessionName)
         var steps = [
             "export SSHIDO_SESSION=1",
-            "command -v \(tmux) >/dev/null 2>&1 || { \(announce("")); exit 0; }",
-            "\(tmux) setenv -g SSHIDO_SESSION 1 2>/dev/null || true",
+            "T=\(shellQuote(tmuxPathHint))",
+            "[ -x \"$T\" ] || T=$(${SHELL:-/bin/sh} -lc 'command -v tmux' 2>/dev/null)",
+            "[ -n \"$T\" ] || for p in \(quotedCandidates); "
+                + "do [ -x \"$p\" ] && { T=\"$p\"; break; }; done",
+            "[ -n \"$T\" ] || { \(announce("")); exit 0; }",
+            "\"$T\" setenv -g SSHIDO_SESSION 1 2>/dev/null || true",
         ]
         if let sessionID {
             let id = shellQuote(sessionID)
             steps.append(
-                "if \(tmux) has-session -t \(id) 2>/dev/null; then "
-                + "\(tmux) set -t \(id) mouse on 2>/dev/null || true; "
+                "if \"$T\" has-session -t \(id) 2>/dev/null; then "
+                + "\"$T\" set -t \(id) mouse on 2>/dev/null || true; "
                 + "\(announce(sessionID)); exit 0; fi"
             )
         }
         steps.append(
-            "\(tmux) has-session -t \(exact) 2>/dev/null || "
-            + "\(tmux) new-session -d -s \(name) -e SSHIDO_SESSION=1"
+            "\"$T\" has-session -t \(exact) 2>/dev/null || "
+            + "\"$T\" new-session -d -s \(name) -e SSHIDO_SESSION=1"
         )
-        steps.append("\(tmux) set -t \(name) mouse on 2>/dev/null || true")
+        steps.append("\"$T\" set -t \(name) mouse on 2>/dev/null || true")
         steps.append(announce("=" + sessionName))
         return steps.joined(separator: "; ")
     }
 
+    private static var quotedCandidates: String {
+        candidatePaths.map { "\"\($0)\"" }.joined(separator: " ")
+    }
+
     private static func announce(_ target: String) -> String {
-        "printf '%s%s\\n' \(shellQuote(attachMarker)) \(shellQuote(target))"
+        target.isEmpty
+            ? "printf '%s\\n' \(shellQuote(attachMarker))"
+            : "printf '%s%s\\t%s\\n' \(shellQuote(attachMarker)) \"$T\" \(shellQuote(target))"
     }
 
     public static func attachCommand(tmuxPath: String, target: String) -> String {
@@ -138,8 +147,12 @@ public enum TmuxSessionList {
     public static func parseAttachTarget(_ output: String) -> TmuxAttachTarget? {
         for line in output.split(separator: "\n", omittingEmptySubsequences: false).reversed() {
             guard let marker = line.range(of: attachMarker) else { continue }
-            let target = line[marker.upperBound...].trimmingCharacters(in: .whitespaces)
-            return target.isEmpty ? .noTmux : .attach(target)
+            let fields = line[marker.upperBound...].split(separator: "\t", maxSplits: 1)
+            guard fields.count == 2 else { return .noTmux }
+            let path = fields[0].trimmingCharacters(in: .whitespaces)
+            let target = fields[1].trimmingCharacters(in: .whitespaces)
+            guard !path.isEmpty, !target.isEmpty else { return .noTmux }
+            return .attach(tmuxPath: path, target: target)
         }
         return nil
     }
