@@ -244,6 +244,35 @@ public final class MetalTerminalBridge: NSObject, TerminalBridge, TerminalGridSo
         return rows
     }
 
+    public func snapshotStyledLines(beforeViewport: Int, afterViewport: Int) -> [[StyledCell]] {
+        let yDisp = terminal.buffer.yDisp
+        let start = max(0, yDisp - max(0, beforeViewport))
+        let end = yDisp + terminal.rows + max(0, afterViewport)
+        guard end > start else { return [] }
+        return (start..<end).map(styledRow)
+    }
+
+    private func styledRow(_ row: Int) -> [StyledCell] {
+        guard row >= 0, let line = terminal.getScrollInvariantLine(row: row) else { return [] }
+        return (0..<terminal.cols).map { column in
+            let cell = line[column]
+            let character = cell.getCharacter()
+            return StyledCell(character: character == "\0" ? " " : character,
+                              style: Self.styleToken(cell.attribute.fg))
+        }
+    }
+
+    private static func styleToken(_ color: Attribute.Color) -> Int {
+        switch color {
+        case .defaultColor, .defaultInvertedColor:
+            return StyledCell.defaultStyle
+        case .ansi256(let code):
+            return 1 + Int(code)
+        case .trueColor(let red, let green, let blue):
+            return 0x1000000 + (Int(red) << 16) + (Int(green) << 8) + Int(blue)
+        }
+    }
+
     private func rowText(_ row: Int) -> String {
         guard row >= 0, let line = terminal.getScrollInvariantLine(row: row) else { return "" }
         let cols = terminal.cols
