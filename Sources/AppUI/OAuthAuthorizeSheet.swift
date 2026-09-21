@@ -8,9 +8,7 @@ import sshidoCore
 @MainActor
 final class AuthorizeSignInController: ObservableObject {
     enum Phase: Equatable {
-        case scanning
-        case noURLFound
-        case ready(OAuthTunnelTarget)
+        case idle
         case openingSafari(OAuthTunnelTarget)
         case awaitingReturn(OAuthTunnelTarget)
         case manualPaste(prefilled: String?)
@@ -31,46 +29,28 @@ final class AuthorizeSignInController: ObservableObject {
         }
     }
 
-    @Published var phase: Phase = .scanning
+    @Published var phase: Phase = .idle
     @Published var activeSheet: ActiveSheet?
     @Published var toast: String?
 
     private var tunnel: OAuthTunnel?
     private weak var channel: SSHChannel?
 
-    func present(channel: SSHChannel, urls: [DetectedURL]) {
+    func open(_ target: OAuthTunnelTarget, through channel: SSHChannel) async {
         self.channel = channel
-        phase = .scanning
-        activeSheet = .authorize
-        Task { await beginScan(urls: urls) }
-    }
-
-    private func beginScan(urls: [DetectedURL]) async {
-        guard let channel else {
-            phase = .failed("Session not connected")
+        await tearDown()
+        let t = OAuthTunnel(port: target.port, sshChannel: channel)
+        do {
+            try await t.start()
+        } catch {
+            NSLog("[sshido] sign-in tunnel on port \(target.port) failed: \(error)")
+            phase = .failed("Couldn't open tunnel: \(error)")
+            activeSheet = .authorize
             return
         }
-        for detected in urls {
-            guard let target = OAuthURLDetector.detect(detected.url.absoluteString) else { continue }
-            let t = OAuthTunnel(port: target.port, sshChannel: channel)
-            do {
-                try await t.start()
-            } catch {
-                phase = .failed("Couldn't open tunnel: \(error)")
-                return
-            }
-            tunnel = t
-            phase = .ready(target)
-            return
-        }
-        phase = .noURLFound
-    }
-
-    func openInSafari() {
-        if case .ready(let target) = phase {
-            phase = .openingSafari(target)
-            activeSheet = .safari(target.originalURL)
-        }
+        tunnel = t
+        phase = .openingSafari(target)
+        activeSheet = .safari(target.originalURL)
     }
 
     func safariDismissed() {
@@ -107,14 +87,6 @@ final class AuthorizeSignInController: ObservableObject {
             toast = "Signed in"
         } catch {
             phase = .failed("Couldn't deliver callback: \(error)")
-        }
-    }
-
-    func reset() {
-        phase = .scanning
-        Task { [weak self] in
-            await self?.tearDown()
-            self?.phase = .noURLFound
         }
     }
 
@@ -165,17 +137,8 @@ struct AuthorizeSignInSheet: View {
     @ViewBuilder
     private var content: some View {
         switch controller.phase {
-        case .scanning:
-            centered {
-                ProgressView()
-                Text("Looking for an OAuth URL on screen…")
-                    .font(DS.Font.body)
-                    .foregroundStyle(DS.Color.textSecondary)
-            }
-        case .noURLFound:
-            noURLFoundView
-        case .ready(let target):
-            readyView(target: target)
+        case .idle:
+            EmptyView()
         case .openingSafari, .awaitingReturn:
             awaitingReturnView
         case .manualPaste(let prefilled):
@@ -197,67 +160,9 @@ struct AuthorizeSignInSheet: View {
     }
 
     @ViewBuilder
-    private var noURLFoundView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(DS.Color.textTertiary)
-            Text("No OAuth URL on screen")
-                .font(DS.Font.rowTitle)
-                .foregroundStyle(DS.Color.textPrimary)
-            Text("Trigger the sign-in command in your shell first, or paste a callback URL you already opened in another browser.")
-                .font(DS.Font.caption)
-                .foregroundStyle(DS.Color.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button {
-                controller.chooseManualPaste()
-            } label: {
-                Label("Paste callback URL instead", systemImage: "doc.on.clipboard")
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private func readyView(target: OAuthTunnelTarget) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Step 1 — URL found")
-            VStack(alignment: .leading, spacing: 4) {
-                Text(target.originalURL.host ?? target.originalURL.absoluteString)
-                    .font(DS.Font.rowTitle)
-                    .foregroundStyle(DS.Color.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(target.originalURL.absoluteString)
-                    .font(DS.Font.monoSmall)
-                    .foregroundStyle(DS.Color.textTertiary)
-                    .lineLimit(3)
-                    .truncationMode(.middle)
-            }
-            Text("Tap below to authorize. We'll forward the callback over your SSH connection so localhost works on the agent host, not your phone.")
-                .font(DS.Font.caption)
-                .foregroundStyle(DS.Color.textSecondary)
-            Button {
-                controller.openInSafari()
-            } label: {
-                Label("Open sign-in", systemImage: "safari")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            Spacer()
-        }
-        .padding()
-    }
-
-    @ViewBuilder
     private var awaitingReturnView: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Step 2 — Did sign-in finish?")
+            sectionHeader("Did sign-in finish?")
             Text("If Safari showed a success page, you're done. If it stalled on a “can't connect to localhost” error, paste the URL from Safari's address bar.")
                 .font(DS.Font.caption)
                 .foregroundStyle(DS.Color.textSecondary)
@@ -319,20 +224,12 @@ struct AuthorizeSignInSheet: View {
                 .foregroundStyle(DS.Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
-            HStack(spacing: 12) {
-                Button {
-                    controller.reset()
-                } label: {
-                    Label("Try again", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                Button {
-                    controller.chooseManualPaste()
-                } label: {
-                    Label("Paste callback URL", systemImage: "doc.on.clipboard")
-                }
-                .buttonStyle(.borderedProminent)
+            Button {
+                controller.chooseManualPaste()
+            } label: {
+                Label("Paste callback URL", systemImage: "doc.on.clipboard")
             }
+            .buttonStyle(.borderedProminent)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
