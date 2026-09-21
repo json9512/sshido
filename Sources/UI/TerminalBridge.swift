@@ -1,5 +1,8 @@
 #if canImport(UIKit)
 import Foundation
+#if canImport(sshidoCore)
+import sshidoCore
+#endif
 
 public enum CopyKind { case selection, viewport }
 
@@ -11,6 +14,7 @@ public protocol TerminalBridge: AnyObject {
     func applyAppearance() async
     func copyFromTerminal(_ kind: CopyKind) async -> String
     func snapshotBufferLines(beforeViewport: Int, afterViewport: Int) -> [String]
+    func snapshotStyledLines(beforeViewport: Int, afterViewport: Int) -> [[StyledCell]]
     var hasSelection: Bool { get }
     var cols: Int { get }
     var isApplicationCursor: Bool { get }

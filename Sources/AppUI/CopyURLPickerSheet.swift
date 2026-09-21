@@ -53,6 +53,11 @@ struct CopyURLPickerSheet: View {
                     .font(DS.Font.monoSmall)
                     .foregroundStyle(DS.Color.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
+                if let signIn = OAuthURLDetector.detect(detected.raw) {
+                    Label("Sign-in link · opens with port \(String(signIn.port)) forwarded", systemImage: "lock.shield")
+                        .font(DS.Font.caption)
+                        .foregroundStyle(DS.Color.accent)
+                }
             }
             Spacer(minLength: 8)
             Image(systemName: "doc.on.doc")

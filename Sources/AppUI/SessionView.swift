@@ -33,6 +33,8 @@ public struct SessionView: View {
     @State private var urlPickerURLs: [DetectedURL]?
     @State private var browserTarget: BrowserSheetTarget?
     @State private var browserTunnel: OAuthTunnel?
+    @State private var shellHint: DetectedShellHint?
+    @State private var dismissedHints: Set<String> = []
     @State private var mascotState = MascotSpriteState()
     @State private var showMascot = true
     @State private var mascotOffset: CGSize = .zero
@@ -102,6 +104,16 @@ public struct SessionView: View {
                         showMascot = true
                     }
                 )
+                .overlay(alignment: .top) {
+                    if let hint = shellHint {
+                        ShellHintChip(hint: hint,
+                                      onCopy: { copy(hint) },
+                                      onRun: { Task { await typeIntoPrompt(hint) } },
+                                      onDismiss: { dismissHint(hint) })
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .animation(DS.Animation.quick, value: shellHint)
                 .overlay(alignment: .bottom) {
                     if showBuddyHint {
                         Text("Double-tap to call your buddy")
@@ -162,6 +174,12 @@ public struct SessionView: View {
                 try? await Task.sleep(for: .milliseconds(500))
             }
         }
+        .task(id: bridge != nil) {
+            while !Task.isCancelled {
+                refreshShellHint()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
         .onChange(of: scenePhase) { _, new in
             if new == .active {
                 bridge?.refit()
@@ -210,9 +228,6 @@ public struct SessionView: View {
                     Divider()
                     Button { showPhotoPicker = true } label: {
                         Label("Upload image…", systemImage: "photo")
-                    }
-                    Button { Task { await openAuthorizeSheet() } } label: {
-                        Label("Sign in / authorize…", systemImage: "lock.shield")
                     }
                 } label: {
                     if uploading {
@@ -274,6 +289,14 @@ public struct SessionView: View {
     }
 
     private func openInBrowser(_ picked: DetectedURL) async {
+        if let signIn = OAuthURLDetector.detect(picked.raw) {
+            guard let ch = channel else {
+                toast = "Not connected"
+                return
+            }
+            await authorize.open(signIn, through: ch)
+            return
+        }
         guard let resolved = BrowserURLResolver.resolve(picked.raw) else {
             toast = "Can't open this URL"
             return
@@ -507,11 +530,39 @@ public struct SessionView: View {
         urlPickerURLs = urls
     }
 
-    private func openAuthorizeSheet() async {
-        guard let bridge, let ch = channel else { return }
-        let rows = bridge.snapshotBufferLines(beforeViewport: 200, afterViewport: 50)
-        let urls = TerminalURLExtractor.extract(from: rows, cols: bridge.cols)
-        authorize.present(channel: ch, urls: urls)
+    private func refreshShellHint() {
+        guard let bridge else { return }
+        let rows = bridge.snapshotStyledLines(beforeViewport: 0, afterViewport: 0)
+        let onScreen = ShellHintDetector.detect(in: rows, cols: bridge.cols)
+        dismissedHints = dismissedHints.intersection(onScreen.map(\.command))
+        shellHint = onScreen.last { !dismissedHints.contains($0.command) }
+    }
+
+    private func dismissHint(_ hint: DetectedShellHint) {
+        dismissedHints = dismissedHints.union([hint.command])
+        shellHint = nil
+    }
+
+    private func copy(_ hint: DetectedShellHint) {
+        UIPasteboard.general.string = hint.command
+        toast = "Copied command"
+        dismissHint(hint)
+    }
+
+    private func typeIntoPrompt(_ hint: DetectedShellHint) async {
+        guard let ch = channel else {
+            toast = "Not connected"
+            return
+        }
+        do {
+            try await ch.send(Array(hint.promptInput.utf8))
+        } catch {
+            NSLog("[sshido] typing shell hint failed: \(error)")
+            toast = "Couldn't type the command"
+            return
+        }
+        dismissHint(hint)
+        bridge?.focus()
     }
 
     private func uploadImage(_ item: PhotosPickerItem) async {
