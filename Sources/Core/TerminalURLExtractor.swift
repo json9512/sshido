@@ -179,10 +179,10 @@ public enum TerminalURLExtractor {
         of prev: String, next: String, cols: Int, inRun: Bool
     ) -> String? {
         guard let last = prev.last, urlAllowedTrailing.contains(last) else { return nil }
-        if prev.count >= cols { return fullWidthContinuation(of: prev, next: next) }
         let stripped = next.drop(while: { $0 == " " })
+        guard !startsNewURL(stripped) else { return nil }
+        if prev.count >= cols { return fullWidthContinuation(of: prev, next: next) }
         guard next.count - stripped.count == leadingSpaceCount(of: prev),
-              !startsNewURL(stripped),
               leadingURLRunLength(of: stripped) >= 2
         else { return nil }
         if inRun { return String(stripped) }
@@ -206,7 +206,6 @@ public enum TerminalURLExtractor {
         guard urlRunsToRowEnd(prev),
               !stripped.isEmpty,
               stripped.allSatisfy({ urlAllowedTrailing.contains($0) }),
-              !startsNewURL(stripped),
               !isStandaloneLink(String(stripped))
         else { return next }
         return String(stripped)
