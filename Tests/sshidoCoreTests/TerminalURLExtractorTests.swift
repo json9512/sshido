@@ -244,6 +244,27 @@ final class TerminalURLExtractorTests: XCTestCase {
         ])
     }
 
+    func testURLStartingTheRowAfterFullWidthProse() {
+        let rows = [
+            "  /sites should now render with data. Please open",
+            "  https://research.yojeong.kr/sites, because I",
+            "  can't get past the Access login and still",
+        ]
+        XCTAssertEqual(rows[0].count, 49)
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://research.yojeong.kr/sites"])
+    }
+
+    func testUnindentedURLAfterFullWidthProse() {
+        let rows = [
+            "the page should now render with data, please open",
+            "https://research.yojeong.kr/sites and check it",
+        ]
+        XCTAssertEqual(rows[0].count, 49)
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://research.yojeong.kr/sites"])
+    }
+
     /// Captured from a live 49-col window: the indented URL row fills the
     /// grid exactly (2 + 47 == cols), hitting the full-width glue branch
     /// which must strip the repeated hanging indent.
