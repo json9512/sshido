@@ -26,7 +26,7 @@ public enum BrowserURLResolver {
         }
 
         let port = comps.port ?? (scheme == "https" ? 443 : 80)
-        let remoteHost = (host == "localhost" || host == "::1") ? "127.0.0.1" : host
+        let remoteHost = (host == "localhost" || host == "::1") ? "localhost" : host
         comps.host = "127.0.0.1"
         comps.port = port
         guard let open = comps.url else { return nil }

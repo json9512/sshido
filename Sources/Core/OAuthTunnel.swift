@@ -19,7 +19,7 @@ public actor OAuthTunnel {
     private var forwarded: [SSHForwardedChannel] = []
     private var pumpTasks: [Task<Void, Never>] = []
 
-    public init(port: Int, sshChannel: SSHChannel, remoteHost: String = "127.0.0.1", remotePort: Int? = nil) {
+    public init(port: Int, sshChannel: SSHChannel, remoteHost: String = "localhost", remotePort: Int? = nil) {
         self.port = port
         self.remoteHost = remoteHost
         self.remotePort = remotePort ?? port
@@ -72,6 +72,7 @@ public actor OAuthTunnel {
         do {
             fwd = try await sshChannel.openForwardedChannel(host: remoteHost, port: remotePort)
         } catch {
+            NSLog("[sshido] tunnel :\(port) -> \(remoteHost):\(remotePort) open failed: \(error)")
             conn.cancel()
             return
         }

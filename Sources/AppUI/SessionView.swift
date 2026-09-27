@@ -29,7 +29,6 @@ public struct SessionView: View {
     @State private var disconnectWatcher: Task<Void, Never>?
     @State private var isReconnecting = false
     @State private var lastReconnectAt: Date?
-    @StateObject private var authorize = AuthorizeSignInController()
     @State private var urlPickerURLs: [DetectedURL]?
     @State private var browserTarget: BrowserSheetTarget?
     @State private var browserTunnel: OAuthTunnel?
@@ -240,31 +239,6 @@ public struct SessionView: View {
             }
         }
         .toast($toast)
-        .onReceive(authorize.$toast.compactMap { $0 }) { msg in
-            toast = msg
-            authorize.toast = nil
-        }
-        .sheet(item: Binding(
-            get: { authorize.activeSheet },
-            set: { new in
-                authorize.activeSheet = new
-                if new == nil {
-                    if case .openingSafari = authorize.phase {
-                        authorize.safariDismissed()
-                    } else {
-                        Task { await authorize.cancel() }
-                    }
-                }
-            }
-        )) { sheet in
-            switch sheet {
-            case .authorize:
-                AuthorizeSignInSheet(controller: authorize)
-            case .safari(let url):
-                SafariSheet(url: url) { authorize.safariDismissed() }
-                    .ignoresSafeArea()
-            }
-        }
         .sheet(isPresented: Binding(
             get: { urlPickerURLs != nil },
             set: { presenting in
@@ -290,11 +264,7 @@ public struct SessionView: View {
 
     private func openInBrowser(_ picked: DetectedURL) async {
         if let signIn = OAuthURLDetector.detect(picked.raw) {
-            guard let ch = channel else {
-                toast = "Not connected"
-                return
-            }
-            await authorize.open(signIn, through: ch)
+            await openTunneled(signIn.originalURL, remoteHost: "localhost", port: signIn.port)
             return
         }
         guard let resolved = BrowserURLResolver.resolve(picked.raw) else {
@@ -305,24 +275,29 @@ public struct SessionView: View {
         case .direct(let url):
             browserTarget = BrowserSheetTarget(url: url)
         case .tunneled(let open, let remoteHost, let port):
-            guard let ch = channel else {
-                toast = "Not connected"
-                return
-            }
-            if let old = browserTunnel {
-                browserTunnel = nil
-                await old.stop()
-            }
-            let tunnel = OAuthTunnel(port: port, sshChannel: ch, remoteHost: remoteHost)
-            do {
-                try await tunnel.start()
-            } catch {
-                toast = "Tunnel to \(remoteHost):\(port) failed"
-                return
-            }
-            browserTunnel = tunnel
-            browserTarget = BrowserSheetTarget(url: open)
+            await openTunneled(open, remoteHost: remoteHost, port: port)
         }
+    }
+
+    private func openTunneled(_ open: URL, remoteHost: String, port: Int) async {
+        guard let ch = channel else {
+            toast = "Not connected"
+            return
+        }
+        if let old = browserTunnel {
+            browserTunnel = nil
+            await old.stop()
+        }
+        let tunnel = OAuthTunnel(port: port, sshChannel: ch, remoteHost: remoteHost)
+        do {
+            try await tunnel.start()
+        } catch {
+            NSLog("[sshido] tunnel to \(remoteHost):\(port) failed: \(error)")
+            toast = "Tunnel to \(remoteHost):\(port) failed"
+            return
+        }
+        browserTunnel = tunnel
+        browserTarget = BrowserSheetTarget(url: open)
     }
 
     private func load() async {
