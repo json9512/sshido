@@ -54,9 +54,14 @@ struct CopyURLPickerSheet: View {
                     .foregroundStyle(DS.Color.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let signIn = OAuthURLDetector.detect(detected.raw) {
-                    Label("Sign-in link · opens with port \(String(signIn.port)) forwarded", systemImage: "lock.shield")
-                        .font(DS.Font.caption)
-                        .foregroundStyle(DS.Color.accent)
+                    Button {
+                        open(detected)
+                    } label: {
+                        Label("Sign-in link · opens with port \(String(signIn.port)) forwarded", systemImage: "lock.shield")
+                            .font(DS.Font.caption)
+                            .foregroundStyle(DS.Color.accent)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
             Spacer(minLength: 8)
@@ -64,8 +69,7 @@ struct CopyURLPickerSheet: View {
                 .foregroundStyle(DS.Color.accent)
                 .accessibilityLabel("Copy URL")
             Button {
-                onOpen(detected)
-                dismiss()
+                open(detected)
             } label: {
                 Image(systemName: "safari")
                     .foregroundStyle(DS.Color.accent)
@@ -76,6 +80,11 @@ struct CopyURLPickerSheet: View {
             .accessibilityLabel("Open in in-app browser")
         }
         .contentShape(Rectangle())
+    }
+
+    private func open(_ detected: DetectedURL) {
+        onOpen(detected)
+        dismiss()
     }
 
     @ViewBuilder
