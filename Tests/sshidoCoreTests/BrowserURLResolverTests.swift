@@ -19,7 +19,7 @@ final class BrowserURLResolverTests: XCTestCase {
     func testLocalhostIsTunneled() {
         XCTAssertEqual(
             BrowserURLResolver.resolve("http://localhost:5173/app"),
-            .tunneled(open: URL(string: "http://127.0.0.1:5173/app")!, remoteHost: "127.0.0.1", port: 5173)
+            .tunneled(open: URL(string: "http://127.0.0.1:5173/app")!, remoteHost: "localhost", port: 5173)
         )
     }
 
