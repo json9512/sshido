@@ -255,6 +255,27 @@ final class TerminalURLExtractorTests: XCTestCase {
                        ["https://research.yojeong.kr/sites"])
     }
 
+    func testParenthesisedURLClosedAtFullWidthRowEnd() {
+        let rows = [
+            "  waiting on a Tailscale approval",
+            "  (https://login.tailscale.com/a/st5381392810wq).",
+            "  The rows written by ingest:hypotheses in the",
+        ]
+        XCTAssertEqual(rows[1].count, 49)
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://login.tailscale.com/a/st5381392810wq"])
+    }
+
+    func testWrappedURLWithBalancedParensStillGlues() {
+        let rows = [
+            "  (https://en.wikipedia.org/wiki/Mercury_(planet)",
+            "  _orbit) and more",
+        ]
+        XCTAssertEqual(rows[0].count, 49)
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://en.wikipedia.org/wiki/Mercury_(planet)_orbit"])
+    }
+
     func testUnindentedURLAfterFullWidthProse() {
         let rows = [
             "the page should now render with data, please open",
