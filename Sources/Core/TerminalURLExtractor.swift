@@ -180,7 +180,7 @@ public enum TerminalURLExtractor {
     ) -> String? {
         guard let last = prev.last, urlAllowedTrailing.contains(last) else { return nil }
         let stripped = next.drop(while: { $0 == " " })
-        guard !startsNewURL(stripped) else { return nil }
+        guard !startsNewURL(stripped), !endsEnclosedURL(prev) else { return nil }
         if prev.count >= cols { return fullWidthContinuation(of: prev, next: next) }
         guard next.count - stripped.count == leadingSpaceCount(of: prev),
               leadingURLRunLength(of: stripped) >= 2
@@ -225,6 +225,23 @@ public enum TerminalURLExtractor {
         else { return false }
         return row[r.lowerBound...].allSatisfy { urlAllowedTrailing.contains($0) }
     }
+
+    // "(https://…)." closing a row is a finished link, so the next row is prose.
+    private static func endsEnclosedURL(_ row: String) -> Bool {
+        guard let token = row.split(separator: " ").last,
+              let opener = token.first,
+              let closer = enclosingPairs[opener],
+              startsNewURL(token.dropFirst())
+        else { return false }
+        let tail = token.reversed().prefix(while: { sentencePunctuation.contains($0) }).count
+        let body = token.dropLast(tail)
+        return body.last == closer
+            && body.filter({ $0 == opener }).count == body.filter({ $0 == closer }).count
+    }
+
+    private static let enclosingPairs: [Character: Character] = ["(": ")", "[": "]"]
+
+    private static let sentencePunctuation: Set<Character> = [".", ",", ";", ":", "!", "?"]
 
     private static func startsNewURL(_ s: some StringProtocol) -> Bool {
         let lowered = s.lowercased()
