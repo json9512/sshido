@@ -31,6 +31,14 @@ public actor HostStore {
         try persist()
     }
 
+    public func setRemoteHostname(_ name: String, for id: UUID) throws {
+        guard let idx = cached.firstIndex(where: { $0.id == id }),
+              cached[idx].remoteHostname != name
+        else { return }
+        cached[idx].remoteHostname = name
+        try persist()
+    }
+
     public func remove(id: UUID) throws {
         cached.removeAll { $0.id == id }
         try persist()

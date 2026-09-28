@@ -87,6 +87,15 @@ public actor SessionStore {
         return reconcile(remotes: TmuxSessionList.parse(raw), host: host)
     }
 
+    /// The server's `hostname -s`, which push hooks send as `host_ref`.
+    public func remoteShortHostname(for host: RemoteHost, auth: SSHAuth) async throws -> String? {
+        let out = try await withExecChannel(for: host, auth: auth) { ch in
+            try await ch.executeCommand("hostname -s")
+        }
+        let name = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
     private func reconcile(remotes: [RemoteTmuxSession], host: RemoteHost) -> [RemoteTmuxSession] {
         let plan = TmuxReconciler.plan(
             locals: sessions(for: host.id),
