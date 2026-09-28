@@ -180,12 +180,13 @@ public enum TerminalURLExtractor {
     ) -> String? {
         guard let last = prev.last, urlAllowedTrailing.contains(last) else { return nil }
         let stripped = next.drop(while: { $0 == " " })
-        guard !startsNewURL(stripped), !endsEnclosedURL(prev) else { return nil }
+        guard !startsNewURL(stripped), !endsEnclosedURL(prev), !startsSentence(after: prev, next: stripped)
+        else { return nil }
         if prev.count >= cols { return fullWidthContinuation(of: prev, next: next) }
         // A URL broken mid-token fills its row to the wrap column, so a wider next row
         // proves prev ended at a word break.
         guard next.count <= prev.count,
-              next.count - stripped.count == leadingSpaceCount(of: prev),
+              continuesIndent(of: prev, with: next.count - stripped.count),
               leadingURLRunLength(of: stripped) >= 2
         else { return nil }
         if inRun { return String(stripped) }
@@ -205,7 +206,7 @@ public enum TerminalURLExtractor {
         let stripped = next.drop(while: { $0 == " " })
         let indent = next.count - stripped.count
         guard indent > 0 else { return next }
-        if indent == leadingSpaceCount(of: prev) { return String(stripped) }
+        if continuesIndent(of: prev, with: indent) { return String(stripped) }
         guard urlRunsToRowEnd(prev),
               !stripped.isEmpty,
               stripped.allSatisfy({ urlAllowedTrailing.contains($0) }),
@@ -242,6 +243,15 @@ public enum TerminalURLExtractor {
             && body.filter({ $0 == opener }).count == body.filter({ $0 == closer }).count
     }
 
+    // "…/u48j12." then "I compared" is a word wrap after a finished link; a URL split
+    // mid-token never resumes with a bare word and a space.
+    private static func startsSentence(after prev: String, next: Substring) -> Bool {
+        guard let last = prev.last, sentencePunctuation.contains(last),
+              let space = next.firstIndex(of: " ")
+        else { return false }
+        return next[..<space].allSatisfy(\.isLetter)
+    }
+
     private static let enclosingPairs: [Character: Character] = ["(": ")", "[": "]"]
 
     private static let sentencePunctuation: Set<Character> = [".", ",", ";", ":", "!", "?"]
@@ -253,6 +263,21 @@ public enum TerminalURLExtractor {
 
     private static func leadingSpaceCount(of s: String) -> Int {
         s.prefix(while: { $0 == " " }).count
+    }
+
+    // Claude Code hangs wrapped rows under the text after a reply bullet or tool-result bracket.
+    private static let rowMarkers: Set<Character> = ["\u{23BF}", "\u{23FA}", "\u{258C}", "\u{2022}", "-", "*"]
+
+    private static func continuesIndent(of prev: String, with indent: Int) -> Bool {
+        indent == leadingSpaceCount(of: prev) || indent == textColumnAfterMarker(of: prev)
+    }
+
+    private static func textColumnAfterMarker(of row: String) -> Int? {
+        let lead = leadingSpaceCount(of: row)
+        let rest = row.dropFirst(lead)
+        guard let marker = rest.first, rowMarkers.contains(marker) else { return nil }
+        let gap = rest.dropFirst().prefix(while: { $0 == " " }).count
+        return gap > 0 ? lead + 1 + gap : nil
     }
 
     private static func leadingURLRunLength(of s: Substring) -> Int {

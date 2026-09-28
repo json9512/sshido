@@ -281,6 +281,84 @@ final class TerminalURLExtractorTests: XCTestCase {
         }
     }
 
+    func testSchemeSplitAfterBulletRowGlues() {
+        let rows = [
+            "\u{23FA} The artifact is updated at the same link: \u{29C9} htt",
+            "  ps://claude.ai/artifact/JsUCczMPBkfawNf6u48j12.",
+            "  I compared the published page with my local",
+        ]
+        XCTAssertEqual(rows[0].count, 49)
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://claude.ai/artifact/JsUCczMPBkfawNf6u48j12"])
+    }
+
+    func testSchemeSplitAfterBlockBulletRowGlues() {
+        let rows = [
+            "\u{258C} The artifact is updated at the same link: \u{29C9} htt",
+            "  ps://claude.ai/artifact/JsUCczMPBkfawNf6u48j12.",
+        ]
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://claude.ai/artifact/JsUCczMPBkfawNf6u48j12"])
+    }
+
+    func testBulletRowURLFollowedByProseAtTextColumnStaysSeparate() {
+        let rows = [
+            "\u{23FA} Open https://example.com/a/b/c/ddddddddd",
+            "  then check the output of the job",
+        ]
+        XCTAssertEqual(rows[0].count, 42)
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://example.com/a/b/c/ddddddddd"])
+    }
+
+    func testFullWidthURLRowEndingSentenceThenProseNotGlued() {
+        let rows = [
+            "  ps: https://claude.ai/artifact/JsUCczMPBkfawNf.",
+            "  I compared the published page with my local",
+        ]
+        XCTAssertEqual(rows[0].count, 49)
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://claude.ai/artifact/JsUCczMPBkfawNf"])
+    }
+
+    func testURLSplitRightAfterDotStillGlues() {
+        let rows = [
+            "  Open https://login.tailscale.com/a/s6386e17528.",
+            "  com/next?x=1 to continue",
+        ]
+        XCTAssertEqual(rows[0].count, 49)
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://login.tailscale.com/a/s6386e17528.com/next?x=1"])
+    }
+
+    func testArtifactScreenFromClaudeCodeYieldsOneFullLink() {
+        let rows = [
+            "\u{23FA} Artifact(\"cares-expo-taipei.html\")",
+            "  \u{23BF}  Updated \u{29C9} https://claude.ai/artifact/Js",
+            "     UCczMPBkfawNf6u48j12",
+            "",
+            "\u{23FA} Artifact(read index.html of \"\u{D0C0} \u{C774} \u{BCA0} \u{C774}  \u{B3CC} \u{BD04}",
+            "  Ran 1 shell command",
+            "",
+            "\u{23FA} The artifact is updated at the same link: \u{29C9} htt",
+            "  ps://claude.ai/artifact/JsUCczMPBkfawNf6u48j12.",
+            "  I compared the published page with my local",
+            "  file twice. Apart from the page skeleton the",
+        ]
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://claude.ai/artifact/JsUCczMPBkfawNf6u48j12"])
+    }
+
+    func testToolResultURLWrappedUnderHangingIndentGlues() {
+        let rows = [
+            "  \u{23BF}  Updated \u{29C9} https://claude.ai/artifact/Js",
+            "     UCczMPBkfawNf6u48j12",
+            "",
+        ]
+        XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
+                       ["https://claude.ai/artifact/JsUCczMPBkfawNf6u48j12"])
+    }
+
     func testWrappedURLWithBalancedParensStillGlues() {
         let rows = [
             "  (https://en.wikipedia.org/wiki/Mercury_(planet)",
