@@ -129,40 +129,50 @@ extension View {
 
 struct DSStatusIndicator: View {
     enum Style {
-        case dot(active: Bool)
+        case dot(active: Bool, waiting: Bool = false)
         case pill(phase: Phase)
     }
     enum Phase { case online, connecting, offline }
 
     let style: Style
-    @State private var pulsing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let pulsePeriod: TimeInterval = 1.8
 
     var body: some View {
         switch style {
-        case .dot(let active):
-            dotView(active: active, color: active ? DS.Color.accent : DS.Color.titaniumDark)
+        case .dot(let active, let waiting):
+            dotView(active: active, color: dotColor(active: active, waiting: waiting))
         case .pill(let phase):
             pillView(phase: phase)
         }
     }
 
-    @ViewBuilder
+    private func dotColor(active: Bool, waiting: Bool) -> Color {
+        if waiting { return DS.Color.spark }
+        return active ? DS.Color.accent : DS.Color.titaniumDark
+    }
+
     private func dotView(active: Bool, color: Color) -> some View {
-        ZStack {
+        Circle()
+            .fill(color)
+            .frame(width: 10, height: 10)
+            .overlay {
+                if active && !reduceMotion { pulseRing(color: color) }
+            }
+    }
+
+    private func pulseRing(color: Color) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: Self.pulsePeriod) / Self.pulsePeriod
+            let eased = 1 - pow(1 - t, 2)
             Circle()
-                .stroke(color.opacity(0.5), lineWidth: 6)
-                .frame(width: 10, height: 10)
-                .scaleEffect(active && pulsing ? 2.2 : 1)
-                .opacity(active && pulsing ? 0 : 0.5)
-            Circle()
-                .fill(color)
-                .frame(width: 10, height: 10)
+                .stroke(color, lineWidth: 1.5)
+                .scaleEffect(1 + 0.7 * eased)
+                .opacity(0.7 * (1 - eased))
         }
-        .onAppear { startPulse(active) }
-        .onChange(of: active) { _, newVal in
-            pulsing = false
-            startPulse(newVal)
-        }
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder
@@ -184,11 +194,6 @@ struct DSStatusIndicator: View {
                 .font(DS.Font.captionMedium)
                 .foregroundStyle(DS.Color.textSecondary)
         }
-    }
-
-    private func startPulse(_ active: Bool) {
-        guard active else { return }
-        withAnimation(DS.Animation.pulse) { pulsing = true }
     }
 
     private func phaseColor(_ phase: Phase) -> Color {

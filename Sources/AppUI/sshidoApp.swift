@@ -28,6 +28,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let event = Self.agentEvent(for: notification)
+        let userInfo = notification.request.content.userInfo
+        let deliveredAt = notification.date
         Task {
             // Backstop for a relay that doesn't honor the muted flag yet.
             guard await PushService.shared.settings.notificationsEnabled else {
@@ -35,6 +37,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                 return
             }
             await MainActor.run {
+                WaitingSessionsStore.shared.recordPush(userInfo: userInfo, at: deliveredAt)
                 if let event { AgentEventFeedback.shared.fire(event) }
             }
             completionHandler([.banner, .sound, .badge, .list])

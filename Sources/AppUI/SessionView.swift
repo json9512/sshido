@@ -187,7 +187,11 @@ public struct SessionView: View {
                 dictator.cancel()
             }
         }
-        .onDisappear { dictator.cancel() }
+        .onAppear { WaitingSessionsStore.shared.markOpened(session.id) }
+        .onDisappear {
+            dictator.cancel()
+            WaitingSessionsStore.shared.markOpened(session.id)
+        }
         .onChange(of: photoItem) { _, new in
             guard let new else { return }
             Task { await uploadImage(new) }
