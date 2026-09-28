@@ -214,7 +214,7 @@ public struct HostListView: View {
         HostRow(
             host: host,
             connected: connectedHosts.contains(host.id),
-            waiting: waiting.ledger.waitingHostIDs(among: sessions).contains(host.id)
+            waiting: waiting.ledger.waitingHostIDs(among: sessions, hosts: hosts).contains(host.id)
         )
     }
 
@@ -229,6 +229,7 @@ public struct HostListView: View {
     private func refreshConnections() async {
         connectedHosts = await SessionStore.shared.connectedHostIDs()
         sessions = await SessionStore.shared.allSessions()
+        hosts = await HostStore.shared.all()
     }
 
     private func handleDeepLink() async {

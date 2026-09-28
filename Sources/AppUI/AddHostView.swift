@@ -182,7 +182,8 @@ struct AddHostView: View {
             authMethod: form.authMethod,
             useTmux: true,
             tmuxSession: existing?.tmuxSession ?? "sshido",
-            agentProfileID: nil
+            agentProfileID: nil,
+            remoteHostname: existing?.hostname == cleanedHost ? existing?.remoteHostname : nil
         )
 
         let auth: SSHAuth
