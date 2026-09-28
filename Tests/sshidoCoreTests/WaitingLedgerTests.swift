@@ -55,6 +55,20 @@ final class WaitingLedgerTests: XCTestCase {
         XCTAssertEqual(ledger.pushes[ref], t0)
     }
 
+    func testWaitingHostIDsCoversOnlyHostsWithAWaitingSession() {
+        let otherHost = RemoteHost(name: "o", hostname: "o", username: "u")
+        let waitingHere = session()
+        let quietHere = session()
+        let quietThere = Session(hostID: otherHost.id, title: "q")
+        let openedThere = Session(hostID: otherHost.id, title: "r")
+        let ledger = WaitingLedger()
+            .recordingPush(ref: shortRef(waitingHere), at: t0)
+            .recordingPush(ref: shortRef(openedThere), at: t0)
+            .recordingOpen(openedThere.id, at: t0.addingTimeInterval(1))
+        XCTAssertEqual(ledger.waitingHostIDs(among: [waitingHere, quietHere, quietThere, openedThere]), [host.id])
+        XCTAssertEqual(ledger.waitingHostIDs(among: [quietThere, openedThere]), [])
+    }
+
     func testRoundTripsThroughJSON() throws {
         let s = session()
         let ledger = WaitingLedger()

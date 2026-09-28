@@ -35,6 +35,10 @@ public struct WaitingLedger: Codable, Equatable, Sendable {
         let seen = opened[session.id] ?? .distantPast
         return pushes.contains { ref, date in date > seen && session.matches(sessionRef: ref) }
     }
+
+    public func waitingHostIDs(among sessions: [Session]) -> Set<UUID> {
+        Set(sessions.filter(isWaiting).map(\.hostID))
+    }
 }
 
 @MainActor
