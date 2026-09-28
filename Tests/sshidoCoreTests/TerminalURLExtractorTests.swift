@@ -266,6 +266,21 @@ final class TerminalURLExtractorTests: XCTestCase {
                        ["https://login.tailscale.com/a/le7809853094ba"])
     }
 
+    func testSentenceEndingURLRowFollowedByLongerProseNotGlued() {
+        let rows = [
+            "  1. Approve the connection. Open",
+            "  https://login.tailscale.com/a/l1801c96730964f.",
+            "  My SSH check is still waiting in the background",
+            "  and resumes once you approve. It will show:",
+        ]
+        XCTAssertEqual(rows[1].count, 48)
+        XCTAssertEqual(rows[2].count, 49)
+        for cols in [49, 52] {
+            XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: cols).map(\.raw),
+                           ["https://login.tailscale.com/a/l1801c96730964f"], "cols \(cols)")
+        }
+    }
+
     func testWrappedURLWithBalancedParensStillGlues() {
         let rows = [
             "  (https://en.wikipedia.org/wiki/Mercury_(planet)",
