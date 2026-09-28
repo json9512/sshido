@@ -16,6 +16,7 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
     public var useTmux: Bool
     public var tmuxSession: String
     public var agentProfileID: UUID?
+    public var remoteHostname: String?
 
     public init(
         id: UUID = UUID(),
@@ -27,7 +28,8 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         authMethod: HostAuthMethod = .key,
         useTmux: Bool = true,
         tmuxSession: String = "sshido",
-        agentProfileID: UUID? = nil
+        agentProfileID: UUID? = nil,
+        remoteHostname: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -39,11 +41,12 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         self.useTmux = useTmux
         self.tmuxSession = tmuxSession
         self.agentProfileID = agentProfileID
+        self.remoteHostname = remoteHostname
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, hostname, port, username, identityID, authMethod
-        case useTmux, tmuxSession, agentProfileID
+        case useTmux, tmuxSession, agentProfileID, remoteHostname
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -58,6 +61,7 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         try c.encode(useTmux, forKey: .useTmux)
         try c.encode(tmuxSession, forKey: .tmuxSession)
         try c.encodeIfPresent(agentProfileID, forKey: .agentProfileID)
+        try c.encodeIfPresent(remoteHostname, forKey: .remoteHostname)
     }
 
     public init(from decoder: Decoder) throws {
@@ -72,5 +76,6 @@ public struct RemoteHost: Identifiable, Hashable, Codable, Sendable {
         self.useTmux = try c.decodeIfPresent(Bool.self, forKey: .useTmux) ?? true
         self.tmuxSession = try c.decodeIfPresent(String.self, forKey: .tmuxSession) ?? "sshido"
         self.agentProfileID = try c.decodeIfPresent(UUID.self, forKey: .agentProfileID)
+        self.remoteHostname = try c.decodeIfPresent(String.self, forKey: .remoteHostname)
     }
 }

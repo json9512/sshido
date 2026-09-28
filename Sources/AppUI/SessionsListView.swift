@@ -148,7 +148,10 @@ struct SessionsListView: View {
             await waiting.ingestDeliveredNotifications()
             OnboardingCoach.shared.advance(past: .tapHost)
             await sweep()
+            await learnRemoteHostname()
         }
+        .onAppear { waiting.markHostVisited(host.id) }
+        .onDisappear { waiting.markHostVisited(host.id) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task {
                 await reload()
@@ -245,6 +248,19 @@ struct SessionsListView: View {
         }
         await reload()
         await sweep()
+    }
+
+    private func learnRemoteHostname() async {
+        do {
+            let auth = try await resolveAuth()
+            guard let name = try await SessionStore.shared.remoteShortHostname(for: host, auth: auth) else {
+                Log.session.error("hostname -s returned nothing host=\(host.name, privacy: .public)")
+                return
+            }
+            try await HostStore.shared.setRemoteHostname(name, for: host.id)
+        } catch {
+            Log.session.error("hostname probe failed host=\(host.name, privacy: .public): \(String(describing: error), privacy: .public)")
+        }
     }
 
     private func sweep() async {
