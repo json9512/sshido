@@ -182,7 +182,10 @@ public enum TerminalURLExtractor {
         let stripped = next.drop(while: { $0 == " " })
         guard !startsNewURL(stripped), !endsEnclosedURL(prev) else { return nil }
         if prev.count >= cols { return fullWidthContinuation(of: prev, next: next) }
-        guard next.count - stripped.count == leadingSpaceCount(of: prev),
+        // A URL broken mid-token fills its row to the wrap column, so a wider next row
+        // proves prev ended at a word break.
+        guard next.count <= prev.count,
+              next.count - stripped.count == leadingSpaceCount(of: prev),
               leadingURLRunLength(of: stripped) >= 2
         else { return nil }
         if inRun { return String(stripped) }
