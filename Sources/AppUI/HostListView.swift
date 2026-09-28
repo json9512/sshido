@@ -13,6 +13,8 @@ import sshidoUI
 public struct HostListView: View {
     @State private var hosts: [RemoteHost] = []
     @State private var connectedHosts: Set<UUID> = []
+    @State private var sessions: [Session] = []
+    @ObservedObject private var waiting = WaitingSessionsStore.shared
     @State private var pendingHostDelete: RemoteHost?
     @EnvironmentObject private var router: AppRouter
     @StateObject private var deepLinks = DeepLinkRouter.shared
@@ -43,7 +45,11 @@ public struct HostListView: View {
         }
         .task { await reload() }
         .onChange(of: scenePhase) { _, new in
-            if new == .active { Task { await refreshConnections() } }
+            guard new == .active else { return }
+            Task {
+                await refreshConnections()
+                await waiting.ingestDeliveredNotifications()
+            }
         }
         .onChange(of: router.path) { _, _ in
             Task { await refreshConnections() }
@@ -205,18 +211,24 @@ public struct HostListView: View {
 
     @ViewBuilder
     private func hostRow(_ host: RemoteHost) -> some View {
-        HostRow(host: host, connected: connectedHosts.contains(host.id))
+        HostRow(
+            host: host,
+            connected: connectedHosts.contains(host.id),
+            waiting: waiting.ledger.waitingHostIDs(among: sessions).contains(host.id)
+        )
     }
 
     private func reload() async {
         hosts = await HostStore.shared.all()
         OnboardingCoach.shared.startIfNeeded(hostCount: hosts.count)
         await refreshConnections()
+        await waiting.ingestDeliveredNotifications()
         await handleDeepLink()
     }
 
     private func refreshConnections() async {
         connectedHosts = await SessionStore.shared.connectedHostIDs()
+        sessions = await SessionStore.shared.allSessions()
     }
 
     private func handleDeepLink() async {
@@ -232,6 +244,7 @@ public struct HostListView: View {
 private struct HostRow: View {
     let host: RemoteHost
     let connected: Bool
+    let waiting: Bool
 
     @State private var summary: ServerMetricsSample?
     @AppStorage(MetricsSettings.intervalKey) private var intervalSeconds: Int = MetricsSettings.defaultIntervalSeconds
@@ -253,6 +266,11 @@ private struct HostRow: View {
         }
     }
 
+    private var statusLabel: String {
+        let base = connected ? "Connected" : "Not connected"
+        return waiting ? base + ", a session is waiting for you" : base
+    }
+
     private var header: some View {
         HStack(alignment: .center, spacing: DS.Spacing.md) {
             ZStack(alignment: .topTrailing) {
@@ -260,10 +278,10 @@ private struct HostRow: View {
                     .font(.title3)
                     .foregroundStyle(DS.Color.titanium)
                     .frame(width: 28, height: 24)
-                DSStatusIndicator(style: .dot(active: connected))
+                DSStatusIndicator(style: .dot(active: connected, waiting: waiting))
                     .scaleEffect(0.7)
                     .offset(x: 6, y: -4)
-                    .accessibilityLabel(connected ? "Connected" : "Not connected")
+                    .accessibilityLabel(statusLabel)
             }
             VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
                 HStack(spacing: DS.Spacing.sm) {
