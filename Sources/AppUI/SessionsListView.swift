@@ -19,6 +19,7 @@ struct SessionsListView: View {
     @State private var pending: PendingAction?
     @State private var infoSession: Session?
     @EnvironmentObject private var router: AppRouter
+    @ObservedObject private var waiting = WaitingSessionsStore.shared
 
     private enum PendingAction: Identifiable {
         case detach(Session)
@@ -63,7 +64,10 @@ struct SessionsListView: View {
                                 ZStack {
                                     Image(systemName: "terminal.fill")
                                         .font(.title3).foregroundStyle(DS.Color.titanium)
-                                    DSStatusIndicator(style: .dot(active: connectedIDs.contains(session.id)))
+                                    DSStatusIndicator(style: .dot(
+                                        active: connectedIDs.contains(session.id),
+                                        waiting: waiting.isWaiting(session)
+                                    ))
                                         .scaleEffect(0.7)
                                         .offset(x: 10, y: -10)
                                 }
@@ -141,12 +145,14 @@ struct SessionsListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await reload()
+            await waiting.ingestDeliveredNotifications()
             OnboardingCoach.shared.advance(past: .tapHost)
             await sweep()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task {
                 await reload()
+                await waiting.ingestDeliveredNotifications()
                 await sweep()
             }
         }

@@ -26,8 +26,7 @@ public final class DeepLinkRouter: ObservableObject {
     public func resolve(sessions: [Session], hosts: [RemoteHost]) -> (RemoteHost, Session)? {
         guard let ref = pendingSessionRef else { return nil }
         for session in sessions {
-            let shortID = String(session.id.uuidString.prefix(8))
-            if ref == shortID || ref.hasSuffix("-" + shortID) || ref == session.tmuxName {
+            if session.matches(sessionRef: ref) {
                 if let host = hosts.first(where: { $0.id == session.hostID }) {
                     return (host, session)
                 }
