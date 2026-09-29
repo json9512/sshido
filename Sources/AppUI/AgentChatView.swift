@@ -1,0 +1,264 @@
+#if canImport(UIKit)
+import SwiftUI
+#if canImport(sshidoModels)
+import sshidoModels
+#endif
+#if canImport(sshidoCore)
+import sshidoCore
+#endif
+#if canImport(sshidoUI)
+import sshidoUI
+#endif
+
+struct AgentChatView: View {
+    @EnvironmentObject private var router: AppRouter
+    @ObservedObject private var agents = AgentModeController.shared
+    @State private var draft = ""
+    @State private var dictator = SpeechDictator()
+    @State private var voiceEnabled = false
+    @State private var dictationLocaleID = ""
+    @State private var notice: String?
+    @State private var selectedAgent: AgentInfo?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if !agents.agents.isEmpty { agentStrip }
+            connectionBanner
+            messageList
+            composer
+        }
+        .background(DS.Color.surface0)
+        .navigationTitle("Agents")
+        .toolbarTitleDisplayMode(.inline)
+        .task {
+            let appearance = await AppearanceStore.shared.appearance
+            voiceEnabled = appearance.voiceDictationEnabled
+            dictationLocaleID = appearance.dictationLocaleID
+            agents.startChat()
+        }
+        .onDisappear {
+            dictator.cancel()
+            agents.stopChat()
+        }
+        .confirmationDialog(selectedAgent?.name ?? "", isPresented: Binding(
+            get: { selectedAgent != nil }, set: { if !$0 { selectedAgent = nil } }
+        ), titleVisibility: .visible, presenting: selectedAgent) { agent in
+            Button("Peek in terminal") { Task { await agents.peek(agent, router: router) } }
+            if agent.status != .stopped {
+                Button("Stop agent", role: .destructive) { Task { await agents.stop(agent: agent) } }
+            }
+        } message: { agent in
+            Text([agent.harness, agent.status.rawValue, agent.task].compactMap { $0 }.joined(separator: " · "))
+        }
+    }
+
+    private var agentStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DS.Spacing.sm) {
+                ForEach(agents.agents) { agent in
+                    Button { selectedAgent = agent } label: { AgentStatusChip(agent: agent) }
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, DS.Spacing.md)
+            .padding(.vertical, DS.Spacing.sm)
+        }
+        .background(DS.Color.surface1)
+    }
+
+    @ViewBuilder
+    private var connectionBanner: some View {
+        switch agents.connection {
+        case .connected:
+            EmptyView()
+        case .connecting, .disconnected:
+            HStack(spacing: DS.Spacing.sm) {
+                ProgressView()
+                Text("Connecting to your agents…").font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(DS.Spacing.sm)
+        case .failed(let reason):
+            HStack(alignment: .top, spacing: DS.Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(DS.Color.warning)
+                Text(reason).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                Spacer()
+                Button("Retry") { agents.startChat() }.font(DS.Font.captionMedium)
+            }
+            .padding(DS.Spacing.sm)
+            .background(DS.Color.surface2)
+        }
+    }
+
+    private var messageList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                    if agents.messages.isEmpty && agents.connection == .connected {
+                        Text("Tell the orchestrator what you want done. It starts agents on your host and reports back here.")
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, DS.Spacing.xl)
+                    }
+                    ForEach(agents.messages) { message in
+                        AgentMessageRow(message: message).id(message.id)
+                    }
+                }
+                .padding(DS.Spacing.md)
+            }
+            .onChange(of: agents.messages.last?.id) { _, id in
+                guard let id else { return }
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) }
+            }
+        }
+    }
+
+    private var composer: some View {
+        VStack(spacing: DS.Spacing.xs) {
+            if dictator.isListening {
+                Text(dictator.partialTranscript.isEmpty ? "Listening…" : dictator.partialTranscript)
+                    .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let notice {
+                Text(notice).font(DS.Font.caption).foregroundStyle(DS.Color.warning)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(alignment: .bottom, spacing: DS.Spacing.sm) {
+                TextField("Message the orchestrator", text: $draft, axis: .vertical)
+                    .lineLimit(1...6)
+                    .font(DS.Font.body)
+                    .padding(DS.Spacing.sm)
+                    .background(DS.Color.surface2, in: RoundedRectangle(cornerRadius: DS.Radius.md))
+                if voiceEnabled { micButton }
+                Button {
+                    Task { await send() }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill").font(.system(size: 30))
+                }
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || agents.connection != .connected)
+                .accessibilityLabel("Send")
+            }
+        }
+        .padding(DS.Spacing.md)
+        .background(DS.Color.surface1)
+    }
+
+    private var micButton: some View {
+        Button {
+            notice = nil
+            if dictator.isListening {
+                dictator.stop()
+                return
+            }
+            Task {
+                guard await dictator.requestAuthorization() else {
+                    if case .unavailable(let reason) = dictator.state { notice = reason }
+                    return
+                }
+                dictator.start(localeID: dictationLocaleID) { text in
+                    draft = draft.isEmpty ? text : draft + " " + text
+                }
+                if case .unavailable(let reason) = dictator.state { notice = reason }
+            }
+        } label: {
+            Image(systemName: dictator.isListening ? "stop.circle.fill" : "mic.circle")
+                .font(.system(size: 30))
+                .foregroundStyle(dictator.isListening ? DS.Color.error : DS.Color.accent)
+        }
+        .accessibilityLabel(dictator.isListening ? "Stop dictation" : "Dictate")
+    }
+
+    private func send() async {
+        dictator.cancel()
+        let text = draft
+        guard await agents.send(text) else {
+            notice = "Not sent — the agents are not connected."
+            return
+        }
+        draft = ""
+        notice = nil
+    }
+}
+
+private struct AgentStatusChip: View {
+    let agent: AgentInfo
+
+    var body: some View {
+        HStack(spacing: DS.Spacing.xs) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(agent.name).font(DS.Font.captionMedium).foregroundStyle(DS.Color.textPrimary)
+            Text(agent.harness).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+        }
+        .padding(.horizontal, DS.Spacing.sm)
+        .padding(.vertical, DS.Spacing.xs)
+        .background(DS.Color.surface2, in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(agent.name), \(agent.status.rawValue)")
+    }
+
+    private var color: Color {
+        switch agent.status {
+        case .working, .starting: return DS.Color.accent
+        case .idle: return DS.Color.success
+        case .failed: return DS.Color.error
+        case .stopped: return DS.Color.textTertiary
+        }
+    }
+}
+
+private struct AgentMessageRow: View {
+    let message: AgentChatMessage
+
+    var body: some View {
+        if message.kind == .user {
+            HStack {
+                Spacer(minLength: DS.Spacing.xxl)
+                Text(message.text)
+                    .font(DS.Font.body)
+                    .foregroundStyle(DS.Color.textOnAccent)
+                    .padding(DS.Spacing.sm)
+                    .background(DS.Color.accent, in: RoundedRectangle(cornerRadius: DS.Radius.md))
+                    .textSelection(.enabled)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                HStack(spacing: DS.Spacing.xs) {
+                    Image(systemName: icon).foregroundStyle(tint)
+                    Text(message.author).font(DS.Font.captionMedium).foregroundStyle(DS.Color.textSecondary)
+                }
+                Text(LocalizedStringKey(message.text))
+                    .font(message.kind == .progress ? DS.Font.caption : DS.Font.body)
+                    .foregroundStyle(message.kind == .progress ? DS.Color.textSecondary : DS.Color.textPrimary)
+                    .textSelection(.enabled)
+            }
+            .padding(DS.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(background, in: RoundedRectangle(cornerRadius: DS.Radius.md))
+        }
+    }
+
+    private var icon: String {
+        switch message.kind {
+        case .reply, .user: return "bubble.left"
+        case .progress: return "ellipsis.circle"
+        case .done: return "checkmark.circle"
+        case .needsInput: return "questionmark.circle"
+        case .error: return "exclamationmark.triangle"
+        }
+    }
+
+    private var tint: Color {
+        switch message.kind {
+        case .done: return DS.Color.success
+        case .needsInput: return DS.Color.warning
+        case .error: return DS.Color.error
+        default: return DS.Color.textTertiary
+        }
+    }
+
+    private var background: Color {
+        message.kind == .progress ? DS.Color.surface0 : DS.Color.surface2
+    }
+}
+#endif
