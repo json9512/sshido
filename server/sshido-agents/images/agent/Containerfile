@@ -8,8 +8,10 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agentctl .
 FROM docker.io/library/node:22-bookworm-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates git tmux procps bash less ripgrep \
+    chromium fonts-noto-cjk \
  && rm -rf /var/lib/apt/lists/*
-RUN npm install -g @openai/codex @google/gemini-cli && npm cache clean --force
+RUN npm install -g @openai/codex @google/gemini-cli agent-browser && npm cache clean --force
+ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 RUN useradd --create-home --uid 1001 --shell /bin/bash agent
 COPY --from=build /out/agentctl /usr/local/bin/agentctl
 USER agent

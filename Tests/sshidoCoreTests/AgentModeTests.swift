@@ -32,6 +32,22 @@ final class AgentModeTests: XCTestCase {
         XCTAssertEqual(outputs[3], .event(.ready))
     }
 
+    func testDecodesAttachmentMessage() {
+        let line = #"{"type":"message","message":{"id":9,"agentId":"a1","author":"orchestrator","kind":"file","text":"front page","createdAt":1,"attachment":{"name":"hn.png","mime":"image/png","size":138405}}}"#
+        guard case .event(.message(let m)) = feed([line + "\n"]).first else { return XCTFail("want message") }
+        XCTAssertEqual(m.kind, .file)
+        XCTAssertEqual(m.attachment, AgentAttachment(name: "hn.png", mime: "image/png", size: 138405))
+        XCTAssertTrue(m.attachment?.isImage == true)
+        XCTAssertFalse(m.attachment?.isVideo == true)
+    }
+
+    func testFileCommandAndWorkspaceMount() {
+        XCTAssertEqual(AgentHostCommands.file(podman: "/opt/homebrew/bin/podman", messageID: 42),
+                       "'/opt/homebrew/bin/podman' exec sshido-agents /usr/local/bin/sshido-agents file 42")
+        let cmd = AgentHostCommands.startDaemon(podman: "podman", socketPath: "/s", settings: .default, hostName: "h", notify: false)
+        XCTAssertTrue(cmd.contains("-v sshido-agents-workspace:/workspace:ro"))
+    }
+
     func testNeedsInputKind() {
         guard case .event(.message(let m)) = feed([needsInputLine + "\n"]).first else { return XCTFail("want message") }
         XCTAssertEqual(m.kind, .needsInput)

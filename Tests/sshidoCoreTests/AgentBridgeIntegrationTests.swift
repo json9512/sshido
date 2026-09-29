@@ -18,6 +18,25 @@ final class AgentBridgeIntegrationTests: XCTestCase {
         return (AgentBridge(channel: channel), env["SSHIDO_AGENT_E2E_PODMAN"] ?? "podman")
     }
 
+    func testAttachmentsDownloadIntact() async throws {
+        let (bridge, podman) = try bridge()
+        var attachments: [AgentChatMessage] = []
+        for try await output in await bridge.events(podman: podman, since: 0) {
+            guard case .event(let event) = output else { continue }
+            if case .message(let m) = event, m.attachment != nil { attachments.append(m) }
+            if case .ready = event { break }
+        }
+        try XCTSkipIf(attachments.isEmpty, "no attachments in this host's chat yet")
+        for message in attachments {
+            let data = try await bridge.runData(AgentHostCommands.file(podman: podman, messageID: message.id))
+            XCTAssertEqual(Int64(data.count), message.attachment?.size, "size of \(message.attachment?.name ?? "")")
+            if message.attachment?.mime == "image/png" {
+                XCTAssertEqual(Array(data.prefix(8)), [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+            }
+        }
+        await bridge.disconnect()
+    }
+
     func testStatusAndChatRoundTrip() async throws {
         let (bridge, podman) = try bridge()
         let status = AgentHostStatus.parse(try await bridge.run(AgentHostCommands.status(podman: podman)))

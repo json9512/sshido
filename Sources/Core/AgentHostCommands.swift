@@ -10,6 +10,7 @@ public enum AgentHostCommands {
     public static let notifySecret = "sshido-agents-notify"
     static let dataVolume = "sshido-agents-data"
     static let busVolume = "sshido-agents-bus"
+    static let workspaceVolume = "sshido-agents-workspace"
 
     static let pathPrefix = "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH"
 
@@ -48,7 +49,7 @@ public enum AgentHostCommands {
         return [
             q(podman), "run -d --name \(daemonContainer) --restart always --user 0 --security-opt label=disable",
             "-v \(q("\(socket):/run/podman.sock"))",
-            "-v \(busVolume):/bus -v \(dataVolume):/data",
+            "-v \(busVolume):/bus -v \(dataVolume):/data -v \(workspaceVolume):/workspace:ro",
             notify ? "--secret \(notifySecret),type=env,target=SSHIDO_NOTIFY_URL" : nil,
             envFlags, daemonImage, "daemon",
         ].compactMap { $0 }.joined(separator: " ")
@@ -66,6 +67,10 @@ public enum AgentHostCommands {
 
     public static func attach(podman: String) -> String {
         "\(q(podman)) exec -i \(daemonContainer) /usr/local/bin/sshido-agents attach"
+    }
+
+    public static func file(podman: String, messageID: Int64) -> String {
+        "\(q(podman)) exec \(daemonContainer) /usr/local/bin/sshido-agents file \(messageID)"
     }
 
     public static func peek(podman: String, container: String) -> String {

@@ -87,6 +87,8 @@ func (d *Daemon) handleBus(ctx context.Context, line []byte) BusResponse {
 		return d.busSpawn(ctx, caller, req)
 	case BusSend:
 		return d.busSend(caller, req)
+	case BusAttach:
+		return d.busAttach(caller, req)
 	}
 	return busDeny("agent %s: unknown op %q", caller.ID, req.Op)
 }
@@ -134,6 +136,20 @@ func (d *Daemon) busSpawn(ctx context.Context, caller Agent, req BusRequest) Bus
 	d.post(worker.ID, "orchestrator", KindProgress, fmt.Sprintf("Started %s (%s) on: %s", name, harness, truncate(req.Task, 200)))
 	d.enqueue(worker, req.Task)
 	return BusResponse{OK: true, AgentID: worker.ID}
+}
+
+func (d *Daemon) busAttach(caller Agent, req BusRequest) BusResponse {
+	att, err := resolveAttachment(d.cfg.WorkspaceDir, req.Path)
+	if err != nil {
+		return busDeny("agent %s: attach %q: %v", caller.ID, req.Path, err)
+	}
+	m, err := d.store.AddAttachment(caller.ID, caller.Name, strings.TrimSpace(req.Text), att)
+	if err != nil {
+		log.Printf("bus: attach for %s failed: %v", caller.ID, err)
+		return BusResponse{Error: err.Error()}
+	}
+	d.hub.Publish(AppEvent{Type: EventMessage, Message: &m})
+	return BusResponse{OK: true}
 }
 
 func (d *Daemon) busSend(caller Agent, req BusRequest) BusResponse {

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -50,6 +51,16 @@ func openStore(path string, now func() time.Time) (*Store, error) {
 	`); err != nil {
 		return nil, fmt.Errorf("store schema: %w", err)
 	}
+	for _, column := range []string{
+		"attach_name TEXT NOT NULL DEFAULT ''",
+		"attach_path TEXT NOT NULL DEFAULT ''",
+		"attach_mime TEXT NOT NULL DEFAULT ''",
+		"attach_size INTEGER NOT NULL DEFAULT 0",
+	} {
+		if _, err := db.Exec("ALTER TABLE messages ADD COLUMN " + column); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return nil, fmt.Errorf("migrate messages %s: %w", column, err)
+		}
+	}
 	return &Store{db: db, now: now}, nil
 }
 
@@ -75,17 +86,57 @@ func (s *Store) AddMessage(agentID, author, kind, text string) (Message, error) 
 	return Message{ID: id, AgentID: agentID, Author: author, Kind: kind, Text: text, CreatedAt: created}, nil
 }
 
+func (s *Store) AddAttachment(agentID, author, caption string, att Attachment) (Message, error) {
+	created := s.now().UnixMilli()
+	res, err := s.db.Exec(
+		`INSERT INTO messages (agent_id, author, kind, text, created_at, attach_name, attach_path, attach_mime, attach_size)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		agentID, author, KindFile, caption, created, att.Name, att.Path, att.Mime, att.Size)
+	if err != nil {
+		return Message{}, fmt.Errorf("add attachment: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Message{}, fmt.Errorf("add attachment id: %w", err)
+	}
+	return Message{ID: id, AgentID: agentID, Author: author, Kind: KindFile, Text: caption, CreatedAt: created, Attachment: &att}, nil
+}
+
+const messageColumns = `id, agent_id, author, kind, text, created_at, attach_name, attach_path, attach_mime, attach_size`
+
+func scanMessage(row interface{ Scan(...any) error }) (Message, error) {
+	var m Message
+	var att Attachment
+	if err := row.Scan(&m.ID, &m.AgentID, &m.Author, &m.Kind, &m.Text, &m.CreatedAt, &att.Name, &att.Path, &att.Mime, &att.Size); err != nil {
+		return Message{}, err
+	}
+	if att.Path == "" {
+		return m, nil
+	}
+	return Message{ID: m.ID, AgentID: m.AgentID, Author: m.Author, Kind: m.Kind, Text: m.Text, CreatedAt: m.CreatedAt, Attachment: &att}, nil
+}
+
+func (s *Store) Message(id int64) (Message, error) {
+	m, err := scanMessage(s.db.QueryRow(`SELECT `+messageColumns+` FROM messages WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrNotFound
+	}
+	if err != nil {
+		return Message{}, fmt.Errorf("message %d: %w", id, err)
+	}
+	return m, nil
+}
+
 func (s *Store) MessagesSince(since int64) ([]Message, error) {
-	rows, err := s.db.Query(
-		`SELECT id, agent_id, author, kind, text, created_at FROM messages WHERE id > ? ORDER BY id`, since)
+	rows, err := s.db.Query(`SELECT `+messageColumns+` FROM messages WHERE id > ? ORDER BY id`, since)
 	if err != nil {
 		return nil, fmt.Errorf("messages since: %w", err)
 	}
 	defer rows.Close()
 	var out []Message
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.AgentID, &m.Author, &m.Kind, &m.Text, &m.CreatedAt); err != nil {
+		m, err := scanMessage(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
 		out = append(out, m)
