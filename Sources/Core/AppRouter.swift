@@ -16,6 +16,7 @@ public final class AppRouter: ObservableObject {
         case host(RemoteHost)
         case session(Session)
         case performance(RemoteHost)
+        case agentChat
     }
 
     public enum Sheet: Identifiable {
@@ -36,6 +37,11 @@ public final class AppRouter: ObservableObject {
 
     public func push(_ d: Destination) {
         path.append(d)
+    }
+
+    public func pushSession(_ session: Session, host: RemoteHost) {
+        path.append(.session(session))
+        detailPath.append(.session(session))
     }
 
     public func openSession(_ session: Session, host: RemoteHost) {

@@ -89,6 +89,15 @@ public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
 
     public func resize(cols: Int, rows: Int) async throws {}
 
+    @available(macOS 15.0, *)
+    public func withExec(
+        _ command: String,
+        perform: (_ inbound: TTYOutput, _ outbound: TTYStdinWriter) async throws -> Void
+    ) async throws {
+        guard let client else { throw SSHError.notConnected }
+        try await client.withExec(command, perform: perform)
+    }
+
     public func executeCommand(_ command: String) async throws -> Data {
         guard let client else { throw SSHError.notConnected }
         do {

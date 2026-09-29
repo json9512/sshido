@@ -18,6 +18,7 @@ public struct HostListView: View {
     @State private var pendingHostDelete: RemoteHost?
     @EnvironmentObject private var router: AppRouter
     @StateObject private var deepLinks = DeepLinkRouter.shared
+    @ObservedObject private var agentMode = AgentModeController.shared
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
 
@@ -115,6 +116,8 @@ public struct HostListView: View {
             }
         case .performance(let host):
             ServerPerformanceView(host: host)
+        case .agentChat:
+            AgentChatView()
         }
     }
 
@@ -151,6 +154,8 @@ public struct HostListView: View {
                     .coachTarget(.addHost)
                 })
             } else if sizeClass == .regular {
+                VStack(spacing: 0) {
+                if agentMode.settings.enabled { agentChatRow.padding(.horizontal, DS.Spacing.md) }
                 List(selection: Binding(
                     get: { router.selectedHost },
                     set: { router.selectedHost = $0; router.detailPath.removeAll() }
@@ -163,8 +168,12 @@ public struct HostListView: View {
                         pendingHostDelete = hosts[idx]
                     }
                 }
+                }
             } else {
                 List {
+                    if agentMode.settings.enabled {
+                        agentChatRow.dsRow()
+                    }
                     ForEach(Array(hosts.enumerated()), id: \.element.id) { index, host in
                         Button {
                             router.push(.host(host))
@@ -209,6 +218,33 @@ public struct HostListView: View {
         }
     }
 
+    private func openAgentChat() {
+        if sizeClass == .regular {
+            router.detailPath = [.agentChat]
+        } else {
+            router.path = [.agentChat]
+        }
+    }
+
+    private var agentChatRow: some View {
+        Button(action: openAgentChat) {
+            HStack(spacing: DS.Spacing.md) {
+                Image(systemName: "person.3.sequence")
+                    .font(.system(size: 18))
+                    .foregroundStyle(DS.Color.accent)
+                VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                    Text("Agent chat").font(DS.Font.rowTitle).foregroundStyle(DS.Color.textPrimary)
+                    Text("Your orchestrator and its agents").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(DS.Color.textTertiary)
+            }
+            .padding(.vertical, DS.Spacing.xs)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     @ViewBuilder
     private func hostRow(_ host: RemoteHost) -> some View {
         HostRow(
@@ -234,6 +270,11 @@ public struct HostListView: View {
 
     private func handleDeepLink() async {
         guard deepLinks.pendingSessionRef != nil else { return }
+        if deepLinks.pendingIsAgentChat {
+            _ = deepLinks.consume()
+            if agentMode.settings.enabled { openAgentChat() }
+            return
+        }
         let allSessions = await SessionStore.shared.allSessions()
         if let (host, session) = deepLinks.resolve(sessions: allSessions, hosts: hosts) {
             _ = deepLinks.consume()
