@@ -1,4 +1,6 @@
 #if canImport(UIKit)
+import AVKit
+import QuickLook
 import SwiftUI
 #if canImport(sshidoModels)
 import sshidoModels
@@ -227,10 +229,14 @@ private struct AgentMessageRow: View {
                     Image(systemName: icon).foregroundStyle(tint)
                     Text(message.author).font(DS.Font.captionMedium).foregroundStyle(DS.Color.textSecondary)
                 }
-                Text(LocalizedStringKey(message.text))
-                    .font(message.kind == .progress ? DS.Font.caption : DS.Font.body)
-                    .foregroundStyle(message.kind == .progress ? DS.Color.textSecondary : DS.Color.textPrimary)
-                    .textSelection(.enabled)
+                if let attachment = message.attachment {
+                    AgentAttachmentView(message: message, attachment: attachment)
+                } else {
+                    Text(LocalizedStringKey(message.text))
+                        .font(message.kind == .progress ? DS.Font.caption : DS.Font.body)
+                        .foregroundStyle(message.kind == .progress ? DS.Color.textSecondary : DS.Color.textPrimary)
+                        .textSelection(.enabled)
+                }
             }
             .padding(DS.Spacing.sm)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -245,6 +251,7 @@ private struct AgentMessageRow: View {
         case .done: return "checkmark.circle"
         case .needsInput: return "questionmark.circle"
         case .error: return "exclamationmark.triangle"
+        case .file: return "paperclip"
         }
     }
 
@@ -259,6 +266,86 @@ private struct AgentMessageRow: View {
 
     private var background: Color {
         message.kind == .progress ? DS.Color.surface0 : DS.Color.surface2
+    }
+}
+private struct AgentAttachmentView: View {
+    let message: AgentChatMessage
+    let attachment: AgentAttachment
+    @ObservedObject private var agents = AgentModeController.shared
+    @State private var url: URL?
+    @State private var image: UIImage?
+    @State private var player: AVPlayer?
+    @State private var failure: String?
+    @State private var preview: URL?
+    @State private var attempt = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            content
+            if !message.text.isEmpty {
+                Text(message.text).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary).textSelection(.enabled)
+            }
+        }
+        .task(id: attempt) { await load() }
+        .quickLookPreview($preview)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let failure {
+            HStack(alignment: .top, spacing: DS.Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(DS.Color.warning)
+                Text("\(attachment.name): \(failure)").font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                Spacer()
+                Button("Retry") { attempt += 1 }.font(DS.Font.captionMedium)
+            }
+        } else if let image {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: 280, alignment: .leading)
+                .clipShape(RoundedRectangle(cornerRadius: DS.Radius.md))
+                .onTapGesture { preview = url }
+                .accessibilityLabel("Picture \(attachment.name). Double tap to open.")
+        } else if let player {
+            VideoPlayer(player: player)
+                .frame(height: 220)
+                .clipShape(RoundedRectangle(cornerRadius: DS.Radius.md))
+        } else if let url {
+            Button { preview = url } label: { fileRow(icon: "doc") }
+                .buttonStyle(.plain)
+        } else {
+            fileRow(icon: "arrow.down.circle", loading: true)
+        }
+    }
+
+    private func fileRow(icon: String, loading: Bool = false) -> some View {
+        HStack(spacing: DS.Spacing.sm) {
+            if loading { ProgressView() } else { Image(systemName: icon).foregroundStyle(DS.Color.accent) }
+            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
+                Text(attachment.name).font(DS.Font.body).foregroundStyle(DS.Color.textPrimary).lineLimit(1)
+                Text(ByteCountFormatter.string(fromByteCount: attachment.size, countStyle: .file))
+                    .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+            }
+            Spacer()
+        }
+        .padding(DS.Spacing.sm)
+        .background(DS.Color.surface1, in: RoundedRectangle(cornerRadius: DS.Radius.md))
+    }
+
+    private func load() async {
+        failure = nil
+        do {
+            let loaded = try await agents.attachmentURL(for: message)
+            url = loaded
+            if attachment.isImage {
+                image = UIImage(contentsOfFile: loaded.path)
+            } else if attachment.isVideo {
+                player = AVPlayer(url: loaded)
+            }
+        } catch {
+            failure = AgentModeController.message(for: error)
+        }
     }
 }
 #endif

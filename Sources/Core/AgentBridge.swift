@@ -22,9 +22,12 @@ public actor AgentBridge {
     }
 
     public func run(_ command: String) async throws -> String {
+        String(decoding: try await runData(command), as: UTF8.self)
+    }
+
+    public func runData(_ command: String) async throws -> Data {
         try await ensureConnected()
-        let data = try await channel.executeCommand(command)
-        return String(decoding: data, as: UTF8.self)
+        return try await channel.executeCommand(command)
     }
 
     public func events(podman: String, since: Int64) -> AsyncThrowingStream<AgentLineDecoder.Output, Error> {

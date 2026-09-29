@@ -27,6 +27,7 @@ type Config struct {
 	LocalURL            string
 	NotifyURL           string
 	WorkspaceVolume     string
+	WorkspaceDir        string
 	BusVolume           string
 	HostName            string
 	TurnTimeout         time.Duration
@@ -57,6 +58,7 @@ func loadConfig() (Config, error) {
 		LocalURL:            env("SSHIDO_LOCAL_URL", ""),
 		NotifyURL:           env("SSHIDO_NOTIFY_URL", ""),
 		WorkspaceVolume:     env("SSHIDO_WORKSPACE_VOLUME", "sshido-agents-workspace"),
+		WorkspaceDir:        env("SSHIDO_WORKSPACE_DIR", "/workspace"),
 		BusVolume:           env("SSHIDO_BUS_VOLUME", "sshido-agents-bus"),
 		HostName:            env("SSHIDO_HOST_NAME", "agents"),
 		TurnTimeout:         time.Duration(minutes) * time.Minute,
