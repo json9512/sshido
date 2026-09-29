@@ -38,7 +38,8 @@ const ctlUsage = `usage:
   agentctl spawn --name <name> --task "<task>" [--harness claude|codex|gemini|grok|local] [--model <model>]
   agentctl send --to <agent-id> "<message>"
   agentctl list
-  agentctl report --progress "<text>" | --needs-input "<question>"`
+  agentctl report --progress "<text>" | --needs-input "<question>"
+  agentctl attach <path> [--caption "<text>"]`
 
 func runCtl(args []string) int {
 	if len(args) == 0 {
@@ -52,7 +53,7 @@ func runCtl(args []string) int {
 	}
 	resp, err := callBus(env("SSHIDO_BUS", "/bus/bus.sock"), BusRequest{
 		Token: os.Getenv("SSHIDO_AGENT_TOKEN"), Op: req.Op, Name: req.Name, Harness: req.Harness,
-		Model: req.Model, Task: req.Task, Kind: req.Kind, Text: req.Text, To: req.To,
+		Model: req.Model, Task: req.Task, Kind: req.Kind, Text: req.Text, To: req.To, Path: req.Path,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "agentctl: %v\n", err)
@@ -77,10 +78,12 @@ func parseCtl(args []string) (BusRequest, error) {
 	to := fs.String("to", "", "")
 	progress := fs.String("progress", "", "")
 	needsInput := fs.String("needs-input", "", "")
-	if err := fs.Parse(rest); err != nil {
+	caption := fs.String("caption", "", "")
+	positional, err := parseInterleaved(fs, rest)
+	if err != nil {
 		return BusRequest{}, err
 	}
-	text := strings.Join(fs.Args(), " ")
+	text := strings.Join(positional, " ")
 	switch op {
 	case BusSpawn:
 		return BusRequest{Op: op, Name: *name, Task: *task, Harness: *harness, Model: *model}, nil
@@ -90,8 +93,29 @@ func parseCtl(args []string) (BusRequest, error) {
 		return BusRequest{Op: op}, nil
 	case BusReport:
 		return parseReport(*progress, *needsInput)
+	case BusAttach:
+		if len(positional) != 1 {
+			return BusRequest{}, errors.New("attach needs exactly one file path")
+		}
+		return BusRequest{Op: op, Path: positional[0], Text: *caption}, nil
 	}
 	return BusRequest{}, fmt.Errorf("unknown command %q", op)
+}
+
+func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
+	positional := []string{}
+	remaining := args
+	for {
+		if err := fs.Parse(remaining); err != nil {
+			return nil, err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			return positional, nil
+		}
+		positional = append(positional, rest[0])
+		remaining = rest[1:]
+	}
 }
 
 func parseReport(progress, needsInput string) (BusRequest, error) {

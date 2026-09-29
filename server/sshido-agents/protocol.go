@@ -7,6 +7,7 @@ const (
 	KindDone       = "done"
 	KindNeedsInput = "needs_input"
 	KindError      = "error"
+	KindFile       = "file"
 )
 
 const (
@@ -23,12 +24,20 @@ const (
 )
 
 type Message struct {
-	ID        int64  `json:"id"`
-	AgentID   string `json:"agentId,omitempty"`
-	Author    string `json:"author"`
-	Kind      string `json:"kind"`
-	Text      string `json:"text"`
-	CreatedAt int64  `json:"createdAt"`
+	ID         int64       `json:"id"`
+	AgentID    string      `json:"agentId,omitempty"`
+	Author     string      `json:"author"`
+	Kind       string      `json:"kind"`
+	Text       string      `json:"text"`
+	CreatedAt  int64       `json:"createdAt"`
+	Attachment *Attachment `json:"attachment,omitempty"`
+}
+
+type Attachment struct {
+	Name string `json:"name"`
+	Mime string `json:"mime"`
+	Size int64  `json:"size"`
+	Path string `json:"-"`
 }
 
 type Agent struct {
@@ -82,6 +91,7 @@ type BusRequest struct {
 	Kind    string `json:"kind,omitempty"`
 	Text    string `json:"text,omitempty"`
 	To      string `json:"to,omitempty"`
+	Path    string `json:"path,omitempty"`
 }
 
 const (
@@ -89,6 +99,7 @@ const (
 	BusReport = "report"
 	BusSend   = "send"
 	BusList   = "list"
+	BusAttach = "attach"
 )
 
 type BusResponse struct {

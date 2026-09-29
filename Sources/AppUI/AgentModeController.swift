@@ -41,6 +41,8 @@ final class AgentModeController: ObservableObject {
     @Published private(set) var messages: [AgentChatMessage] = []
     @Published private(set) var agents: [AgentInfo] = []
     @Published private(set) var connection: Connection = .disconnected
+    @Published private(set) var attachmentFiles: [Int64: URL] = [:]
+    private var attachmentLoads: [Int64: Task<URL, Error>] = [:]
 
     private let store = AgentModeSettingsStore()
     private var bridge: AgentBridge?
@@ -252,6 +254,40 @@ final class AgentModeController: ObservableObject {
         }
     }
 
+    func attachmentURL(for message: AgentChatMessage) async throws -> URL {
+        if let url = attachmentFiles[message.id] { return url }
+        if let running = attachmentLoads[message.id] { return try await running.value }
+        let task = Task { try await self.downloadAttachment(message) }
+        attachmentLoads = attachmentLoads.merging([message.id: task]) { $1 }
+        defer { attachmentLoads = attachmentLoads.filter { $0.key != message.id } }
+        let url = try await task.value
+        attachmentFiles = attachmentFiles.merging([message.id: url]) { $1 }
+        return url
+    }
+
+    private func downloadAttachment(_ message: AgentChatMessage) async throws -> URL {
+        guard let attachment = message.attachment else { throw AgentModeError.noAttachment }
+        let dir = try attachmentDirectory()
+        let safeName = attachment.name.replacingOccurrences(of: "/", with: "_")
+        let file = dir.appendingPathComponent("\(message.id)-\(safeName)")
+        if FileManager.default.fileExists(atPath: file.path) { return file }
+        let bridge = try await makeBridge()
+        let podman = try await podman(using: bridge)
+        let data = try await bridge.runData(AgentHostCommands.file(podman: podman, messageID: message.id))
+        guard Int64(data.count) == attachment.size else {
+            throw AgentModeError.incompleteFile(expected: attachment.size, got: Int64(data.count))
+        }
+        try data.write(to: file, options: .atomic)
+        return file
+    }
+
+    private func attachmentDirectory() throws -> URL {
+        let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        let dir = caches.appendingPathComponent("agent-files/\(settings.hostID?.uuidString ?? "none")", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     func openTerminal(typing command: String, title: String, router: AppRouter) async {
         guard let host = await host() else { return }
         do {
@@ -279,7 +315,8 @@ final class AgentModeController: ObservableObject {
 }
 
 enum AgentModeError: LocalizedError {
-    case noHost, noPodman, missingImages, notSetUp
+    case noHost, noPodman, missingImages, notSetUp, noAttachment
+    case incompleteFile(expected: Int64, got: Int64)
 
     var errorDescription: String? {
         switch self {
@@ -287,6 +324,8 @@ enum AgentModeError: LocalizedError {
         case .noPodman: return "Podman is not installed on this host. Install it (brew install podman, or your Linux package manager) and try again."
         case .missingImages: return "The agent images are not on this host yet. Build them from server/sshido-agents (see its README)."
         case .notSetUp: return "Agent mode is not set up on this host yet. Open Settings → Agent mode → Set up host."
+        case .noAttachment: return "This message has no file."
+        case .incompleteFile(let expected, let got): return "The file arrived incomplete (\(got) of \(expected) bytes). Try again."
         }
     }
 }

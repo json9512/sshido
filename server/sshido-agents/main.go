@@ -16,7 +16,7 @@ func main() {
 		os.Exit(runCtl(os.Args[1:]))
 	}
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: sshido-agents daemon | attach | ctl <op>")
+		fmt.Fprintln(os.Stderr, "usage: sshido-agents daemon | attach | file <message-id> | ctl <op>")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -26,6 +26,8 @@ func main() {
 		os.Exit(runAttach())
 	case "ctl":
 		os.Exit(runCtl(os.Args[2:]))
+	case "file":
+		os.Exit(runFile(os.Args[2:]))
 	}
 	fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
 	os.Exit(2)

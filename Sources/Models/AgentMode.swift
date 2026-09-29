@@ -105,6 +105,22 @@ public enum AgentMessageKind: String, Codable, Sendable {
     case user, reply, progress, done
     case needsInput = "needs_input"
     case error
+    case file
+}
+
+public struct AgentAttachment: Codable, Equatable, Sendable {
+    public let name: String
+    public let mime: String
+    public let size: Int64
+
+    public init(name: String, mime: String, size: Int64) {
+        self.name = name
+        self.mime = mime
+        self.size = size
+    }
+
+    public var isImage: Bool { mime.hasPrefix("image/") }
+    public var isVideo: Bool { mime.hasPrefix("video/") }
 }
 
 public struct AgentChatMessage: Codable, Identifiable, Equatable, Sendable {
@@ -114,14 +130,17 @@ public struct AgentChatMessage: Codable, Identifiable, Equatable, Sendable {
     public let kind: AgentMessageKind
     public let text: String
     public let createdAt: Int64
+    public let attachment: AgentAttachment?
 
-    public init(id: Int64, agentId: String?, author: String, kind: AgentMessageKind, text: String, createdAt: Int64) {
+    public init(id: Int64, agentId: String?, author: String, kind: AgentMessageKind, text: String, createdAt: Int64,
+                attachment: AgentAttachment? = nil) {
         self.id = id
         self.agentId = agentId
         self.author = author
         self.kind = kind
         self.text = text
         self.createdAt = createdAt
+        self.attachment = attachment
     }
 }
 

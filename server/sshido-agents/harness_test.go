@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -147,5 +148,16 @@ func TestLocalNeedsEndpointAndModel(t *testing.T) {
 func TestUnknownHarness(t *testing.T) {
 	if _, err := lookupHarness("aider"); err == nil {
 		t.Fatal("want error for unknown harness")
+	}
+}
+
+func TestFirstTurnPromptsDescribeComputerUse(t *testing.T) {
+	for _, role := range []string{RoleOrchestrator, RoleWorker} {
+		prompt := firstTurnPrompt(role, "w", "do it")
+		for _, want := range []string{"agent-browser open", "network access", "/workspace"} {
+			if !strings.Contains(prompt, want) {
+				t.Fatalf("%s brief lacks %q", role, want)
+			}
+		}
 	}
 }
