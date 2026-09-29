@@ -17,6 +17,10 @@ public final class DeepLinkRouter: ObservableObject {
         }
     }
 
+    public static let agentsSessionRef = "agents"
+
+    public var pendingIsAgentChat: Bool { pendingSessionRef == Self.agentsSessionRef }
+
     public func consume() -> String? {
         let ref = pendingSessionRef
         pendingSessionRef = nil

@@ -24,6 +24,7 @@ public struct SettingsView: View {
     @State private var groups: [ShortcutGroup] = []
     @State private var confirmClearSubscription = false
     @State private var pushEnabled = true
+    @ObservedObject private var agentMode = AgentModeController.shared
     static let dictationLocales: [(String, String)] = [
         ("", "System default"),
         ("en-US", "English (US)"),
@@ -56,6 +57,31 @@ public struct SettingsView: View {
                         }
                     }
                     .dsRow()
+                }
+                Section {
+                    Toggle(isOn: Binding(
+                        get: { agentMode.settings.enabled },
+                        set: { on in agentMode.update { $0.with(enabled: on) } }
+                    )) {
+                        Text("Agent mode").font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                    NavigationLink {
+                        AgentModeSettingsView()
+                    } label: {
+                        HStack(spacing: DS.Spacing.md) {
+                            Image(systemName: "person.3.sequence")
+                                .font(.system(size: 16))
+                                .foregroundStyle(DS.Color.accent)
+                            Text("Agent mode settings").font(DS.Font.rowTitle)
+                        }
+                    }
+                    .dsRow()
+                } header: {
+                    DSSectionHeader("Agents")
+                } footer: {
+                    Text("Chat with an orchestrator that runs coding agents in Podman on one of your hosts, using your own subscriptions or local models. Adds Agent chat to the server list.")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Section(header: DSSectionHeader("Identity")) {
                     NavigationLink {
