@@ -16,31 +16,30 @@ const (
 	RoleMember       = "member"
 )
 
-const (
-	ChatOrchestrated = "orchestrated"
-	ChatGroup        = "group"
-)
-
-const (
-	ChatIdle    = "idle"
-	ChatPicking = "picking"
-	ChatWorking = "working"
-)
-
 type Chat struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
-	Kind      string `json:"kind"`
-	TurnCap   int    `json:"turnCap"`
-	Status    string `json:"status"`
 	CreatedAt int64  `json:"createdAt"`
 }
 
-type MemberSpec struct {
-	Name    string `json:"name"`
-	Harness string `json:"harness"`
-	Model   string `json:"model,omitempty"`
+type Record struct {
+	Goal         string
+	WorkStatus   string
+	Verification string
+	Verdict      string
+	VerdictNote  string
 }
+
+const (
+	WorkInProgress = "in_progress"
+	WorkBlocked    = "blocked"
+	WorkDone       = "done"
+)
+
+const (
+	VerdictPass = "pass"
+	VerdictFail = "fail"
+)
 
 const (
 	StatusStarting = "starting"
@@ -69,33 +68,34 @@ type Attachment struct {
 }
 
 type Agent struct {
-	ID        string `json:"id"`
-	ChatID    string `json:"chatId"`
-	Name      string `json:"name"`
-	Role      string `json:"role"`
-	Harness   string `json:"harness"`
-	Model     string `json:"model,omitempty"`
-	Status    string `json:"status"`
-	Task      string `json:"task,omitempty"`
-	Session   string `json:"-"`
-	Seen      int64  `json:"-"`
-	Mounts    string `json:"-"`
-	Briefed   string `json:"-"`
-	Container string `json:"container"`
-	CreatedAt int64  `json:"createdAt"`
-	UpdatedAt int64  `json:"updatedAt"`
+	ID           string `json:"id"`
+	ChatID       string `json:"chatId"`
+	Name         string `json:"name"`
+	Role         string `json:"role"`
+	Harness      string `json:"harness"`
+	Model        string `json:"model,omitempty"`
+	Status       string `json:"status"`
+	Task         string `json:"task,omitempty"`
+	Goal         string `json:"goal,omitempty"`
+	WorkStatus   string `json:"workStatus,omitempty"`
+	Verification string `json:"verification,omitempty"`
+	Verdict      string `json:"verdict,omitempty"`
+	VerdictNote  string `json:"verdictNote,omitempty"`
+	Session      string `json:"-"`
+	Mounts       string `json:"-"`
+	Briefed      string `json:"-"`
+	Container    string `json:"container"`
+	CreatedAt    int64  `json:"createdAt"`
+	UpdatedAt    int64  `json:"updatedAt"`
 }
 
 type AppRequest struct {
-	Op      string       `json:"op"`
-	Since   int64        `json:"since,omitempty"`
-	ChatID  string       `json:"chatId,omitempty"`
-	Text    string       `json:"text,omitempty"`
-	AgentID string       `json:"agentId,omitempty"`
-	Title   string       `json:"title,omitempty"`
-	Kind    string       `json:"kind,omitempty"`
-	TurnCap int          `json:"turnCap,omitempty"`
-	Members []MemberSpec `json:"members,omitempty"`
+	Op      string `json:"op"`
+	Since   int64  `json:"since,omitempty"`
+	ChatID  string `json:"chatId,omitempty"`
+	Text    string `json:"text,omitempty"`
+	AgentID string `json:"agentId,omitempty"`
+	Title   string `json:"title,omitempty"`
 }
 
 const (
@@ -131,6 +131,7 @@ type BusRequest struct {
 	Harness string `json:"harness,omitempty"`
 	Model   string `json:"model,omitempty"`
 	Task    string `json:"task,omitempty"`
+	Goal    string `json:"goal,omitempty"`
 	Kind    string `json:"kind,omitempty"`
 	Text    string `json:"text,omitempty"`
 	To      string `json:"to,omitempty"`
@@ -138,11 +139,18 @@ type BusRequest struct {
 }
 
 const (
-	BusSpawn  = "spawn"
-	BusReport = "report"
-	BusSend   = "send"
-	BusList   = "list"
-	BusAttach = "attach"
+	BusSpawn   = "spawn"
+	BusReport  = "report"
+	BusSend    = "send"
+	BusList    = "list"
+	BusAttach  = "attach"
+	BusStop    = "stop"
+	BusGoal    = "goal"
+	BusStatus  = "status"
+	BusVerify  = "verify"
+	BusLog     = "log"
+	BusVerdict = "verdict"
+	BusRecord  = "record"
 )
 
 type BusResponse struct {
@@ -150,4 +158,5 @@ type BusResponse struct {
 	Error   string  `json:"error,omitempty"`
 	AgentID string  `json:"agentId,omitempty"`
 	Agents  []Agent `json:"agents,omitempty"`
+	Text    string  `json:"text,omitempty"`
 }

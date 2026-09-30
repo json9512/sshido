@@ -68,7 +68,35 @@ targets:
       Debug: Signing.xcconfig
       Release: Signing.xcconfig
 
+  sshidoScreenshots:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ../ScreenshotTests
+    dependencies:
+      - target: sshido
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID).screenshots
+        TEST_TARGET_NAME: sshido
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: $(CODE_SIGN_STYLE)
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
+
 schemes:
+  screenshots:
+    build:
+      targets:
+        sshido: all
+        sshidoScreenshots: [test]
+    test:
+      config: Debug
+      targets:
+        - sshidoScreenshots
   sshido:
     build:
       targets:

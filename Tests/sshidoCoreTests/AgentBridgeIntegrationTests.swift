@@ -51,12 +51,12 @@ final class AgentBridgeIntegrationTests: XCTestCase {
         for try await output in await bridge.events(podman: podman, since: 0) {
             guard case .event(let event) = output else { continue }
             if case .message(let m) = event { lastSeen = max(lastSeen, m.id) }
-            if case .chat(let c) = event, c.kind == .orchestrated, chatID == nil { chatID = c.id }
+            if case .chat(let c) = event, chatID == nil { chatID = c.id }
             if case .ready = event, replayedUpTo == nil {
                 sawReady = true
                 replayedUpTo = lastSeen
-                let target = try XCTUnwrap(chatID, "the test host needs an orchestrated chat")
-                try await bridge.send(.send(chatID: target, text: "Reply with exactly the word pong. Do not start any workers."))
+                let target = try XCTUnwrap(chatID, "the test host needs a chat")
+                try await bridge.send(.send(chatID: target, text: "Reply with exactly the word pong. Do not start any subagents."))
             }
             if case .message(let m) = event, let floor = replayedUpTo, m.id > floor, m.chatId == chatID,
                m.kind == .reply, m.text.lowercased().contains("pong") {

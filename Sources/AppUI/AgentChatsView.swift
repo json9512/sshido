@@ -9,7 +9,7 @@ import sshidoCore
 
 struct AgentChatsView: View {
     @ObservedObject private var agents = AgentModeController.shared
-    @State private var newChat: AgentChatKind?
+    @State private var creatingChat = false
     @State private var pendingDelete: AgentChat?
     @State private var openedChat: String?
 
@@ -42,14 +42,7 @@ struct AgentChatsView: View {
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { newChat = .orchestrated } label: {
-                        Label("Chat with an orchestrator", systemImage: "person.crop.circle.badge.checkmark")
-                    }
-                    Button { newChat = .group } label: {
-                        Label("Group chat of agents", systemImage: "person.3")
-                    }
-                } label: {
+                Button { creatingChat = true } label: {
                     Image(systemName: "plus")
                 }
                 .disabled(agents.connection != .connected)
@@ -57,10 +50,10 @@ struct AgentChatsView: View {
             }
         }
         .navigationDestination(item: $openedChat) { id in AgentChatView(chatID: id) }
-        .sheet(item: $newChat) { kind in
+        .sheet(isPresented: $creatingChat) {
             NavigationStack {
-                NewAgentChatView(kind: kind) { id in
-                    newChat = nil
+                NewAgentChatView { id in
+                    creatingChat = false
                     openedChat = id
                 }
             }
@@ -77,12 +70,8 @@ struct AgentChatsView: View {
     }
 
     private func busy(_ chat: AgentChat) -> Bool {
-        chat.status != .idle || agents.agents(in: chat.id).contains { $0.status == .working || $0.status == .starting }
+        agents.agents(in: chat.id).contains { $0.status == .working || $0.status == .starting }
     }
-}
-
-extension AgentChatKind: Identifiable {
-    public var id: String { rawValue }
 }
 
 private struct AgentChatRow: View {
@@ -92,7 +81,7 @@ private struct AgentChatRow: View {
 
     var body: some View {
         HStack(spacing: DS.Spacing.md) {
-            Image(systemName: chat.kind == .group ? "person.3" : "person.crop.circle.badge.checkmark")
+            Image(systemName: "person.crop.circle.badge.checkmark")
                 .font(.system(size: 18))
                 .foregroundStyle(DS.Color.accent)
                 .frame(width: 28)
@@ -110,7 +99,7 @@ private struct AgentChatRow: View {
     }
 
     private var preview: String {
-        guard let last else { return chat.kind == .group ? "Group chat" : "Orchestrator chat" }
+        guard let last else { return "No messages yet" }
         let text = last.kind == .file ? "sent a file" : last.text
         return "\(last.author): \(text)"
     }

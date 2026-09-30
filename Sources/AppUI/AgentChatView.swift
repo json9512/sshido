@@ -27,7 +27,6 @@ struct AgentChatView: View {
     private var chat: AgentChat? { agents.chat(chatID) }
     private var chatAgents: [AgentInfo] { agents.agents(in: chatID) }
     private var chatMessages: [AgentChatMessage] { agents.messages(in: chatID) }
-    private var isGroup: Bool { chat?.kind == .group }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,15 +52,11 @@ struct AgentChatView: View {
             dictator.cancel()
             agents.release()
         }
-        .confirmationDialog(selectedAgent?.name ?? "", isPresented: Binding(
-            get: { selectedAgent != nil }, set: { if !$0 { selectedAgent = nil } }
-        ), titleVisibility: .visible, presenting: selectedAgent) { agent in
-            Button("Peek in terminal") { Task { await agents.peek(agent, router: router) } }
-            if agent.status != .stopped {
-                Button("Stop agent", role: .destructive) { Task { await agents.stop(agent: agent) } }
+        .sheet(item: $selectedAgent) { agent in
+            NavigationStack {
+                AgentRecordView(agentID: agent.id)
             }
-        } message: { agent in
-            Text([agent.harness, agent.status.rawValue, agent.task].compactMap { $0 }.joined(separator: " · "))
+            .environmentObject(router)
         }
     }
 
@@ -86,7 +81,7 @@ struct AgentChatView: View {
     private var bottomID: String {
         let pendingCount = agents.pending(in: chatID).count
         let workingIDs = working.map(\.id).joined(separator: ",")
-        return "\(chatMessages.last?.id ?? 0)-\(pendingCount)-\(workingIDs)-\(chat?.status.rawValue ?? "")"
+        return "\(chatMessages.last?.id ?? 0)-\(pendingCount)-\(workingIDs)"
     }
 
     private var messageList: some View {
@@ -96,9 +91,7 @@ struct AgentChatView: View {
                     if !agents.historyLoaded && chatMessages.isEmpty {
                         ForEach(0..<4, id: \.self) { i in AgentMessageSkeleton(trailing: i == 0) }
                     } else if chatMessages.isEmpty && agents.pending(in: chatID).isEmpty {
-                        Text(isGroup
-                             ? "Say what you want. The picker chooses which member answers, one at a time, until it hands the chat back to you."
-                             : "Tell the orchestrator what you want done. It starts agents on your host and reports back here.")
+                        Text("Tell the orchestrator what you need. It plans the work, starts subagents on your host when that helps, checks the results, and reports back here.")
                             .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                             .frame(maxWidth: .infinity)
                             .padding(.top, DS.Spacing.xl)
@@ -123,9 +116,6 @@ struct AgentChatView: View {
 
     @ViewBuilder
     private var activity: some View {
-        if chat?.status == .picking {
-            ActivityRow(text: "Choosing who speaks next…", since: nil)
-        }
         ForEach(working) { agent in
             ActivityRow(text: "\(agent.name) is working", since: Date(timeIntervalSince1970: TimeInterval(agent.updatedAt) / 1000))
         }
@@ -143,7 +133,7 @@ struct AgentChatView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(alignment: .bottom, spacing: DS.Spacing.sm) {
-                TextField(isGroup ? "Message the group" : "Message the orchestrator", text: $draft, axis: .vertical)
+                TextField("Message the orchestrator", text: $draft, axis: .vertical)
                     .lineLimit(1...6)
                     .font(DS.Font.body)
                     .padding(DS.Spacing.sm)
@@ -275,12 +265,18 @@ private struct AgentStatusChip: View {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(agent.name).font(DS.Font.captionMedium).foregroundStyle(DS.Color.textPrimary)
             Text(agent.harness).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+            if let verdict = agent.verdict {
+                Image(systemName: verdict == .pass ? "checkmark.seal.fill" : "xmark.seal.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(verdict == .pass ? DS.Color.success : DS.Color.error)
+            }
         }
         .padding(.horizontal, DS.Spacing.sm)
         .padding(.vertical, DS.Spacing.xs)
         .background(DS.Color.surface2, in: Capsule())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(agent.name), \(agent.status.rawValue)")
+        .accessibilityLabel("\(agent.name), \(agent.status.rawValue)\(agent.verdict.map { ", verdict \($0.rawValue)" } ?? "")")
+        .accessibilityHint("Shows its goal, verification, verdict and track record")
     }
 
     private var color: Color {

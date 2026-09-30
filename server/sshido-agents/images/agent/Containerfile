@@ -9,11 +9,13 @@ FROM docker.io/library/node:22-bookworm-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates git tmux procps bash less ripgrep \
     chromium fonts-noto-cjk \
+    xvfb openbox x11vnc xdotool scrot x11-utils xterm novnc python3-websockify \
  && rm -rf /var/lib/apt/lists/*
 RUN npm install -g @openai/codex @google/gemini-cli agent-browser && npm cache clean --force
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 RUN useradd --create-home --uid 1001 --shell /bin/bash agent
 COPY --from=build /out/agentctl /usr/local/bin/agentctl
+COPY --chmod=755 images/agent/desktop /usr/local/bin/desktop
 USER agent
 ENV PATH=/home/agent/.local/bin:/opt/grok/bin:$PATH
 RUN curl -fsSL https://claude.ai/install.sh | bash

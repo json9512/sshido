@@ -35,11 +35,19 @@ func runAttach() int {
 }
 
 const ctlUsage = `usage:
-  agentctl spawn --name <name> --task "<task>" [--harness claude|codex|gemini|grok|local] [--model <model>]
-  agentctl send --to <agent-id> "<message>"
-  agentctl list
+  agentctl goal "<the outcome, and how you will know it is met>"
+  agentctl log "<what you did or decided>"
+  agentctl verify "<what you checked and what you saw>"
+  agentctl status in_progress|blocked|done ["<note>"]
+  agentctl record [--to <agent-id>]
   agentctl report --progress "<text>" | --needs-input "<question>"
-  agentctl attach <path> [--caption "<text>"]`
+  agentctl attach <path> [--caption "<text>"]
+orchestrator only:
+  agentctl spawn --name <name> --goal "<what done looks like>" --task "<task>" [--harness <harness>] [--model <model>]
+  agentctl send --to <agent-id> "<message>"
+  agentctl verdict --to <agent-id>|self --pass|--fail "<why>"
+  agentctl stop --to <agent-id>
+  agentctl list`
 
 func runCtl(args []string) int {
 	if len(args) == 0 {
@@ -53,7 +61,7 @@ func runCtl(args []string) int {
 	}
 	resp, err := callBus(env("SSHIDO_BUS", "/bus/bus.sock"), BusRequest{
 		Token: os.Getenv("SSHIDO_AGENT_TOKEN"), Op: req.Op, Name: req.Name, Harness: req.Harness,
-		Model: req.Model, Task: req.Task, Kind: req.Kind, Text: req.Text, To: req.To, Path: req.Path,
+		Model: req.Model, Task: req.Task, Goal: req.Goal, Kind: req.Kind, Text: req.Text, To: req.To, Path: req.Path,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "agentctl: %v\n", err)
@@ -72,7 +80,10 @@ func parseCtl(args []string) (BusRequest, error) {
 	fs := flag.NewFlagSet(op, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	name := fs.String("name", "", "")
+	goal := fs.String("goal", "", "")
 	task := fs.String("task", "", "")
+	pass := fs.Bool("pass", false, "")
+	fail := fs.Bool("fail", false, "")
 	harness := fs.String("harness", "", "")
 	model := fs.String("model", "", "")
 	to := fs.String("to", "", "")
@@ -86,11 +97,19 @@ func parseCtl(args []string) (BusRequest, error) {
 	text := strings.Join(positional, " ")
 	switch op {
 	case BusSpawn:
-		return BusRequest{Op: op, Name: *name, Task: *task, Harness: *harness, Model: *model}, nil
+		return BusRequest{Op: op, Name: *name, Goal: *goal, Task: *task, Harness: *harness, Model: *model}, nil
 	case BusSend:
 		return BusRequest{Op: op, To: *to, Text: text}, nil
+	case BusStop, BusRecord:
+		return BusRequest{Op: op, To: *to}, nil
 	case BusList:
 		return BusRequest{Op: op}, nil
+	case BusGoal, BusVerify, BusLog:
+		return BusRequest{Op: op, Text: text}, nil
+	case BusStatus:
+		return parseStatus(positional)
+	case BusVerdict:
+		return parseVerdict(*to, *pass, *fail, text)
 	case BusReport:
 		return parseReport(*progress, *needsInput)
 	case BusAttach:
@@ -116,6 +135,23 @@ func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
 		positional = append(positional, rest[0])
 		remaining = rest[1:]
 	}
+}
+
+func parseStatus(positional []string) (BusRequest, error) {
+	if len(positional) == 0 {
+		return BusRequest{}, errors.New("status needs in_progress, blocked or done")
+	}
+	return BusRequest{Op: BusStatus, Kind: positional[0], Text: strings.Join(positional[1:], " ")}, nil
+}
+
+func parseVerdict(to string, pass, fail bool, reason string) (BusRequest, error) {
+	if pass == fail {
+		return BusRequest{}, errors.New("verdict needs exactly one of --pass or --fail")
+	}
+	if pass {
+		return BusRequest{Op: BusVerdict, To: to, Kind: VerdictPass, Text: reason}, nil
+	}
+	return BusRequest{Op: BusVerdict, To: to, Kind: VerdictFail, Text: reason}, nil
 }
 
 func parseReport(progress, needsInput string) (BusRequest, error) {
@@ -154,10 +190,13 @@ func printCtl(op string, resp BusResponse) {
 		fmt.Println(resp.AgentID)
 	case BusList:
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tNAME\tROLE\tHARNESS\tSTATUS")
+		fmt.Fprintln(w, "ID\tNAME\tROLE\tHARNESS\tSTATUS\tWORK\tVERDICT")
 		for _, a := range resp.Agents {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", a.ID, a.Name, a.Role, a.Harness, a.Status)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", a.ID, a.Name, a.Role, a.Harness, a.Status,
+				firstNonEmpty(a.WorkStatus, "-"), firstNonEmpty(a.Verdict, "-"))
 		}
 		w.Flush()
+	case BusRecord:
+		fmt.Println(resp.Text)
 	}
 }

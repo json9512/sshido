@@ -45,7 +45,8 @@ final class AgentModeTests: XCTestCase {
         XCTAssertEqual(AgentHostCommands.file(podman: "/opt/homebrew/bin/podman", messageID: 42),
                        "'/opt/homebrew/bin/podman' exec sshido-agents /usr/local/bin/sshido-agents file 42")
         let cmd = AgentHostCommands.startDaemon(podman: "podman", socketPath: "/s", settings: .default, hostName: "h", notify: false)
-        XCTAssertTrue(cmd.contains("-v sshido-agents-workspace:/workspace:ro"))
+        XCTAssertTrue(cmd.contains("-v sshido-agents-workspace:/workspace "))
+        XCTAssertFalse(cmd.contains(":/workspace:ro"))
     }
 
     func testNeedsInputKind() {
@@ -144,11 +145,11 @@ final class AgentModeTests: XCTestCase {
     }
 
     func testDecodesChatEvents() {
-        let chat = #"{"type":"chat","chat":{"id":"c2","title":"crew","kind":"group","turnCap":6,"status":"picking","createdAt":5}}"#
+        let chat = #"{"type":"chat","chat":{"id":"c2","title":"crew","createdAt":5}}"#
         let removed = #"{"type":"chatRemoved","chatId":"c2"}"#
         let outputs = feed([chat + "\n" + removed + "\n"])
         XCTAssertEqual(outputs, [
-            .event(.chat(AgentChat(id: "c2", title: "crew", kind: .group, turnCap: 6, status: .picking, createdAt: 5))),
+            .event(.chat(AgentChat(id: "c2", title: "crew", createdAt: 5))),
             .event(.chatRemoved("c2")),
         ])
     }
@@ -156,39 +157,36 @@ final class AgentModeTests: XCTestCase {
     func testRequestsUseTheDaemonFieldNames() throws {
         let send = try json(.send(chatID: "c1", text: "hi"))
         XCTAssertEqual(send as NSDictionary, ["op": "send", "chatId": "c1", "text": "hi"] as NSDictionary)
-        let group = try json(.createGroup(title: "crew", members: [
-            AgentMemberSpec(name: "poet", harness: .claude, model: nil),
-            AgentMemberSpec(name: "critic", harness: .local, model: "qwen3.6:35b-instruct"),
-        ], turnCap: 4))
-        XCTAssertEqual(group as NSDictionary, [
-            "op": "createChat", "title": "crew", "kind": "group", "turnCap": 4,
-            "members": [["name": "poet", "harness": "claude"],
-                        ["name": "critic", "harness": "local", "model": "qwen3.6:35b-instruct"]],
-        ] as NSDictionary)
         XCTAssertEqual(try json(.createChat(title: "solo")) as NSDictionary,
-                       ["op": "createChat", "title": "solo", "kind": "orchestrated"] as NSDictionary)
+                       ["op": "createChat", "title": "solo"] as NSDictionary)
         XCTAssertEqual(try json(.deleteChat(id: "c9")) as NSDictionary, ["op": "deleteChat", "chatId": "c9"] as NSDictionary)
         XCTAssertEqual(try json(.hello(since: 3)) as NSDictionary, ["op": "hello", "since": 3] as NSDictionary)
     }
 
-    func testSettingsSavedBeforeGroupChatsStillLoad() throws {
+    func testOlderSettingsStillLoad() throws {
         let suite = "sshido.tests.agentMode.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
         let id = UUID()
-        let old = #"{"enabled":true,"hostID":"\#(id.uuidString)","orchestrator":"local","orchestratorModel":"qwen3.6:35b-instruct","worker":"claude","workerModel":"","localURL":"http://h:8083/v1","podmanPath":"/opt/homebrew/bin/podman"}"#
+        let old = #"{"enabled":true,"hostID":"\#(id.uuidString)","orchestrator":"local","orchestratorModel":"qwen3.6:35b-instruct","worker":"claude","workerModel":"","localURL":"http://h:8083/v1","podmanPath":"/opt/homebrew/bin/podman","pickerModel":"qwen3.6:35b-instruct","hostDirectories":["/Users/me/code"]}"#
         UserDefaults(suiteName: suite)?.set(Data(old.utf8), forKey: AgentModeSettingsStore.key)
         let loaded = AgentModeSettingsStore(suiteName: suite).load()
         XCTAssertEqual(loaded, AgentModeSettings(enabled: true, hostID: id, orchestrator: .local,
                                                  orchestratorModel: "qwen3.6:35b-instruct", worker: .claude,
-                                                 localURL: "http://h:8083/v1", podmanPath: "/opt/homebrew/bin/podman"))
-        XCTAssertEqual(loaded.pickerModel, "")
-        XCTAssertEqual(loaded.hostDirectories, [])
+                                                 localURL: "http://h:8083/v1", podmanPath: "/opt/homebrew/bin/podman",
+                                                 hostDirectories: ["/Users/me/code"]))
+        XCTAssertEqual(loaded.workerChoice, .fixed)
+        XCTAssertEqual(loaded.workerAllowed, [.claude])
     }
 
-    func testStartDaemonPassesPickerAndHostFolders() {
-        let settings = AgentModeSettings(pickerModel: "qwen3.6:35b-instruct", hostDirectories: ["/Users/me/code", "/Users/me/it's"])
+    func testStartDaemonPassesWorkerChoiceAndHostFolders() {
+        let settings = AgentModeSettings(workerChoice: .orchestrator, workerAllowed: [.claude, .local],
+                                         workerLocalModel: "qwen3.6:35b-instruct",
+                                         hostDirectories: ["/Users/me/code", "/Users/me/it's"])
         let cmd = AgentHostCommands.startDaemon(podman: "podman", socketPath: "/s", settings: settings, hostName: "h", notify: false)
-        XCTAssertTrue(cmd.contains("-e 'SSHIDO_PICKER_MODEL=qwen3.6:35b-instruct'"))
+        XCTAssertTrue(cmd.contains("-e 'SSHIDO_WORKER_CHOICE=orchestrator'"))
+        XCTAssertTrue(cmd.contains("-e 'SSHIDO_WORKER_HARNESSES=claude,local'"))
+        XCTAssertTrue(cmd.contains("-e 'SSHIDO_WORKER_LOCAL_MODEL=qwen3.6:35b-instruct'"))
+        XCTAssertFalse(cmd.contains("PICKER"))
         XCTAssertTrue(cmd.contains(#"-e 'SSHIDO_HOST_DIRS=["/Users/me/code","/Users/me/it'\''s"]'"#), cmd)
         let empty = AgentHostCommands.startDaemon(podman: "podman", socketPath: "/s", settings: .default, hostName: "h", notify: false)
         XCTAssertTrue(empty.contains("-e 'SSHIDO_HOST_DIRS=[]'"))
@@ -202,8 +200,57 @@ final class AgentModeTests: XCTestCase {
         XCTAssertNotNil(AgentModeSettings.hostDirectoryProblem("/Users/me/code/", among: ["/Users/me/code"]))
         XCTAssertNil(AgentModeSettings.hostDirectoryProblem(" /Users/me/notes ", among: ["/Users/me/code"]))
         XCTAssertEqual(AgentModeSettings.normalizedHostDirectory(" /Users/me/notes/ "), "/Users/me/notes")
-        XCTAssertTrue(AgentModeSettings(pickerModel: "m").usesLocalEndpoint)
         XCTAssertFalse(AgentModeSettings.default.usesLocalEndpoint)
+        XCTAssertTrue(AgentModeSettings(orchestrator: .local).usesLocalEndpoint)
+        XCTAssertTrue(AgentModeSettings(worker: .local).usesLocalEndpoint)
+        XCTAssertFalse(AgentModeSettings(worker: .local, workerChoice: .orchestrator, workerAllowed: [.codex]).usesLocalEndpoint)
+        XCTAssertTrue(AgentModeSettings(workerChoice: .orchestrator, workerAllowed: [.codex, .local]).usesLocalEndpoint)
+    }
+
+    func testSettingsProblems() {
+        XCTAssertNil(AgentModeSettings.default.problem)
+        XCTAssertNotNil(AgentModeSettings(orchestrator: .local).problem)
+        XCTAssertNil(AgentModeSettings(orchestrator: .local, orchestratorModel: "qwen").problem)
+        XCTAssertNotNil(AgentModeSettings(worker: .local).problem)
+        XCTAssertNil(AgentModeSettings(worker: .local, workerChoice: .orchestrator).problem)
+        XCTAssertNotNil(AgentModeSettings(workerChoice: .orchestrator, workerAllowed: []).problem)
+        XCTAssertNotNil(AgentModeSettings(workerChoice: .orchestrator, workerAllowed: [.local]).problem)
+        XCTAssertNil(AgentModeSettings(workerChoice: .orchestrator, workerAllowed: [.local], workerLocalModel: "qwen").problem)
+    }
+
+    func testAllowingKeepsHarnessOrderAndSignIns() {
+        let s = AgentModeSettings(orchestrator: .codex, workerChoice: .orchestrator, workerAllowed: [.claude])
+            .allowing(.local, true).allowing(.grok, true).allowing(.claude, false).allowing(.gemini, true)
+        XCTAssertEqual(s.workerAllowed, [.gemini, .grok, .local])
+        XCTAssertEqual(s.signInHarnesses, [.codex, .gemini, .grok])
+        XCTAssertEqual(AgentModeSettings(orchestrator: .claude, worker: .claude).signInHarnesses, [.claude])
+        XCTAssertEqual(AgentHarness.frontier, [.claude, .codex, .gemini, .grok])
+    }
+
+    func testDecodesAgentWorkRecord() {
+        let line = #"{"type":"agent","agent":{"id":"a1","chatId":"c1","name":"writer","role":"worker","harness":"codex","status":"idle","task":"write it","goal":"hello.txt says hi","workStatus":"done","verification":"cat printed hi","verdict":"pass","verdictNote":"checked","container":"sshido-agent-a1","createdAt":1,"updatedAt":2}}"#
+        guard case .event(.agent(let a)) = feed([line + "\n"]).first else { return XCTFail("want agent") }
+        XCTAssertEqual(a.goal, "hello.txt says hi")
+        XCTAssertEqual(a.workStatus, .done)
+        XCTAssertEqual(a.verification, "cat printed hi")
+        XCTAssertEqual(a.verdict, .pass)
+        XCTAssertEqual(a.verdictNote, "checked")
+        guard case .event(.agent(let bare)) = feed([orchestratorLine + "\n"]).first else { return XCTFail("want agent") }
+        XCTAssertNil(bare.workStatus)
+        XCTAssertNil(bare.verdict)
+    }
+
+    func testRecordAndDesktopCommands() {
+        XCTAssertEqual(AgentHostCommands.log(podman: "podman", agentID: "a1"),
+                       "'podman' exec sshido-agents /usr/local/bin/sshido-agents log 'a1'")
+        XCTAssertEqual(AgentHostCommands.desktopServe(podman: "podman", container: "sshido-agent-a1"),
+                       "'podman' start 'sshido-agent-a1' >/dev/null && 'podman' exec -u agent 'sshido-agent-a1' desktop serve")
+        XCTAssertEqual(AgentHostCommands.desktopHostPort(podman: "podman", container: "sshido-agent-a1"),
+                       "'podman' port 'sshido-agent-a1' 6080/tcp")
+        XCTAssertEqual(AgentHostCommands.parseHostPort("127.0.0.1:41235\n"), 41235)
+        XCTAssertEqual(AgentHostCommands.parseHostPort("0.0.0.0:0\n127.0.0.1:5000"), 5000)
+        XCTAssertNil(AgentHostCommands.parseHostPort("Error: no such container"))
+        XCTAssertNil(AgentHostCommands.parseHostPort(""))
     }
 
     func testEchoRemovesOnePendingSendFromTheSameChat() {
@@ -214,5 +261,15 @@ final class AgentModeTests: XCTestCase {
         XCTAssertEqual(AgentPendingSend.removingEcho(of: echo, from: [other, a, b]), [other, b])
         let reply = AgentChatMessage(id: 8, chatId: "c1", agentId: "x", author: "o", kind: .reply, text: "go", createdAt: 1)
         XCTAssertEqual(AgentPendingSend.removingEcho(of: reply, from: [a]), [a])
+    }
+
+    func testParsesTrackRecord() {
+        let log = "## 2026-09-30T14:50:36Z\n\nSpawned by the orchestrator.\n\nGoal: g\n\n## 2026-09-30T14:51:00Z\n\nStatus: done - ok\n\n## broken\n\n"
+        let entries = AgentTrackEntry.parse(log)
+        XCTAssertEqual(entries.map(\.body), ["Spawned by the orchestrator.\n\nGoal: g", "Status: done - ok"])
+        XCTAssertEqual(entries[0].date, ISO8601DateFormatter().date(from: "2026-09-30T14:50:36Z"))
+        XCTAssertEqual(entries[1].heading, "2026-09-30T14:51:00Z")
+        XCTAssertEqual(AgentTrackEntry.parse(""), [])
+        XCTAssertEqual(AgentTrackEntry.parse("## x\n\nkeeps ## inside a line\n"), [AgentTrackEntry(heading: "x", date: nil, body: "keeps ## inside a line")])
     }
 }
