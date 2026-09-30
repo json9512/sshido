@@ -45,6 +45,26 @@ public final class AppRouter: ObservableObject {
         detailPath.append(.session(session))
     }
 
+    public func openAgentChats(regular: Bool) {
+        if regular {
+            selectedHost = nil
+            detailPath = [.agentChat]
+        } else {
+            path = [.agentChat]
+        }
+    }
+
+    public func openHost(_ host: RemoteHost, regular: Bool) {
+        if regular {
+            selectedHost = host
+            detailPath = []
+        } else {
+            path.append(.host(host))
+        }
+    }
+
+    public var agentChatsOpenInDetail: Bool { selectedHost == nil && detailPath.first == .agentChat }
+
     public func openSession(_ session: Session, host: RemoteHost) {
         selectedHost = host
         path = [.host(host), .session(session)]

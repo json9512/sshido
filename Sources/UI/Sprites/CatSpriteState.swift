@@ -11,7 +11,6 @@ public enum MascotMood: String, Hashable, CaseIterable, Sendable {
     case napping
 }
 
-/// Defines an animation loop for a mood.
 public struct MascotAnimationDef: Sendable {
     public let frames: ClosedRange<Int>
     public let fps: Double
@@ -24,21 +23,16 @@ public struct MascotAnimationDef: Sendable {
     }
 }
 
-/// State machine driving the sprite animation.
-/// Animation definitions are loaded from the active SpritePack.
 @MainActor
 @Observable
 public final class MascotSpriteState {
     public private(set) var currentMood: MascotMood = .sitting
     public private(set) var currentFrame: Int = 0
 
-    /// When non-nil, playing an extra animation instead of a core mood.
     public private(set) var currentExtra: String?
 
-    /// The active pack's animation defs. Updated when the user switches packs.
     public private(set) var animations: [MascotMood: MascotAnimationDef] = MascotSpriteState.defaultAnimations
 
-    /// Extra animation sheets and defs from the active pack.
     public private(set) var extraSheets: [String: SpriteSheet] = [:]
     public private(set) var extraDefs: [String: MascotAnimationDef] = [:]
     public private(set) var extraNames: [String] = []
@@ -70,7 +64,6 @@ public final class MascotSpriteState {
         scheduleSleepCheck()
     }
 
-    /// Load animation definitions from a sprite pack.
     public func loadPack(_ pack: SpritePack) {
         var defs: [MascotMood: MascotAnimationDef] = [:]
         for mood in MascotMood.allCases {
@@ -106,7 +99,6 @@ public final class MascotSpriteState {
         }
     }
 
-    /// Cycle to the next mood or extra animation. Used by double-tap.
     public func cycleToNext(duration: TimeInterval = 5) {
         let allMoods = MascotMood.allCases
         let totalCount = allMoods.count + extraNames.count
@@ -132,7 +124,6 @@ public final class MascotSpriteState {
         currentFrame = currentAnimation.frames.lowerBound
     }
 
-    /// Advance frame — called by TimelineView on each tick.
     public func tick() {
         let anim = currentAnimation
         let next = currentFrame + 1

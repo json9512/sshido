@@ -2,25 +2,18 @@
 import UIKit
 import ImageIO
 
-/// Loads sprite frames from a horizontal PNG strip or an animated GIF.
 @MainActor
 public final class SpriteSheet {
     public let frameSize: CGSize
     public let frameCount: Int
 
-    /// GIF-based: pre-extracted frames. PNG-based: nil (cropped on demand from sheet).
     private var gifFrames: [UIImage]?
     private var sheet: CGImage?
     private var cache: [Int: UIImage] = [:]
 
-    /// FPS extracted from GIF frame durations (average). Nil for PNG strips.
     public private(set) var extractedFPS: Double?
-    /// Whether the GIF is set to loop.
     public private(set) var extractedLooping: Bool = true
 
-    // MARK: - PNG strip initializers
-
-    /// Loads a PNG sprite strip from the module bundle.
     public init?(named name: String, frameSize: CGSize, bundle: Bundle? = nil) {
         let resolvedBundle: Bundle
         if let bundle {
@@ -50,7 +43,6 @@ public final class SpriteSheet {
         self.frameCount = max(1, cg.width / Int(frameSize.width))
     }
 
-    /// Load a PNG sprite strip from a file URL on disk.
     public init?(fileURL: URL, frameSize: CGSize) {
         guard let data = try? Data(contentsOf: fileURL),
               let image = UIImage(data: data),
@@ -60,17 +52,12 @@ public final class SpriteSheet {
         self.frameCount = max(1, cg.width / Int(frameSize.width))
     }
 
-    /// Initialize directly from a CGImage.
     public init(cgImage: CGImage, frameSize: CGSize) {
         self.sheet = cgImage
         self.frameSize = frameSize
         self.frameCount = max(1, cgImage.width / Int(frameSize.width))
     }
 
-    // MARK: - GIF initializers
-
-    /// Load an animated GIF from a file URL. Frame size, count, FPS, and looping
-    /// are all extracted automatically from the GIF metadata.
     public init?(gifURL: URL) {
         guard let loaded = SpriteSheet.loadGIF(from: gifURL) else { return nil }
         self.gifFrames = loaded.frames
@@ -81,7 +68,6 @@ public final class SpriteSheet {
         self.extractedLooping = loaded.looping
     }
 
-    /// Load an animated GIF from raw data.
     public init?(gifData: Data) {
         guard let loaded = SpriteSheet.loadGIFData(gifData) else { return nil }
         self.gifFrames = loaded.frames
@@ -91,8 +77,6 @@ public final class SpriteSheet {
         self.extractedFPS = loaded.fps
         self.extractedLooping = loaded.looping
     }
-
-    // MARK: - Frame access
 
     public func frame(at index: Int) -> UIImage {
         let clamped = max(0, min(index, frameCount - 1))
@@ -110,8 +94,6 @@ public final class SpriteSheet {
         cache[clamped] = img
         return img
     }
-
-    // MARK: - GIF loading (ImageIO)
 
     private struct GIFLoad {
         let frames: [UIImage]

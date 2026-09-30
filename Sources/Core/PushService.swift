@@ -52,7 +52,6 @@ public actor PushService {
         do {
             try FileManager.default.removeItem(at: stateURL)
         } catch CocoaError.fileNoSuchFile {
-            // First-time setup: no existing file to remove.
         } catch {
             Log.push.error("remove stale push-subscription.json failed: \(String(describing: error), privacy: .public)")
         }
@@ -78,7 +77,6 @@ public actor PushService {
         do {
             try FileManager.default.removeItem(at: stateURL)
         } catch CocoaError.fileNoSuchFile {
-            // Already gone.
         } catch {
             Log.push.error("clearSubscription remove failed: \(String(describing: error), privacy: .public)")
         }
@@ -115,17 +113,8 @@ public actor PushService {
         try persistSubscription()
     }
 
-    /// Notify URLs returned by /subscribe end up interpolated into the
-    /// agent-setup prompt that users paste into Claude Code. A malicious
-    /// relay can otherwise smuggle prompt-injection content (newlines,
-    /// shell snippets) into that prompt. This whitelist matches what the
-    /// real relay actually returns: scheme + host (no whitespace) + the
-    /// literal /n/ path + a URL-safe id.
-    /// Normalize and validate a user-supplied push relay URL. We allow both
-    /// http and https (Tailscale and LAN deployments without TLS are a real
-    /// use case), but reject any other scheme so file:// / javascript: /
-    /// ssh:// can't slip past `URL(string:)`'s lax acceptance. A non-empty
-    /// host is also required.
+    /// http stays allowed for Tailscale and LAN relays; other schemes are refused because
+    /// `URL(string:)` also accepts file:, javascript: and ssh:.
     static func validateServerURL(_ url: String) throws -> String {
         var trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         while trimmed.hasSuffix("/") { trimmed.removeLast() }
@@ -140,6 +129,8 @@ public actor PushService {
         return trimmed
     }
 
+    /// Notify URLs get pasted into the host setup prompt, so anything beyond scheme, host and
+    /// /n/<id> from a hostile relay could inject instructions.
     static let notifyURLPattern = #"^https?://[^/\s]+/n/[A-Za-z0-9_-]+$"#
 
     static func isValidNotifyURL(_ s: String) -> Bool {

@@ -10,9 +10,6 @@ public enum ShortcutDisplay {
         return bytes.map { String(format: "\\x%02x", $0) }.joined()
     }
 
-    /// Parses a single-byte token as entered in the shortcut editor.
-    /// Accepts: `0x1b`, `1b` (any token containing a-f), `27` (pure decimal 0-255).
-    /// Rejects: empty, `gg`, decimal > 255, hex > 0xff.
     public static func parseByte(_ raw: String) -> UInt8? {
         let trimmed = raw.trimmingCharacters(in: .whitespaces).lowercased()
         guard !trimmed.isEmpty else { return nil }

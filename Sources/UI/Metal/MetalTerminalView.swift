@@ -385,10 +385,6 @@ public final class MetalTerminalView: UIView, UITextViewDelegate, UIGestureRecog
     }
 }
 
-// Hangul syllable composer. Accepts a stream of compatibility jamo (U+3131–U+318E)
-// interleaved with non-Hangul characters, and emits composed Hangul syllables
-// (U+AC00–U+D7A3) plus pass-through for non-Hangul. Maintains one in-progress
-// syllable state (choseong/jungseong/jongseong) across calls.
 @MainActor
 final class HangulComposer {
     private var cho: Int? = nil   // 0..18

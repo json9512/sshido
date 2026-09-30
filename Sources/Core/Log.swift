@@ -1,8 +1,6 @@
 import Foundation
 import os
 
-/// Thin wrapper around `os.Logger` with a fixed subsystem and categorized loggers.
-/// Use in place of `print` and to replace silent `try?` sites so errors show in Console.app.
 public enum Log {
     private static let subsystem = "com.sshido"
 

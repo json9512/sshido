@@ -7,7 +7,7 @@ import NIOSSH
 import sshidoModels
 #endif
 
-public enum SSHAuth: Sendable {
+public enum SSHAuth: Sendable, Equatable {
     case password(String)
     case privateKeyPEM(String, passphrase: String?)
 }

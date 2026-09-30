@@ -263,8 +263,8 @@ func (s *server) notify(w http.ResponseWriter, r *http.Request) {
 		req.Sound = "default"
 	}
 	pl := payload.NewPayload().
-		AlertTitle(req.Title).
-		AlertBody(req.Body).
+		AlertTitle(plainText(req.Title)).
+		AlertBody(plainText(req.Body)).
 		Sound(req.Sound).
 		Custom("subscriber_id", id)
 	if req.SessionRef != "" {

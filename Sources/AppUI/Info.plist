@@ -28,7 +28,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>63</string>
+	<string>64</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -48,6 +48,11 @@
 	<string>Transcribe your speech on-device so you can talk to your agent. Audio never leaves your device.</string>
 	<key>SentryDSNHostPath</key>
 	<string>$(SENTRY_DSN_HOSTPATH)</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Geist-Variable.ttf</string>
+		<string>GeistMono-Variable.ttf</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
