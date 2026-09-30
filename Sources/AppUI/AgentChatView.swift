@@ -13,6 +13,8 @@ import sshidoUI
 #endif
 
 struct AgentChatView: View {
+    let chatID: String
+
     @EnvironmentObject private var router: AppRouter
     @ObservedObject private var agents = AgentModeController.shared
     @State private var draft = ""
@@ -22,25 +24,34 @@ struct AgentChatView: View {
     @State private var notice: String?
     @State private var selectedAgent: AgentInfo?
 
+    private var chat: AgentChat? { agents.chat(chatID) }
+    private var chatAgents: [AgentInfo] { agents.agents(in: chatID) }
+    private var chatMessages: [AgentChatMessage] { agents.messages(in: chatID) }
+    private var isGroup: Bool { chat?.kind == .group }
+
     var body: some View {
         VStack(spacing: 0) {
-            if !agents.agents.isEmpty { agentStrip }
-            connectionBanner
-            messageList
-            composer
+            if !chatAgents.isEmpty { agentStrip }
+            AgentConnectionBanner()
+            if agents.historyLoaded && chat == nil {
+                ContentUnavailableView("Chat removed", systemImage: "bubble.left.and.exclamationmark.bubble.right")
+            } else {
+                messageList
+                composer
+            }
         }
         .background(DS.Color.surface0)
-        .navigationTitle("Agents")
+        .navigationTitle(chat?.title ?? "Agents")
         .toolbarTitleDisplayMode(.inline)
         .task {
             let appearance = await AppearanceStore.shared.appearance
             voiceEnabled = appearance.voiceDictationEnabled
             dictationLocaleID = appearance.dictationLocaleID
-            agents.startChat()
         }
+        .onAppear { agents.hold() }
         .onDisappear {
             dictator.cancel()
-            agents.stopChat()
+            agents.release()
         }
         .confirmationDialog(selectedAgent?.name ?? "", isPresented: Binding(
             get: { selectedAgent != nil }, set: { if !$0 { selectedAgent = nil } }
@@ -57,7 +68,7 @@ struct AgentChatView: View {
     private var agentStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: DS.Spacing.sm) {
-                ForEach(agents.agents) { agent in
+                ForEach(chatAgents) { agent in
                     Button { selectedAgent = agent } label: { AgentStatusChip(agent: agent) }
                         .buttonStyle(.plain)
                 }
@@ -68,50 +79,55 @@ struct AgentChatView: View {
         .background(DS.Color.surface1)
     }
 
-    @ViewBuilder
-    private var connectionBanner: some View {
-        switch agents.connection {
-        case .connected:
-            EmptyView()
-        case .connecting, .disconnected:
-            HStack(spacing: DS.Spacing.sm) {
-                ProgressView()
-                Text("Connecting to your agents…").font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(DS.Spacing.sm)
-        case .failed(let reason):
-            HStack(alignment: .top, spacing: DS.Spacing.sm) {
-                Image(systemName: "exclamationmark.triangle").foregroundStyle(DS.Color.warning)
-                Text(reason).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
-                Spacer()
-                Button("Retry") { agents.startChat() }.font(DS.Font.captionMedium)
-            }
-            .padding(DS.Spacing.sm)
-            .background(DS.Color.surface2)
-        }
+    private var working: [AgentInfo] {
+        chatAgents.filter { $0.status == .working || $0.status == .starting }
+    }
+
+    private var bottomID: String {
+        let pendingCount = agents.pending(in: chatID).count
+        let workingIDs = working.map(\.id).joined(separator: ",")
+        return "\(chatMessages.last?.id ?? 0)-\(pendingCount)-\(workingIDs)-\(chat?.status.rawValue ?? "")"
     }
 
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: DS.Spacing.sm) {
-                    if agents.messages.isEmpty && agents.connection == .connected {
-                        Text("Tell the orchestrator what you want done. It starts agents on your host and reports back here.")
+                    if !agents.historyLoaded && chatMessages.isEmpty {
+                        ForEach(0..<4, id: \.self) { i in AgentMessageSkeleton(trailing: i == 0) }
+                    } else if chatMessages.isEmpty && agents.pending(in: chatID).isEmpty {
+                        Text(isGroup
+                             ? "Say what you want. The picker chooses which member answers, one at a time, until it hands the chat back to you."
+                             : "Tell the orchestrator what you want done. It starts agents on your host and reports back here.")
                             .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                             .frame(maxWidth: .infinity)
                             .padding(.top, DS.Spacing.xl)
                     }
-                    ForEach(agents.messages) { message in
+                    ForEach(chatMessages) { message in
                         AgentMessageRow(message: message).id(message.id)
                     }
+                    ForEach(agents.pending(in: chatID)) { entry in
+                        PendingMessageRow(text: entry.text)
+                    }
+                    activity
+                    Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(DS.Spacing.md)
             }
-            .onChange(of: agents.messages.last?.id) { _, id in
-                guard let id else { return }
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) }
+            .onChange(of: bottomID) { _, _ in
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
+            .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
+        }
+    }
+
+    @ViewBuilder
+    private var activity: some View {
+        if chat?.status == .picking {
+            ActivityRow(text: "Choosing who speaks next…", since: nil)
+        }
+        ForEach(working) { agent in
+            ActivityRow(text: "\(agent.name) is working", since: Date(timeIntervalSince1970: TimeInterval(agent.updatedAt) / 1000))
         }
     }
 
@@ -127,7 +143,7 @@ struct AgentChatView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(alignment: .bottom, spacing: DS.Spacing.sm) {
-                TextField("Message the orchestrator", text: $draft, axis: .vertical)
+                TextField(isGroup ? "Message the group" : "Message the orchestrator", text: $draft, axis: .vertical)
                     .lineLimit(1...6)
                     .font(DS.Font.body)
                     .padding(DS.Spacing.sm)
@@ -174,12 +190,80 @@ struct AgentChatView: View {
     private func send() async {
         dictator.cancel()
         let text = draft
-        guard await agents.send(text) else {
-            notice = "Not sent — the agents are not connected."
+        draft = ""
+        guard await agents.send(text, to: chatID) else {
+            draft = text
+            notice = "Not sent. The agents are not connected."
             return
         }
-        draft = ""
         notice = nil
+    }
+}
+
+private struct ActivityRow: View {
+    let text: String
+    let since: Date?
+
+    var body: some View {
+        HStack(spacing: DS.Spacing.sm) {
+            DSStatusIndicator(style: .dot(active: true))
+            Text(text).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+            if let since {
+                TimelineView(.periodic(from: since, by: 1)) { context in
+                    Text(Self.elapsed(from: since, to: context.date))
+                        .font(DS.Font.monoSmall).foregroundStyle(DS.Color.textTertiary)
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, DS.Spacing.sm)
+        .padding(.vertical, DS.Spacing.xs)
+        .accessibilityElement(children: .combine)
+    }
+
+    static func elapsed(from start: Date, to now: Date) -> String {
+        let seconds = max(0, Int(now.timeIntervalSince(start)))
+        return seconds < 3600
+            ? String(format: "%d:%02d", seconds / 60, seconds % 60)
+            : String(format: "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+    }
+}
+
+private struct PendingMessageRow: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: DS.Spacing.xs) {
+            Spacer(minLength: DS.Spacing.xxl)
+            ProgressView().controlSize(.mini)
+            Text(text)
+                .font(DS.Font.body)
+                .foregroundStyle(DS.Color.textOnAccent)
+                .padding(DS.Spacing.sm)
+                .background(DS.Color.accent.opacity(0.5), in: RoundedRectangle(cornerRadius: DS.Radius.md))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Sending: \(text)")
+    }
+}
+
+private struct AgentMessageSkeleton: View {
+    let trailing: Bool
+
+    var body: some View {
+        HStack {
+            if trailing { Spacer(minLength: DS.Spacing.xxl) }
+            VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                RoundedRectangle(cornerRadius: DS.Radius.sm).fill(DS.Color.surface3).frame(width: 90, height: 10)
+                RoundedRectangle(cornerRadius: DS.Radius.sm).fill(DS.Color.surface3).frame(height: 12)
+                RoundedRectangle(cornerRadius: DS.Radius.sm).fill(DS.Color.surface3).frame(width: 180, height: 12)
+            }
+            .padding(DS.Spacing.sm)
+            .frame(maxWidth: trailing ? 220 : .infinity, alignment: .leading)
+            .background(DS.Color.surface2, in: RoundedRectangle(cornerRadius: DS.Radius.md))
+        }
+        .modifier(AgentShimmer())
+        .accessibilityHidden(true)
     }
 }
 

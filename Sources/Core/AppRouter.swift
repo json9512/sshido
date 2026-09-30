@@ -17,6 +17,7 @@ public final class AppRouter: ObservableObject {
         case session(Session)
         case performance(RemoteHost)
         case agentChat
+        case agentConversation(String)
     }
 
     public enum Sheet: Identifiable {
