@@ -73,6 +73,11 @@ func openStore(path string, now func() time.Time) (*Store, error) {
 		{"agents", "seen INTEGER NOT NULL DEFAULT 0"},
 		{"agents", "mounts TEXT NOT NULL DEFAULT ''"},
 		{"agents", "briefed TEXT NOT NULL DEFAULT ''"},
+		{"agents", "goal TEXT NOT NULL DEFAULT ''"},
+		{"agents", "work_status TEXT NOT NULL DEFAULT ''"},
+		{"agents", "verification TEXT NOT NULL DEFAULT ''"},
+		{"agents", "verdict TEXT NOT NULL DEFAULT ''"},
+		{"agents", "verdict_note TEXT NOT NULL DEFAULT ''"},
 	} {
 		if _, err := db.Exec("ALTER TABLE " + column.table + " ADD COLUMN " + column.def); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return nil, fmt.Errorf("migrate %s %s: %w", column.table, column.def, err)
@@ -101,8 +106,8 @@ func (s *Store) adoptUnchattedRows() error {
 	}
 	defer tx.Rollback()
 	id := randomHex(4)
-	if _, err := tx.Exec(`INSERT INTO chats (id, title, kind, turn_cap, status, created_at) VALUES (?, ?, ?, 0, ?, ?)`,
-		id, firstChatTitle, ChatOrchestrated, ChatIdle, s.now().UnixMilli()); err != nil {
+	if _, err := tx.Exec(`INSERT INTO chats (id, title, kind, turn_cap, status, created_at) VALUES (?, ?, 'orchestrated', 0, 'idle', ?)`,
+		id, firstChatTitle, s.now().UnixMilli()); err != nil {
 		return fmt.Errorf("create first chat: %w", err)
 	}
 	for _, table := range []string{"messages", "agents"} {
@@ -116,20 +121,20 @@ func (s *Store) adoptUnchattedRows() error {
 	return nil
 }
 
-func (s *Store) AddChat(title, kind string, turnCap int) (Chat, error) {
-	c := Chat{ID: randomHex(4), Title: title, Kind: kind, TurnCap: turnCap, Status: ChatIdle, CreatedAt: s.now().UnixMilli()}
-	if _, err := s.db.Exec(`INSERT INTO chats (id, title, kind, turn_cap, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		c.ID, c.Title, c.Kind, c.TurnCap, c.Status, c.CreatedAt); err != nil {
+func (s *Store) AddChat(title string) (Chat, error) {
+	c := Chat{ID: randomHex(4), Title: title, CreatedAt: s.now().UnixMilli()}
+	if _, err := s.db.Exec(`INSERT INTO chats (id, title, kind, turn_cap, status, created_at) VALUES (?, ?, 'orchestrated', 0, 'idle', ?)`,
+		c.ID, c.Title, c.CreatedAt); err != nil {
 		return Chat{}, fmt.Errorf("add chat: %w", err)
 	}
 	return c, nil
 }
 
-const chatColumns = `id, title, kind, turn_cap, status, created_at`
+const chatColumns = `id, title, created_at`
 
 func scanChat(row interface{ Scan(...any) error }) (Chat, error) {
 	var c Chat
-	err := row.Scan(&c.ID, &c.Title, &c.Kind, &c.TurnCap, &c.Status, &c.CreatedAt)
+	err := row.Scan(&c.ID, &c.Title, &c.CreatedAt)
 	return c, err
 }
 
@@ -159,13 +164,6 @@ func (s *Store) Chats() ([]Chat, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
-}
-
-func (s *Store) SetChatStatus(id, status string) (Chat, error) {
-	if _, err := s.db.Exec(`UPDATE chats SET status = ? WHERE id = ?`, status, id); err != nil {
-		return Chat{}, fmt.Errorf("set chat status %s: %w", id, err)
-	}
-	return s.Chat(id)
 }
 
 func (s *Store) DeleteChat(id string) error {
@@ -278,25 +276,27 @@ func (s *Store) AddAgent(a Agent, token string) (Agent, error) {
 	now := s.now().UnixMilli()
 	stored := Agent{
 		ID: a.ID, ChatID: a.ChatID, Name: a.Name, Role: a.Role, Harness: a.Harness, Model: a.Model,
-		Status: a.Status, Task: a.Task, Mounts: a.Mounts, Container: a.Container, CreatedAt: now, UpdatedAt: now,
+		Status: a.Status, Task: a.Task, Goal: a.Goal, WorkStatus: a.WorkStatus,
+		Mounts: a.Mounts, Container: a.Container, CreatedAt: now, UpdatedAt: now,
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO agents (id, chat_id, name, role, harness, model, status, task, session, mounts, container, token_hash, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
+		`INSERT INTO agents (id, chat_id, name, role, harness, model, status, task, goal, work_status, session, mounts, container, token_hash, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
 		stored.ID, stored.ChatID, stored.Name, stored.Role, stored.Harness, stored.Model, stored.Status, stored.Task,
-		stored.Mounts, stored.Container, tokenHash(token), now, now)
+		stored.Goal, stored.WorkStatus, stored.Mounts, stored.Container, tokenHash(token), now, now)
 	if err != nil {
 		return Agent{}, fmt.Errorf("add agent: %w", err)
 	}
 	return stored, nil
 }
 
-const agentColumns = `id, chat_id, name, role, harness, model, status, task, session, seen, mounts, briefed, container, created_at, updated_at`
+const agentColumns = `id, chat_id, name, role, harness, model, status, task, goal, work_status, verification, verdict, verdict_note, session, mounts, briefed, container, created_at, updated_at`
 
 func scanAgent(row interface{ Scan(...any) error }) (Agent, error) {
 	var a Agent
-	err := row.Scan(&a.ID, &a.ChatID, &a.Name, &a.Role, &a.Harness, &a.Model, &a.Status, &a.Task, &a.Session,
-		&a.Seen, &a.Mounts, &a.Briefed, &a.Container, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.ChatID, &a.Name, &a.Role, &a.Harness, &a.Model, &a.Status, &a.Task,
+		&a.Goal, &a.WorkStatus, &a.Verification, &a.Verdict, &a.VerdictNote, &a.Session,
+		&a.Mounts, &a.Briefed, &a.Container, &a.CreatedAt, &a.UpdatedAt)
 	return a, err
 }
 
@@ -367,17 +367,18 @@ func (s *Store) SetStatus(id, status string) (Agent, error) {
 	return s.Agent(id)
 }
 
+func (s *Store) SetRecord(id string, r Record) (Agent, error) {
+	if _, err := s.db.Exec(`UPDATE agents SET goal = ?, work_status = ?, verification = ?, verdict = ?, verdict_note = ?, updated_at = ? WHERE id = ?`,
+		r.Goal, r.WorkStatus, r.Verification, r.Verdict, r.VerdictNote, s.now().UnixMilli(), id); err != nil {
+		return Agent{}, fmt.Errorf("set record %s: %w", id, err)
+	}
+	return s.Agent(id)
+}
+
 func (s *Store) SetSession(id, session string) error {
 	if _, err := s.db.Exec(`UPDATE agents SET session = ?, updated_at = ? WHERE id = ?`,
 		session, s.now().UnixMilli(), id); err != nil {
 		return fmt.Errorf("set session %s: %w", id, err)
-	}
-	return nil
-}
-
-func (s *Store) SetSeen(id string, seen int64) error {
-	if _, err := s.db.Exec(`UPDATE agents SET seen = ? WHERE id = ?`, seen, id); err != nil {
-		return fmt.Errorf("set seen %s: %w", id, err)
 	}
 	return nil
 }

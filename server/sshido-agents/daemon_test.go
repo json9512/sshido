@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -120,13 +121,33 @@ func testDaemon(t *testing.T) (*Daemon, *fakePods, *fakePush) {
 	t.Cleanup(func() { store.Close() })
 	cfg := Config{
 		DataDir: dir, BusDir: dir, AgentImage: "img", OrchestratorHarness: HarnessClaude,
-		WorkerHarness: HarnessClaude, WorkspaceVolume: "ws", BusVolume: "bus", TurnTimeout: time.Minute,
+		Workers:         WorkerChoice{Mode: ChoiceFixed, Harness: HarnessClaude},
+		WorkspaceVolume: "ws", WorkspaceDir: filepath.Join(dir, "workspace"), BusVolume: "bus", TurnTimeout: time.Minute,
 	}
-	pods, push := newFakePods(), &fakePush{}
-	if _, err := store.AddChat(firstChatTitle, ChatOrchestrated, 0); err != nil {
+	if err := os.MkdirAll(cfg.WorkspaceDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return newDaemon(cfg, store, pods, push, noPicker{}), pods, push
+	pods, push := newFakePods(), &fakePush{}
+	if _, err := store.AddChat(firstChatTitle); err != nil {
+		t.Fatal(err)
+	}
+	d := newDaemon(cfg, store, pods, push)
+	t.Cleanup(func() { waitIdleDaemon(t, d) })
+	return d, pods, push
+}
+
+func waitIdleDaemon(t *testing.T, d *Daemon) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		d.inflight.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Error("agent turns still running after the test")
+	}
 }
 
 func firstChat(t *testing.T, d *Daemon) string {
@@ -207,8 +228,9 @@ func TestUserMessageGetsOrchestratorReply(t *testing.T) {
 	pods.mu.Lock()
 	second := pods.prompts[container][1]
 	pods.mu.Unlock()
-	if second != "and another" {
-		t.Fatalf("resumed turns should send only the message, got %q", second)
+	if !strings.HasPrefix(second, "Your work record") || !strings.Contains(second, "Request from the person:\n\nand another") ||
+		!strings.HasSuffix(second, promptSeparator+"and another") || strings.Contains(second, "You are the orchestrator") {
+		t.Fatalf("resumed turns should send the record and the message, got %q", second)
 	}
 	if len(pods.created) != 1 {
 		t.Fatalf("orchestrator container should be reused, created %d", len(pods.created))
@@ -223,7 +245,7 @@ func TestSpawnedWorkerReportsBackToOrchestrator(t *testing.T) {
 	waitFor(t, "orchestrator", func() bool { return len(messagesOfKind(t, d, KindReply)) == 1 })
 	token, orchContainer := tokenOf(t, pods, RoleOrchestrator)
 
-	resp := d.handleBus(context.Background(), mustJSON(t, BusRequest{Token: token, Op: BusSpawn, Name: "tests", Task: "write the tests"}))
+	resp := d.handleBus(context.Background(), mustJSON(t, BusRequest{Token: token, Op: BusSpawn, Name: "tests", Goal: "tests pass", Task: "write the tests"}))
 	if !resp.OK || resp.AgentID == "" {
 		t.Fatalf("spawn failed: %+v", resp)
 	}
@@ -233,7 +255,8 @@ func TestSpawnedWorkerReportsBackToOrchestrator(t *testing.T) {
 	pods.mu.Lock()
 	followUp := pods.prompts[orchContainer][1]
 	pods.mu.Unlock()
-	if !strings.Contains(followUp, `Worker "tests"`) || !strings.Contains(followUp, "default reply") {
+	if !strings.Contains(followUp, `Subagent "tests"`) || !strings.Contains(followUp, "default reply") ||
+		!strings.Contains(followUp, "Goal: tests pass") || !strings.Contains(followUp, "agentctl verdict --to "+resp.AgentID) {
 		t.Fatalf("orchestrator should get the worker's report, got %q", truncate(followUp, 200))
 	}
 	worker, err := d.store.Agent(resp.AgentID)
@@ -254,12 +277,15 @@ func TestBusDeniesBadTokenAndWorkerSpawn(t *testing.T) {
 		t.Fatal(err)
 	}
 	orchToken, _ := tokenOf(t, pods, RoleOrchestrator)
-	spawned := d.handleBus(context.Background(), mustJSON(t, BusRequest{Token: orchToken, Op: BusSpawn, Name: "w", Task: "t"}))
+	if resp := d.handleBus(context.Background(), mustJSON(t, BusRequest{Token: orchToken, Op: BusSpawn, Name: "w", Task: "t"})); resp.OK {
+		t.Fatal("spawn without a goal must be denied")
+	}
+	spawned := d.handleBus(context.Background(), mustJSON(t, BusRequest{Token: orchToken, Op: BusSpawn, Name: "w", Goal: "g", Task: "t"}))
 	if !spawned.OK {
 		t.Fatalf("orchestrator spawn failed: %+v", spawned)
 	}
 	workerToken, _ := tokenOf(t, pods, RoleWorker)
-	if resp := d.handleBus(context.Background(), mustJSON(t, BusRequest{Token: workerToken, Op: BusSpawn, Name: "x", Task: "t"})); resp.OK {
+	if resp := d.handleBus(context.Background(), mustJSON(t, BusRequest{Token: workerToken, Op: BusSpawn, Name: "x", Goal: "g", Task: "t"})); resp.OK {
 		t.Fatal("a worker must not spawn agents")
 	}
 	if resp := d.handleBus(context.Background(), mustJSON(t, BusRequest{Token: workerToken, Op: BusSend, To: spawned.AgentID, Text: "hi"})); resp.OK {

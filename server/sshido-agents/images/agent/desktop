@@ -1,0 +1,142 @@
+#!/bin/bash
+set -euo pipefail
+
+export DISPLAY=:1
+state="${HOME}/.desktop"
+geometry="${DESKTOP_GEOMETRY:-1280x800x24}"
+
+usage() {
+	cat >&2 <<'USAGE'
+usage:
+  desktop run <program> [args]         open a program on the screen
+  desktop screenshot <file.png>        save what is on the screen
+  desktop click <x> <y> [right|middle|double]
+  desktop move <x> <y>
+  desktop type "<text>"
+  desktop key <keys>                   e.g. ctrl+l, Return, alt+F4
+  desktop scroll up|down [times]
+  desktop size                         the screen size in pixels
+  desktop serve                        start the viewer for the phone; prints its password
+USAGE
+	exit 2
+}
+
+running() { xdpyinfo >/dev/null 2>&1; }
+
+detach() {
+	local logfile="$1"
+	shift
+	setsid -f "$@" >"$logfile" 2>&1 </dev/null
+}
+
+start() {
+	running && return 0
+	mkdir -p "$state"
+	detach "$state/xvfb.log" Xvfb :1 -screen 0 "$geometry" -nolisten tcp
+	for _ in $(seq 100); do
+		running && break
+		sleep 0.1
+	done
+	if ! running; then
+		echo "desktop: the screen did not start; see $state/xvfb.log" >&2
+		exit 1
+	fi
+	detach "$state/openbox.log" openbox
+}
+
+listening() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+
+password() {
+	if [ ! -s "$state/password" ]; then
+		local fresh
+		fresh="$(set +o pipefail; LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 8)"
+		(umask 077 && printf '%s' "$fresh" >"$state/password")
+		x11vnc -storepasswd "$fresh" "$state/passwd" >/dev/null 2>&1
+	fi
+	cat "$state/password"
+}
+
+serve() {
+	start
+	local secret
+	secret="$(password)"
+	listening 5900 || detach "$state/x11vnc.log" x11vnc -display :1 -rfbauth "$state/passwd" -localhost -forever -shared -rfbport 5900
+	listening 6080 || detach "$state/websockify.log" websockify --web /usr/share/novnc 6080 127.0.0.1:5900
+	for _ in $(seq 100); do
+		listening 5900 && listening 6080 && break
+		sleep 0.1
+	done
+	if ! listening 6080; then
+		echo "desktop: the viewer did not start; see $state/x11vnc.log and $state/websockify.log" >&2
+		exit 1
+	fi
+	printf '%s\n' "$secret"
+}
+
+button() {
+	case "${1:-left}" in
+	left) echo "click 1" ;;
+	middle) echo "click 2" ;;
+	right) echo "click 3" ;;
+	double) echo "click --repeat 2 1" ;;
+	*) echo "desktop: button must be left, middle, right or double" >&2; exit 2 ;;
+	esac
+}
+
+[ $# -ge 1 ] || usage
+command="$1"
+shift
+case "$command" in
+run)
+	[ $# -ge 1 ] || usage
+	start
+	mkdir -p "$state"
+	detach "$state/run-$(basename "$1").log" "$@"
+	;;
+screenshot)
+	[ $# -eq 1 ] || usage
+	start
+	scrot --overwrite "$1"
+	echo "$1"
+	;;
+click)
+	[ $# -ge 2 ] || usage
+	start
+	xdotool mousemove "$1" "$2" $(button "${3:-left}")
+	;;
+move)
+	[ $# -eq 2 ] || usage
+	start
+	xdotool mousemove "$1" "$2"
+	;;
+type)
+	[ $# -ge 1 ] || usage
+	start
+	xdotool type --delay 20 -- "$*"
+	;;
+key)
+	[ $# -ge 1 ] || usage
+	start
+	xdotool key -- "$@"
+	;;
+scroll)
+	[ $# -ge 1 ] || usage
+	start
+	case "$1" in
+	up) wheel=4 ;;
+	down) wheel=5 ;;
+	*) usage ;;
+	esac
+	xdotool click --repeat "${2:-3}" "$wheel"
+	;;
+size)
+	start
+	xdotool getdisplaygeometry
+	;;
+serve)
+	serve
+	;;
+*)
+	usage
+	;;
+esac

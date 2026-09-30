@@ -16,7 +16,7 @@ func main() {
 		os.Exit(runCtl(os.Args[1:]))
 	}
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: sshido-agents daemon | attach | file <message-id> | ctl <op>")
+		fmt.Fprintln(os.Stderr, "usage: sshido-agents daemon | attach | file <message-id> | log <agent-id> | ctl <op>")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -28,6 +28,8 @@ func main() {
 		os.Exit(runCtl(os.Args[2:]))
 	case "file":
 		os.Exit(runFile(os.Args[2:]))
+	case "log":
+		os.Exit(runLog(os.Args[2:]))
 	}
 	fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
 	os.Exit(2)
@@ -50,8 +52,7 @@ func runDaemon() int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	d := newDaemon(cfg, store, newPodmanAPI(cfg.PodmanSocket), newRelayPusher(cfg.NotifyURL, cfg.HostName),
-		newPicker(cfg.LocalURL, cfg.PickerModel))
+	d := newDaemon(cfg, store, newPodmanAPI(cfg.PodmanSocket), newRelayPusher(cfg.NotifyURL, cfg.HostName))
 	bus, err := listenUnix(filepath.Join(cfg.BusDir, "bus.sock"), 0o666)
 	if err != nil {
 		log.Printf("%v", err)
@@ -65,8 +66,8 @@ func runDaemon() int {
 	if err := d.Recover(ctx); err != nil {
 		log.Printf("recover: %v", err)
 	}
-	log.Printf("sshido-agents daemon ready: orchestrator=%s worker=%s picker=%q host folders=%d image=%s",
-		cfg.OrchestratorHarness, cfg.WorkerHarness, cfg.PickerModel, len(cfg.HostDirs), cfg.AgentImage)
+	log.Printf("sshido-agents daemon ready: orchestrator=%s subagents=%s %s%v host folders=%d image=%s",
+		cfg.OrchestratorHarness, cfg.Workers.Mode, cfg.Workers.Harness, cfg.Workers.Allowed, len(cfg.HostDirs), cfg.AgentImage)
 	go serve(ctx, bus, d.ServeBus)
 	serve(ctx, app, d.ServeApp)
 	return 0

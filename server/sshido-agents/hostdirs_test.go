@@ -59,7 +59,7 @@ func TestAgentsGetHostDirsAndRecreateWhenTheyChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pods.created[0].Binds) != 1 || orch.Mounts != "/host/code=/Users/me/code" {
+	if len(pods.created[0].Binds) != 1 || orch.Mounts != "/host/code=/Users/me/code\ndesktop=6080" {
 		t.Fatalf("binds %+v mounts %q", pods.created[0].Binds, orch.Mounts)
 	}
 	oldToken := pods.created[0].Env["SSHIDO_AGENT_TOKEN"]
@@ -117,32 +117,32 @@ func TestNextTurnHearsAboutChangedHostDirs(t *testing.T) {
 	if first := send("one"); !strings.Contains(first, "/host/code") {
 		t.Fatalf("first turn must carry the folders: %q", truncate(first, 200))
 	}
-	if second := send("two"); second != "two" {
+	if second := send("two"); strings.Contains(second, "/host/code") {
 		t.Fatalf("unchanged folders must not be repeated, got %q", second)
 	}
 	d.cfg.HostDirs = []HostDir{{Name: "code", Source: "/Users/me/code"}, {Name: "notes", Source: "/Users/me/notes"}}
 	third := send("three")
-	if !strings.HasPrefix(third, "Note: the person changed the shared host folders") || !strings.Contains(third, "/host/notes") || !strings.HasSuffix(third, "three") {
+	if !strings.HasPrefix(third, "Note: your container was set up again") || !strings.Contains(third, "/host/notes") || !strings.HasSuffix(third, "three") {
 		t.Fatalf("changed folders must be announced once: %q", third)
 	}
-	if fourth := send("four"); fourth != "four" {
+	if fourth := send("four"); strings.Contains(fourth, "Note: your container") {
 		t.Fatalf("the change must be announced only once, got %q", fourth)
 	}
 	d.cfg.HostDirs = nil
-	if fifth := send("five"); !strings.Contains(fifth, "stopped sharing host folders") {
-		t.Fatalf("removing all folders must be announced: %q", fifth)
+	if fifth := send("five"); !strings.HasPrefix(fifth, "Note: your container was set up again") || strings.Contains(fifth, "Host folders") {
+		t.Fatalf("removing all folders must be announced without folders: %q", fifth)
 	}
 }
 
 func TestBriefListsHostDirs(t *testing.T) {
 	dirs := []HostDir{{Name: "code", Source: "/Users/me/code"}}
-	for _, role := range []string{RoleOrchestrator, RoleWorker, RoleMember} {
-		prompt := firstTurnPrompt(Agent{Role: role, Name: "w"}, "x", dirs, nil)
+	for _, role := range []string{RoleOrchestrator, RoleWorker} {
+		prompt := firstTurnPrompt(Agent{Role: role, Name: "w"}, "x", "brief", dirs)
 		if !strings.Contains(prompt, "/host/code   (the person's /Users/me/code)") || !strings.Contains(prompt, "read-only") {
 			t.Fatalf("%s brief lacks host folders: %q", role, prompt)
 		}
 	}
-	if strings.Contains(firstTurnPrompt(Agent{Role: RoleWorker}, "x", nil, nil), "Host folders") {
+	if strings.Contains(firstTurnPrompt(Agent{Role: RoleWorker}, "x", "brief", nil), "Host folders") {
 		t.Fatal("no host folders section without folders")
 	}
 }

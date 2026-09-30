@@ -14,6 +14,8 @@ import (
 	"strings"
 )
 
+const desktopPort = 6080
+
 type ContainerSpec struct {
 	Name    string
 	Image   string
@@ -21,6 +23,7 @@ type ContainerSpec struct {
 	Labels  map[string]string
 	Volumes map[string]string
 	Binds   []HostDir
+	Ports   []int
 	User    string
 	WorkDir string
 }
@@ -123,6 +126,20 @@ func readOnlyBinds(dirs []HostDir) []bindMount {
 	return out
 }
 
+type portMapping struct {
+	ContainerPort int    `json:"container_port"`
+	HostIP        string `json:"host_ip"`
+	Protocol      string `json:"protocol"`
+}
+
+func loopbackPorts(ports []int) []portMapping {
+	out := make([]portMapping, 0, len(ports))
+	for _, port := range ports {
+		out = append(out, portMapping{ContainerPort: port, HostIP: "127.0.0.1", Protocol: "tcp"})
+	}
+	return out
+}
+
 func (p *podmanAPI) Create(ctx context.Context, spec ContainerSpec) error {
 	volumes := make([]namedVolume, 0, len(spec.Volumes))
 	for name, dest := range spec.Volumes {
@@ -139,6 +156,7 @@ func (p *podmanAPI) Create(ctx context.Context, spec ContainerSpec) error {
 		"work_dir":     spec.WorkDir,
 		"init":         true,
 		"mounts":       readOnlyBinds(spec.Binds),
+		"portmappings": loopbackPorts(spec.Ports),
 		"selinux_opts": selinuxFor(spec.Binds),
 	}
 	_, err := p.expect(ctx, http.MethodPost, "/containers/create", body, http.StatusCreated)

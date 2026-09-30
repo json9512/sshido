@@ -40,10 +40,12 @@ public enum AgentHostCommands {
             ("SSHIDO_AGENT_IMAGE", agentImage),
             ("SSHIDO_ORCHESTRATOR", settings.orchestrator.rawValue),
             ("SSHIDO_ORCHESTRATOR_MODEL", settings.orchestratorModel),
+            ("SSHIDO_WORKER_CHOICE", settings.workerChoice.rawValue),
             ("SSHIDO_WORKER_HARNESS", settings.worker.rawValue),
             ("SSHIDO_WORKER_MODEL", settings.workerModel),
+            ("SSHIDO_WORKER_HARNESSES", settings.workerAllowed.map(\.rawValue).joined(separator: ",")),
+            ("SSHIDO_WORKER_LOCAL_MODEL", settings.workerLocalModel),
             ("SSHIDO_LOCAL_URL", settings.localURL),
-            ("SSHIDO_PICKER_MODEL", settings.pickerModel),
             ("SSHIDO_HOST_DIRS", hostDirsJSON(settings.hostDirectories)),
             ("SSHIDO_HOST_NAME", hostName),
         ]
@@ -51,7 +53,7 @@ public enum AgentHostCommands {
         return [
             q(podman), "run -d --name \(daemonContainer) --restart always --user 0 --security-opt label=disable",
             "-v \(q("\(socket):/run/podman.sock"))",
-            "-v \(busVolume):/bus -v \(dataVolume):/data -v \(workspaceVolume):/workspace:ro",
+            "-v \(busVolume):/bus -v \(dataVolume):/data -v \(workspaceVolume):/workspace",
             notify ? "--secret \(notifySecret),type=env,target=SSHIDO_NOTIFY_URL" : nil,
             envFlags, daemonImage, "daemon",
         ].compactMap { $0 }.joined(separator: " ")
@@ -85,6 +87,26 @@ public enum AgentHostCommands {
 
     public static func file(podman: String, messageID: Int64) -> String {
         "\(q(podman)) exec \(daemonContainer) /usr/local/bin/sshido-agents file \(messageID)"
+    }
+
+    public static func log(podman: String, agentID: String) -> String {
+        "\(q(podman)) exec \(daemonContainer) /usr/local/bin/sshido-agents log \(q(agentID))"
+    }
+
+    public static let desktopPort = 6080
+
+    public static func desktopServe(podman: String, container: String) -> String {
+        "\(q(podman)) start \(q(container)) >/dev/null && \(q(podman)) exec -u agent \(q(container)) desktop serve"
+    }
+
+    public static func desktopHostPort(podman: String, container: String) -> String {
+        "\(q(podman)) port \(q(container)) \(desktopPort)/tcp"
+    }
+
+    public static func parseHostPort(_ output: String) -> Int? {
+        output.split(separator: "\n")
+            .compactMap { line in line.split(separator: ":").last.flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } }
+            .first { $0 > 0 && $0 < 65536 }
     }
 
     public static func peek(podman: String, container: String) -> String {

@@ -13,23 +13,16 @@ struct AgentModeSettingsView: View {
     @State private var hosts: [RemoteHost] = []
     @State private var orchestratorModel = ""
     @State private var workerModel = ""
+    @State private var workerLocalModel = ""
     @State private var localURL = ""
-    @State private var pickerModel = ""
     @State private var newFolder = ""
     @State private var confirmReset = false
 
     var body: some View {
         Form {
             hostSection
-            modelSection(title: "Orchestrator",
-                         footer: "Reads your messages, splits the work and reports back.",
-                         harness: agents.settings.orchestrator, model: $orchestratorModel,
-                         pick: { h in agents.update { s in s.with(orchestrator: h) } })
-            modelSection(title: "Workers",
-                         footer: "Each worker runs in its own Podman container. The orchestrator may pick a different harness per task.",
-                         harness: agents.settings.worker, model: $workerModel,
-                         pick: { h in agents.update { s in s.with(worker: h) } })
-            groupSection
+            orchestratorSection
+            subagentSection
             if agents.settings.usesLocalEndpoint { localSection }
             hostFoldersSection
             signInSection
@@ -41,13 +34,13 @@ struct AgentModeSettingsView: View {
             hosts = await HostStore.shared.all()
             orchestratorModel = agents.settings.orchestratorModel
             workerModel = agents.settings.workerModel
+            workerLocalModel = agents.settings.workerLocalModel
             localURL = agents.settings.localURL
-            pickerModel = agents.settings.pickerModel
         }
         .onChange(of: orchestratorModel) { _, v in agents.update { $0.with(orchestratorModel: v) } }
         .onChange(of: workerModel) { _, v in agents.update { $0.with(workerModel: v) } }
         .onChange(of: localURL) { _, v in agents.update { $0.with(localURL: v) } }
-        .onChange(of: pickerModel) { _, v in agents.update { $0.with(pickerModel: v) } }
+        .onChange(of: workerLocalModel) { _, v in agents.update { $0.with(workerLocalModel: v) } }
         .confirmationDialog("Remove the agents and the chat history on the host?", isPresented: $confirmReset,
                             titleVisibility: .visible) {
             Button("Remove agents", role: .destructive) { Task { await agents.resetHost() } }
@@ -56,17 +49,132 @@ struct AgentModeSettingsView: View {
         }
     }
 
-    private var groupSection: some View {
+    enum ModelKind: String, CaseIterable, Identifiable {
+        case frontier, local, decides
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .frontier: return "Frontier"
+            case .local: return "Local"
+            case .decides: return "Auto"
+            }
+        }
+    }
+
+    private var orchestratorKind: Binding<ModelKind> {
+        Binding(
+            get: { agents.settings.orchestrator.isFrontier ? .frontier : .local },
+            set: { kind in
+                agents.update { s in
+                    kind == .local ? s.with(orchestrator: .local)
+                        : s.with(orchestrator: s.orchestrator.isFrontier ? s.orchestrator : .claude)
+                }
+            }
+        )
+    }
+
+    private var subagentKind: Binding<ModelKind> {
+        Binding(
+            get: {
+                if agents.settings.workerChoice == .orchestrator { return .decides }
+                return agents.settings.worker.isFrontier ? .frontier : .local
+            },
+            set: { kind in
+                agents.update { s in
+                    switch kind {
+                    case .decides:
+                        return s.with(workerChoice: .orchestrator)
+                    case .local:
+                        return s.with(workerChoice: .fixed).with(worker: .local)
+                    case .frontier:
+                        return s.with(workerChoice: .fixed).with(worker: s.worker.isFrontier ? s.worker : .claude)
+                    }
+                }
+            }
+        )
+    }
+
+    private func kindPicker(_ selection: Binding<ModelKind>, options: [ModelKind]) -> some View {
+        Picker("Models", selection: selection) {
+            ForEach(options) { kind in Text(kind.label).tag(kind) }
+        }
+        .pickerStyle(.segmented)
+        .dsRow()
+    }
+
+    private func frontierPicker(_ harness: AgentHarness, pick: @escaping (AgentHarness) -> Void) -> some View {
+        Picker(selection: Binding(get: { harness }, set: pick)) {
+            ForEach(AgentHarness.frontier) { h in Text(h.label).tag(h) }
+        } label: {
+            Text("Harness").font(DS.Font.rowTitle)
+        }
+        .dsRow()
+    }
+
+    private func modelField(_ prompt: String, _ text: Binding<String>) -> some View {
+        TextField(prompt, text: text)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .dsRow()
+    }
+
+    private var orchestratorSection: some View {
         Section {
-            TextField("Picker model, e.g. qwen3.6:35b-instruct", text: $pickerModel)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .dsRow()
+            kindPicker(orchestratorKind, options: [.frontier, .local])
+            if agents.settings.orchestrator.isFrontier {
+                frontierPicker(agents.settings.orchestrator) { h in agents.update { $0.with(orchestrator: h) } }
+                modelField("Model (optional)", $orchestratorModel)
+            } else {
+                modelField("Local model name, e.g. qwen3.6:35b", $orchestratorModel)
+            }
         } header: {
-            DSSectionHeader("Group chats")
+            DSSectionHeader("Orchestrator")
         } footer: {
-            Text("In a group chat, this model chooses who speaks next. It runs on the local endpoint below, answers with one letter, and must be an instruct (non-thinking) model whose server returns logprobs. Leave empty to turn group chats off.")
+            Text("You talk to the orchestrator. It works out what you need, plans, starts subagents when the work calls for them, checks their evidence and gives each a verdict.")
                 .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+        }
+    }
+
+    private var subagentSection: some View {
+        Section {
+            kindPicker(subagentKind, options: [.frontier, .local, .decides])
+            switch subagentKind.wrappedValue {
+            case .frontier:
+                frontierPicker(agents.settings.worker) { h in agents.update { $0.with(worker: h) } }
+                modelField("Model (optional)", $workerModel)
+            case .local:
+                modelField("Local model name, e.g. qwen3.6:35b", $workerModel)
+            case .decides:
+                ForEach(AgentHarness.allCases) { h in
+                    Toggle(isOn: Binding(
+                        get: { agents.settings.workerAllowed.contains(h) },
+                        set: { on in agents.update { $0.allowing(h, on) } }
+                    )) {
+                        Text(h.label).font(DS.Font.rowTitle)
+                    }
+                    .dsRow()
+                }
+                if agents.settings.workerAllowed.contains(.local) {
+                    modelField("Local model name, e.g. qwen3.6:35b", $workerLocalModel)
+                }
+            }
+            if let problem = agents.settings.problem {
+                Text(problem).font(DS.Font.caption).foregroundStyle(DS.Color.warning).dsRow()
+            }
+        } header: {
+            DSSectionHeader("Subagents")
+        } footer: {
+            Text(subagentFooter).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+        }
+    }
+
+    private var subagentFooter: String {
+        switch subagentKind.wrappedValue {
+        case .frontier: return "Every subagent runs on this harness, each in its own Podman container with a shell, a browser and a desktop."
+        case .local: return "Every subagent runs on this model at the local endpoint below: private and free per token, but weaker than frontier models."
+        case .decides: return "Auto: the orchestrator picks one of the ticked kinds for each subagent: frontier for hard work, local for simple or private work."
         }
     }
 
@@ -139,28 +247,6 @@ struct AgentModeSettingsView: View {
         }
     }
 
-    private func modelSection(title: String, footer: String, harness: AgentHarness, model: Binding<String>,
-                              pick: @escaping (AgentHarness) -> Void) -> some View {
-        Section {
-            Picker(selection: Binding(get: { harness }, set: pick)) {
-                ForEach(AgentHarness.allCases) { h in
-                    Text(h.label).tag(h)
-                }
-            } label: {
-                Text("Harness").font(DS.Font.rowTitle)
-            }
-            .dsRow()
-            TextField(harness == .local ? "Model name (required)" : "Model (optional)", text: model)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .dsRow()
-        } header: {
-            DSSectionHeader(title)
-        } footer: {
-            Text(footer).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-        }
-    }
-
     private var localSection: some View {
         Section {
             TextField("http://host.containers.internal:8083/v1", text: $localURL)
@@ -176,16 +262,9 @@ struct AgentModeSettingsView: View {
         }
     }
 
-    private var signInHarnesses: [AgentHarness] {
-        let orchestrator = agents.settings.orchestrator
-        let worker = agents.settings.worker
-        let both = worker == orchestrator ? [orchestrator] : [orchestrator, worker]
-        return both.filter { $0.loginCommand != nil }
-    }
-
     private var signInSection: some View {
         Section {
-            ForEach(signInHarnesses) { harness in
+            ForEach(agents.settings.signInHarnesses) { harness in
                 Button {
                     router.sheet = nil
                     Task { await agents.signIn(harness, router: router) }
@@ -218,14 +297,14 @@ struct AgentModeSettingsView: View {
             } label: {
                 Label("Set up host", systemImage: "shippingbox").font(DS.Font.rowTitle)
             }
-            .disabled(agents.busy || agents.settings.hostID == nil)
+            .disabled(agents.busy || agents.settings.hostID == nil || agents.settings.problem != nil)
             .dsRow()
             Button {
                 Task { await agents.applySettings() }
             } label: {
                 Label("Apply settings", systemImage: "arrow.triangle.2.circlepath").font(DS.Font.rowTitle)
             }
-            .disabled(agents.busy || agents.settings.hostID == nil)
+            .disabled(agents.busy || agents.settings.hostID == nil || agents.settings.problem != nil)
             .dsRow()
             Button(role: .destructive) {
                 confirmReset = true
