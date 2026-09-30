@@ -30,6 +30,13 @@ public actor AgentBridge {
         return try await channel.executeCommand(command)
     }
 
+    public func tunnel(toLoopbackPort port: Int) async throws -> OAuthTunnel {
+        try await ensureConnected()
+        let tunnel = OAuthTunnel(port: port, sshChannel: channel, remoteHost: "127.0.0.1", remotePort: port)
+        try await tunnel.start()
+        return tunnel
+    }
+
     public func events(podman: String, since: Int64) -> AsyncThrowingStream<AgentLineDecoder.Output, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {

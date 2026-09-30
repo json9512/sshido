@@ -55,6 +55,7 @@ final class AgentModeController: ObservableObject {
     @Published var notice: String?
     @Published private(set) var attachmentFiles: [Int64: URL] = [:]
     private var attachmentLoads: [Int64: Task<URL, Error>] = [:]
+    private var desktopTunnel: OAuthTunnel?
 
     private let store = AgentModeSettingsStore()
     private var bridge: AgentBridge?
@@ -409,6 +410,38 @@ final class AgentModeController: ObservableObject {
         return dir
     }
 
+    func trackRecord(of agent: AgentInfo) async throws -> String {
+        let bridge = try await makeBridge()
+        let podman = try await podman(using: bridge)
+        return try await bridge.run(AgentHostCommands.log(podman: podman, agentID: agent.id))
+    }
+
+    func openDesktop(of agent: AgentInfo) async throws -> URL {
+        let bridge = try await makeBridge()
+        let podman = try await podman(using: bridge)
+        let password = try await bridge.run(AgentHostCommands.desktopServe(podman: podman, container: agent.container))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard password.count == 8, password.allSatisfy({ $0.isLetter || $0.isNumber }) else {
+            throw AgentModeError.desktopUnavailable(password.isEmpty ? "no password came back" : String(password.prefix(200)))
+        }
+        let portOutput = try await bridge.run(AgentHostCommands.desktopHostPort(podman: podman, container: agent.container))
+        guard let port = AgentHostCommands.parseHostPort(portOutput) else {
+            throw AgentModeError.desktopNotPublished
+        }
+        await closeDesktop()
+        desktopTunnel = try await bridge.tunnel(toLoopbackPort: port)
+        guard let url = URL(string: "http://127.0.0.1:\(port)/vnc.html?autoconnect=1&resize=scale&password=\(password)") else {
+            throw AgentModeError.desktopNotPublished
+        }
+        return url
+    }
+
+    func closeDesktop() async {
+        let old = desktopTunnel
+        desktopTunnel = nil
+        await old?.stop()
+    }
+
     func openTerminal(typing command: String, title: String, router: AppRouter) async {
         guard let host = await host() else { return }
         do {
@@ -436,8 +469,9 @@ final class AgentModeController: ObservableObject {
 }
 
 enum AgentModeError: LocalizedError {
-    case noHost, noPodman, missingImages, notSetUp, noAttachment
+    case noHost, noPodman, missingImages, notSetUp, noAttachment, desktopNotPublished
     case incompleteFile(expected: Int64, got: Int64)
+    case desktopUnavailable(String)
 
     var errorDescription: String? {
         switch self {
@@ -447,6 +481,8 @@ enum AgentModeError: LocalizedError {
         case .notSetUp: return "Agent mode is not set up on this host yet. Open Settings → Agent mode → Set up host."
         case .noAttachment: return "This message has no file."
         case .incompleteFile(let expected, let got): return "The file arrived incomplete (\(got) of \(expected) bytes). Try again."
+        case .desktopUnavailable(let detail): return "The agent's desktop did not start: \(detail)"
+        case .desktopNotPublished: return "This agent's container has no desktop port yet. Tap Apply settings in Settings → Agent mode to set it up again."
         }
     }
 }

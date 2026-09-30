@@ -42,6 +42,16 @@ public enum AgentHarness: String, Codable, CaseIterable, Sendable, Identifiable 
         case .local: return nil
         }
     }
+
+    public var isFrontier: Bool { self != .local }
+
+    public static let frontier: [AgentHarness] = allCases.filter(\.isFrontier)
+}
+
+public enum AgentWorkerChoice: String, Codable, CaseIterable, Sendable, Identifiable {
+    case fixed, orchestrator
+
+    public var id: String { rawValue }
 }
 
 public struct AgentModeSettings: Codable, Equatable, Sendable {
@@ -51,9 +61,11 @@ public struct AgentModeSettings: Codable, Equatable, Sendable {
     public var orchestratorModel: String
     public var worker: AgentHarness
     public var workerModel: String
+    public var workerChoice: AgentWorkerChoice
+    public var workerAllowed: [AgentHarness]
+    public var workerLocalModel: String
     public var localURL: String
     public var podmanPath: String
-    public var pickerModel: String
     public var hostDirectories: [String]
 
     public init(
@@ -63,9 +75,11 @@ public struct AgentModeSettings: Codable, Equatable, Sendable {
         orchestratorModel: String = "",
         worker: AgentHarness = .claude,
         workerModel: String = "",
+        workerChoice: AgentWorkerChoice = .fixed,
+        workerAllowed: [AgentHarness] = [.claude],
+        workerLocalModel: String = "",
         localURL: String = "http://host.containers.internal:8083/v1",
         podmanPath: String = "",
-        pickerModel: String = "",
         hostDirectories: [String] = []
     ) {
         self.enabled = enabled
@@ -74,15 +88,17 @@ public struct AgentModeSettings: Codable, Equatable, Sendable {
         self.orchestratorModel = orchestratorModel
         self.worker = worker
         self.workerModel = workerModel
+        self.workerChoice = workerChoice
+        self.workerAllowed = workerAllowed
+        self.workerLocalModel = workerLocalModel
         self.localURL = localURL
         self.podmanPath = podmanPath
-        self.pickerModel = pickerModel
         self.hostDirectories = hostDirectories
     }
 
     private enum CodingKeys: String, CodingKey {
         case enabled, hostID, orchestrator, orchestratorModel, worker, workerModel, localURL, podmanPath
-        case pickerModel, hostDirectories
+        case workerChoice, workerAllowed, workerLocalModel, hostDirectories
     }
 
     public init(from decoder: Decoder) throws {
@@ -94,9 +110,11 @@ public struct AgentModeSettings: Codable, Equatable, Sendable {
             orchestratorModel: try c.decode(String.self, forKey: .orchestratorModel),
             worker: try c.decode(AgentHarness.self, forKey: .worker),
             workerModel: try c.decode(String.self, forKey: .workerModel),
+            workerChoice: try c.decodeIfPresent(AgentWorkerChoice.self, forKey: .workerChoice) ?? .fixed,
+            workerAllowed: try c.decodeIfPresent([AgentHarness].self, forKey: .workerAllowed) ?? [.claude],
+            workerLocalModel: try c.decodeIfPresent(String.self, forKey: .workerLocalModel) ?? "",
             localURL: try c.decode(String.self, forKey: .localURL),
             podmanPath: try c.decode(String.self, forKey: .podmanPath),
-            pickerModel: try c.decodeIfPresent(String.self, forKey: .pickerModel) ?? "",
             hostDirectories: try c.decodeIfPresent([String].self, forKey: .hostDirectories) ?? []
         )
     }
@@ -105,7 +123,8 @@ public struct AgentModeSettings: Codable, Equatable, Sendable {
 
     private func copy(enabled: Bool? = nil, hostID: UUID?? = nil, orchestrator: AgentHarness? = nil,
                       orchestratorModel: String? = nil, worker: AgentHarness? = nil, workerModel: String? = nil,
-                      localURL: String? = nil, podmanPath: String? = nil, pickerModel: String? = nil,
+                      workerChoice: AgentWorkerChoice? = nil, workerAllowed: [AgentHarness]? = nil,
+                      workerLocalModel: String? = nil, localURL: String? = nil, podmanPath: String? = nil,
                       hostDirectories: [String]? = nil) -> AgentModeSettings {
         AgentModeSettings(
             enabled: enabled ?? self.enabled,
@@ -114,9 +133,11 @@ public struct AgentModeSettings: Codable, Equatable, Sendable {
             orchestratorModel: orchestratorModel ?? self.orchestratorModel,
             worker: worker ?? self.worker,
             workerModel: workerModel ?? self.workerModel,
+            workerChoice: workerChoice ?? self.workerChoice,
+            workerAllowed: workerAllowed ?? self.workerAllowed,
+            workerLocalModel: workerLocalModel ?? self.workerLocalModel,
             localURL: localURL ?? self.localURL,
             podmanPath: podmanPath ?? self.podmanPath,
-            pickerModel: pickerModel ?? self.pickerModel,
             hostDirectories: hostDirectories ?? self.hostDirectories
         )
     }
@@ -127,13 +148,48 @@ public struct AgentModeSettings: Codable, Equatable, Sendable {
     public func with(orchestratorModel value: String) -> AgentModeSettings { copy(orchestratorModel: value) }
     public func with(worker value: AgentHarness) -> AgentModeSettings { copy(worker: value) }
     public func with(workerModel value: String) -> AgentModeSettings { copy(workerModel: value) }
+    public func with(workerChoice value: AgentWorkerChoice) -> AgentModeSettings { copy(workerChoice: value) }
+    public func with(workerLocalModel value: String) -> AgentModeSettings { copy(workerLocalModel: value) }
     public func with(localURL value: String) -> AgentModeSettings { copy(localURL: value) }
     public func withPodmanPath(_ value: String) -> AgentModeSettings { copy(podmanPath: value) }
-    public func with(pickerModel value: String) -> AgentModeSettings { copy(pickerModel: value) }
     public func with(hostDirectories value: [String]) -> AgentModeSettings { copy(hostDirectories: value) }
 
+    public func allowing(_ harness: AgentHarness, _ allowed: Bool) -> AgentModeSettings {
+        let rest = workerAllowed.filter { $0 != harness }
+        let next = allowed ? rest + [harness] : rest
+        return copy(workerAllowed: AgentHarness.allCases.filter(next.contains))
+    }
+
+    public var workerHarnesses: [AgentHarness] {
+        workerChoice == .fixed ? [worker] : workerAllowed
+    }
+
     public var usesLocalEndpoint: Bool {
-        orchestrator == .local || worker == .local || !pickerModel.trimmingCharacters(in: .whitespaces).isEmpty
+        orchestrator == .local || workerHarnesses.contains(.local)
+    }
+
+    public var signInHarnesses: [AgentHarness] {
+        AgentHarness.allCases.filter { h in
+            h.loginCommand != nil && (h == orchestrator || workerHarnesses.contains(h))
+        }
+    }
+
+    public var problem: String? {
+        if orchestrator == .local && orchestratorModel.trimmingCharacters(in: .whitespaces).isEmpty {
+            return "Name the local model for the orchestrator."
+        }
+        switch workerChoice {
+        case .fixed:
+            if worker == .local && workerModel.trimmingCharacters(in: .whitespaces).isEmpty {
+                return "Name the local model for subagents."
+            }
+        case .orchestrator:
+            if workerAllowed.isEmpty { return "Allow at least one kind of subagent." }
+            if workerAllowed.contains(.local) && workerLocalModel.trimmingCharacters(in: .whitespaces).isEmpty {
+                return "Name the local model subagents may use."
+            }
+        }
+        return nil
     }
 
     public static func hostDirectoryProblem(_ path: String, among existing: [String]) -> String? {
@@ -173,41 +229,15 @@ public struct AgentAttachment: Codable, Equatable, Sendable {
     public var isVideo: Bool { mime.hasPrefix("video/") }
 }
 
-public enum AgentChatKind: String, Codable, Sendable {
-    case orchestrated, group
-}
-
-public enum AgentChatStatus: String, Codable, Sendable {
-    case idle, picking, working
-}
-
 public struct AgentChat: Codable, Identifiable, Equatable, Sendable {
     public let id: String
     public let title: String
-    public let kind: AgentChatKind
-    public let turnCap: Int
-    public let status: AgentChatStatus
     public let createdAt: Int64
 
-    public init(id: String, title: String, kind: AgentChatKind, turnCap: Int, status: AgentChatStatus, createdAt: Int64) {
+    public init(id: String, title: String, createdAt: Int64) {
         self.id = id
         self.title = title
-        self.kind = kind
-        self.turnCap = turnCap
-        self.status = status
         self.createdAt = createdAt
-    }
-}
-
-public struct AgentMemberSpec: Codable, Equatable, Sendable {
-    public let name: String
-    public let harness: AgentHarness
-    public let model: String?
-
-    public init(name: String, harness: AgentHarness, model: String?) {
-        self.name = name
-        self.harness = harness
-        self.model = model
     }
 }
 
@@ -257,6 +287,15 @@ public enum AgentStatus: String, Codable, Sendable {
     case starting, working, idle, failed, stopped
 }
 
+public enum AgentWorkStatus: String, Codable, Sendable {
+    case inProgress = "in_progress"
+    case blocked, done
+}
+
+public enum AgentVerdict: String, Codable, Sendable {
+    case pass, fail
+}
+
 public struct AgentInfo: Codable, Identifiable, Equatable, Sendable {
     public let id: String
     public let chatId: String
@@ -266,6 +305,11 @@ public struct AgentInfo: Codable, Identifiable, Equatable, Sendable {
     public let model: String?
     public let status: AgentStatus
     public let task: String?
+    public let goal: String?
+    public let workStatus: AgentWorkStatus?
+    public let verification: String?
+    public let verdict: AgentVerdict?
+    public let verdictNote: String?
     public let container: String
     public let createdAt: Int64
     public let updatedAt: Int64
@@ -280,21 +324,15 @@ public struct AgentRequest: Codable, Equatable, Sendable {
     public let text: String?
     public let agentId: String?
     public let title: String?
-    public let kind: AgentChatKind?
-    public let turnCap: Int?
-    public let members: [AgentMemberSpec]?
 
     init(op: String, since: Int64? = nil, chatId: String? = nil, text: String? = nil, agentId: String? = nil,
-         title: String? = nil, kind: AgentChatKind? = nil, turnCap: Int? = nil, members: [AgentMemberSpec]? = nil) {
+         title: String? = nil) {
         self.op = op
         self.since = since
         self.chatId = chatId
         self.text = text
         self.agentId = agentId
         self.title = title
-        self.kind = kind
-        self.turnCap = turnCap
-        self.members = members
     }
 
     public static func hello(since: Int64) -> AgentRequest {
@@ -310,11 +348,7 @@ public struct AgentRequest: Codable, Equatable, Sendable {
     }
 
     public static func createChat(title: String) -> AgentRequest {
-        AgentRequest(op: "createChat", title: title, kind: .orchestrated)
-    }
-
-    public static func createGroup(title: String, members: [AgentMemberSpec], turnCap: Int) -> AgentRequest {
-        AgentRequest(op: "createChat", title: title, kind: .group, turnCap: turnCap, members: members)
+        AgentRequest(op: "createChat", title: title)
     }
 
     public static func deleteChat(id: String) -> AgentRequest {
@@ -353,5 +387,29 @@ extension AgentModeEvent: Decodable {
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown event type \(type)")
         }
+    }
+}
+
+public struct AgentTrackEntry: Equatable, Sendable {
+    public let heading: String
+    public let date: Date?
+    public let body: String
+
+    public init(heading: String, date: Date?, body: String) {
+        self.heading = heading
+        self.date = date
+        self.body = body
+    }
+
+    public static func parse(_ log: String) -> [AgentTrackEntry] {
+        ("\n" + log).components(separatedBy: "\n## ")
+            .dropFirst()
+            .compactMap { chunk in
+                let parts = chunk.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+                let heading = String(parts.first ?? "").trimmingCharacters(in: .whitespaces)
+                let body = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+                guard !body.isEmpty else { return nil }
+                return AgentTrackEntry(heading: heading, date: ISO8601DateFormatter().date(from: heading), body: body)
+            }
     }
 }

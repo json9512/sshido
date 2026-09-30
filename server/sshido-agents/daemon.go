@@ -22,10 +22,8 @@ type Config struct {
 	AgentImage          string
 	OrchestratorHarness string
 	OrchestratorModel   string
-	WorkerHarness       string
-	WorkerModel         string
+	Workers             WorkerChoice
 	LocalURL            string
-	PickerModel         string
 	NotifyURL           string
 	WorkspaceVolume     string
 	WorkspaceDir        string
@@ -48,6 +46,14 @@ func loadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("SSHIDO_TURN_TIMEOUT_MINUTES must be a positive integer")
 	}
 	orchestrator := env("SSHIDO_ORCHESTRATOR", HarnessClaude)
+	if _, err := lookupHarness(orchestrator); err != nil {
+		return Config{}, err
+	}
+	workers, err := parseWorkerChoice(env("SSHIDO_WORKER_CHOICE", ChoiceFixed), env("SSHIDO_WORKER_HARNESS", orchestrator),
+		env("SSHIDO_WORKER_MODEL", ""), env("SSHIDO_WORKER_HARNESSES", ""), env("SSHIDO_WORKER_LOCAL_MODEL", ""))
+	if err != nil {
+		return Config{}, err
+	}
 	hostDirs, err := parseHostDirs(os.Getenv("SSHIDO_HOST_DIRS"))
 	if err != nil {
 		return Config{}, err
@@ -59,10 +65,8 @@ func loadConfig() (Config, error) {
 		AgentImage:          env("SSHIDO_AGENT_IMAGE", "localhost/sshido-agent:dev"),
 		OrchestratorHarness: orchestrator,
 		OrchestratorModel:   env("SSHIDO_ORCHESTRATOR_MODEL", ""),
-		WorkerHarness:       env("SSHIDO_WORKER_HARNESS", orchestrator),
-		WorkerModel:         env("SSHIDO_WORKER_MODEL", ""),
+		Workers:             workers,
 		LocalURL:            env("SSHIDO_LOCAL_URL", ""),
-		PickerModel:         env("SSHIDO_PICKER_MODEL", ""),
 		NotifyURL:           env("SSHIDO_NOTIFY_URL", ""),
 		WorkspaceVolume:     env("SSHIDO_WORKSPACE_VOLUME", "sshido-agents-workspace"),
 		WorkspaceDir:        env("SSHIDO_WORKSPACE_DIR", "/workspace"),
@@ -71,27 +75,22 @@ func loadConfig() (Config, error) {
 		HostDirs:            hostDirs,
 		TurnTimeout:         time.Duration(minutes) * time.Minute,
 	}
-	for _, name := range []string{cfg.OrchestratorHarness, cfg.WorkerHarness} {
-		if _, err := lookupHarness(name); err != nil {
-			return Config{}, err
-		}
-	}
 	return cfg, nil
 }
 
 type Daemon struct {
-	cfg    Config
-	store  *Store
-	pods   Containers
-	hub    *Hub
-	push   Pusher
-	picker Picker
-	queues sync.Map
-	mu     sync.Mutex
+	cfg      Config
+	store    *Store
+	pods     Containers
+	hub      *Hub
+	push     Pusher
+	queues   sync.Map
+	inflight sync.WaitGroup
+	mu       sync.Mutex
 }
 
-func newDaemon(cfg Config, store *Store, pods Containers, push Pusher, picker Picker) *Daemon {
-	return &Daemon{cfg: cfg, store: store, pods: pods, hub: newHub(), push: push, picker: picker}
+func newDaemon(cfg Config, store *Store, pods Containers, push Pusher) *Daemon {
+	return &Daemon{cfg: cfg, store: store, pods: pods, hub: newHub(), push: push}
 }
 
 func randomHex(n int) string {
@@ -139,15 +138,6 @@ func (d *Daemon) setStatus(id, status string) {
 	d.publishAgent(a)
 }
 
-func (d *Daemon) setChatStatus(id, status string) {
-	c, err := d.store.SetChatStatus(id, status)
-	if err != nil {
-		log.Printf("set chat status %s=%s failed: %v", id, status, err)
-		return
-	}
-	d.publishChat(c)
-}
-
 func (d *Daemon) containerSpec(id, role, token string, spec harnessSpec) ContainerSpec {
 	return ContainerSpec{
 		Name:  "sshido-agent-" + id,
@@ -165,6 +155,7 @@ func (d *Daemon) containerSpec(id, role, token string, spec harnessSpec) Contain
 			"sshido-auth-" + strings.TrimPrefix(spec.stateDir, "."): "/home/agent/" + spec.stateDir,
 		},
 		Binds:   d.cfg.HostDirs,
+		Ports:   []int{desktopPort},
 		User:    "agent",
 		WorkDir: "/workspace",
 	}
@@ -186,24 +177,26 @@ func (d *Daemon) startContainer(ctx context.Context, name string, cspec Containe
 	return nil
 }
 
-func (d *Daemon) createAgent(ctx context.Context, chatID, name, role, harness, model, task string) (Agent, error) {
-	spec, err := lookupHarness(harness)
+func (d *Daemon) createAgent(ctx context.Context, draft Agent) (Agent, error) {
+	spec, err := lookupHarness(draft.Harness)
 	if err != nil {
 		return Agent{}, err
 	}
 	id := randomHex(4)
 	token := randomHex(24)
-	cspec := d.containerSpec(id, role, token, spec)
-	if err := d.startContainer(ctx, name, cspec, spec); err != nil {
+	cspec := d.containerSpec(id, draft.Role, token, spec)
+	if err := d.startContainer(ctx, draft.Name, cspec, spec); err != nil {
 		return Agent{}, err
 	}
 	a, err := d.store.AddAgent(Agent{
-		ID: id, ChatID: chatID, Name: name, Role: role, Harness: harness, Model: model,
-		Status: StatusIdle, Task: task, Mounts: mountsFingerprint(d.cfg.HostDirs), Container: cspec.Name,
+		ID: id, ChatID: draft.ChatID, Name: draft.Name, Role: draft.Role, Harness: draft.Harness, Model: draft.Model,
+		Status: StatusIdle, Task: draft.Task, Goal: draft.Goal, WorkStatus: draft.WorkStatus,
+		Mounts: setupFingerprint(d.cfg.HostDirs), Container: cspec.Name,
 	}, token)
 	if err != nil {
 		return Agent{}, err
 	}
+	d.writeRecord(a)
 	d.publishAgent(a)
 	return a, nil
 }
@@ -220,7 +213,7 @@ func (d *Daemon) recontain(ctx context.Context, a Agent) error {
 	if err := d.startContainer(ctx, a.Name, d.containerSpec(a.ID, a.Role, token, spec), spec); err != nil {
 		return err
 	}
-	_, err = d.store.Recontain(a.ID, token, mountsFingerprint(d.cfg.HostDirs))
+	_, err = d.store.Recontain(a.ID, token, setupFingerprint(d.cfg.HostDirs))
 	return err
 }
 
@@ -229,7 +222,10 @@ func (d *Daemon) orchestrator(ctx context.Context, chatID string) (Agent, error)
 	defer d.mu.Unlock()
 	a, err := d.store.Orchestrator(chatID)
 	if errors.Is(err, ErrNotFound) {
-		return d.createAgent(ctx, chatID, "orchestrator", RoleOrchestrator, d.cfg.OrchestratorHarness, d.cfg.OrchestratorModel, "")
+		return d.createAgent(ctx, Agent{
+			ChatID: chatID, Name: "orchestrator", Role: RoleOrchestrator,
+			Harness: d.cfg.OrchestratorHarness, Model: d.cfg.OrchestratorModel,
+		})
 	}
 	if err != nil {
 		return Agent{}, err
@@ -240,6 +236,45 @@ func (d *Daemon) orchestrator(ctx context.Context, chatID string) (Agent, error)
 	return a, nil
 }
 
+func recordOf(a Agent) Record {
+	return Record{Goal: a.Goal, WorkStatus: a.WorkStatus, Verification: a.Verification, Verdict: a.Verdict, VerdictNote: a.VerdictNote}
+}
+
+func (d *Daemon) writeRecord(a Agent) {
+	if err := writeRecordFiles(d.cfg.WorkspaceDir, a); err != nil {
+		log.Printf("record files for %s: %v", a.ID, err)
+	}
+}
+
+func (d *Daemon) logEntry(a Agent, entry string) {
+	if err := appendLogEntry(d.cfg.WorkspaceDir, a.ID, time.Now(), entry); err != nil {
+		log.Printf("%v", err)
+	}
+}
+
+func (d *Daemon) saveRecord(a Agent, r Record, entry string) (Agent, error) {
+	updated, err := d.store.SetRecord(a.ID, r)
+	if err != nil {
+		return Agent{}, err
+	}
+	d.writeRecord(updated)
+	d.logEntry(updated, entry)
+	d.publishAgent(updated)
+	return updated, nil
+}
+
+func newWork(a Agent) Record {
+	return Record{Goal: a.Goal, WorkStatus: WorkInProgress}
+}
+
+func (d *Daemon) recordPrompt(a Agent) string {
+	full, err := readLog(d.cfg.WorkspaceDir, a.ID)
+	if err != nil {
+		log.Printf("%v", err)
+	}
+	return recordBrief(a, logTail(full, logTailBytes))
+}
+
 func (d *Daemon) serial(key string, job func()) bool {
 	fresh := make(chan func(), 64)
 	actual, loaded := d.queues.LoadOrStore(key, fresh)
@@ -247,10 +282,16 @@ func (d *Daemon) serial(key string, job func()) bool {
 	if !loaded {
 		go drain(queue)
 	}
+	d.inflight.Add(1)
+	tracked := func() {
+		defer d.inflight.Done()
+		job()
+	}
 	select {
-	case queue <- job:
+	case queue <- tracked:
 		return true
 	default:
+		d.inflight.Done()
 		log.Printf("queue %s is full; dropping a job", key)
 		return false
 	}
@@ -303,17 +344,6 @@ func (d *Daemon) turn(ctx context.Context, a Agent, prompt string) (string, erro
 	return result.Text, nil
 }
 
-func (d *Daemon) firstPrompt(a Agent, prompt string) (string, error) {
-	if a.Role != RoleMember {
-		return firstTurnPrompt(a, prompt, d.cfg.HostDirs, nil), nil
-	}
-	members, err := d.store.ChatAgents(a.ChatID)
-	if err != nil {
-		return "", err
-	}
-	return firstTurnPrompt(a, prompt, d.cfg.HostDirs, members), nil
-}
-
 func (d *Daemon) execTurn(ctx context.Context, a Agent, prompt string) (TurnResult, error) {
 	spec, err := lookupHarness(a.Harness)
 	if err != nil {
@@ -346,18 +376,21 @@ func (d *Daemon) execTurn(ctx context.Context, a Agent, prompt string) (TurnResu
 	return parsed, nil
 }
 
+const promptSeparator = "\n\n---\n\n"
+
 func (d *Daemon) promptFor(a Agent, prompt string) (string, error) {
-	current := mountsFingerprint(d.cfg.HostDirs)
+	withRecord := d.recordPrompt(a) + promptSeparator + prompt
+	current := setupFingerprint(d.cfg.HostDirs)
 	if a.Session != "" && a.Briefed == current {
-		return prompt, nil
+		return withRecord, nil
 	}
 	if err := d.store.SetBriefed(a.ID, current); err != nil {
 		return "", err
 	}
 	if a.Session != "" {
-		return hostDirsChanged(d.cfg.HostDirs) + "\n\n---\n\n" + prompt, nil
+		return environmentChanged(d.cfg.HostDirs) + promptSeparator + withRecord, nil
 	}
-	return d.firstPrompt(a, prompt)
+	return firstTurnPrompt(a, withRecord, orchestratorPrompt(d.cfg.Workers), d.cfg.HostDirs), nil
 }
 
 func (d *Daemon) writePrompt(id, text string) (string, error) {
@@ -373,28 +406,39 @@ func (d *Daemon) writePrompt(id, text string) (string, error) {
 }
 
 func (d *Daemon) turnDone(ctx context.Context, a Agent, text string) {
+	d.logEntry(a, "Turn finished. Reply:\n\n"+truncate(text, 2000))
 	if a.Role == RoleOrchestrator {
 		d.post(a.ChatID, a.ID, a.Name, KindReply, text)
 		d.notify(ctx, d.chatTitle(a.ChatID)+" replied", text, false)
 		return
 	}
 	d.post(a.ChatID, a.ID, a.Name, KindDone, text)
-	d.relayToOrchestrator(ctx, a.ChatID, workerFinishedPrompt(a.Name, a.ID, text))
+	d.relayToOrchestrator(ctx, a.ChatID, workerFinishedPrompt(d.fresh(a), text))
 }
 
 func (d *Daemon) turnFailed(ctx context.Context, a Agent, err error) {
+	d.logEntry(a, "Turn failed: "+err.Error())
 	d.post(a.ChatID, a.ID, a.Name, KindError, err.Error())
 	if a.Role == RoleOrchestrator {
 		d.notify(ctx, d.chatTitle(a.ChatID)+" error", err.Error(), true)
 		return
 	}
-	d.relayToOrchestrator(ctx, a.ChatID, workerFailedPrompt(a.Name, a.ID, err.Error()))
+	d.relayToOrchestrator(ctx, a.ChatID, workerFailedPrompt(d.fresh(a), err.Error()))
+}
+
+func (d *Daemon) fresh(a Agent) Agent {
+	current, err := d.store.Agent(a.ID)
+	if err != nil {
+		log.Printf("reload agent %s: %v", a.ID, err)
+		return a
+	}
+	return current
 }
 
 func (d *Daemon) relayToOrchestrator(ctx context.Context, chatID, prompt string) {
 	orch, err := d.orchestrator(ctx, chatID)
 	if err != nil {
-		log.Printf("cannot reach orchestrator of chat %s to relay a worker result: %v", chatID, err)
+		log.Printf("cannot reach orchestrator of chat %s to relay a subagent result: %v", chatID, err)
 		d.post(chatID, "", "sshido", KindError, "The orchestrator could not be started: "+err.Error())
 		return
 	}
@@ -410,132 +454,31 @@ func (d *Daemon) HandleUserMessage(ctx context.Context, chatID, text string) err
 		return fmt.Errorf("chat %q: %w", chatID, err)
 	}
 	d.post(chat.ID, "", "you", KindUser, text)
-	if chat.Kind == ChatGroup {
-		d.startRound(chat)
-		return nil
-	}
 	orch, err := d.orchestrator(ctx, chat.ID)
 	if err != nil {
 		d.post(chat.ID, "", "sshido", KindError, "The orchestrator could not be started: "+err.Error())
 		return err
 	}
-	d.enqueue(orch, text)
+	updated, err := d.saveRecord(orch, newWork(orch), "Request from the person:\n\n"+text)
+	if err != nil {
+		log.Printf("record the request for %s: %v", orch.ID, err)
+		updated = orch
+	}
+	d.enqueue(updated, text)
 	return nil
 }
 
-func (d *Daemon) startRound(chat Chat) {
-	if d.serial("chat:"+chat.ID, func() { d.runRound(chat.ID) }) {
-		return
-	}
-	d.post(chat.ID, "", "sshido", KindError, "Too many queued messages for this chat; one was dropped.")
-}
-
-const (
-	defaultTurnCap = 6
-	maxTurnCap     = 50
-	maxMembers     = 12
-)
-
-func turnCapOf(requested int) (int, error) {
-	if requested == 0 {
-		return defaultTurnCap, nil
-	}
-	if requested < 1 || requested > maxTurnCap {
-		return 0, fmt.Errorf("turn limit must be between 1 and %d", maxTurnCap)
-	}
-	return requested, nil
-}
-
-func (d *Daemon) validMembers(members []MemberSpec) ([]MemberSpec, error) {
-	if len(members) < 2 || len(members) > maxMembers {
-		return nil, fmt.Errorf("a group chat needs 2 to %d members, got %d", maxMembers, len(members))
-	}
-	out := make([]MemberSpec, 0, len(members))
-	for _, m := range members {
-		member, err := d.validMember(m, out)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, member)
-	}
-	return out, nil
-}
-
-func (d *Daemon) validMember(m MemberSpec, taken []MemberSpec) (MemberSpec, error) {
-	name := strings.TrimSpace(m.Name)
-	if name == "" {
-		return MemberSpec{}, errors.New("every member needs a name")
-	}
-	if nameTaken(name, taken) {
-		return MemberSpec{}, fmt.Errorf("two members are named %q", name)
-	}
-	harness := firstNonEmpty(m.Harness, d.cfg.WorkerHarness)
-	if _, err := lookupHarness(harness); err != nil {
-		return MemberSpec{}, err
-	}
-	model := strings.TrimSpace(m.Model)
-	if harness == d.cfg.WorkerHarness && model == "" {
-		model = d.cfg.WorkerModel
-	}
-	return MemberSpec{Name: name, Harness: harness, Model: model}, nil
-}
-
-func nameTaken(name string, taken []MemberSpec) bool {
-	for _, t := range taken {
-		if strings.EqualFold(t.Name, name) {
-			return true
-		}
-	}
-	return false
-}
-
-func (d *Daemon) CreateChat(ctx context.Context, req AppRequest) (Chat, error) {
-	title := strings.TrimSpace(req.Title)
-	if title == "" {
+func (d *Daemon) CreateChat(title string) (Chat, error) {
+	trimmed := strings.TrimSpace(title)
+	if trimmed == "" {
 		return Chat{}, errors.New("a chat needs a title")
 	}
-	if req.Kind != ChatOrchestrated && req.Kind != ChatGroup {
-		return Chat{}, fmt.Errorf("chat kind must be %q or %q", ChatOrchestrated, ChatGroup)
-	}
-	if req.Kind == ChatOrchestrated {
-		return d.createOrchestratedChat(title)
-	}
-	if _, isNone := d.picker.(noPicker); isNone {
-		return Chat{}, ErrNoPicker
-	}
-	members, err := d.validMembers(req.Members)
-	if err != nil {
-		return Chat{}, err
-	}
-	turnCap, err := turnCapOf(req.TurnCap)
-	if err != nil {
-		return Chat{}, err
-	}
-	c, err := d.store.AddChat(title, ChatGroup, turnCap)
-	if err != nil {
-		return Chat{}, err
-	}
-	for _, m := range members {
-		d.addMember(ctx, c, m)
-	}
-	d.publishChat(c)
-	return c, nil
-}
-
-func (d *Daemon) createOrchestratedChat(title string) (Chat, error) {
-	c, err := d.store.AddChat(title, ChatOrchestrated, 0)
+	c, err := d.store.AddChat(trimmed)
 	if err != nil {
 		return Chat{}, err
 	}
 	d.publishChat(c)
 	return c, nil
-}
-
-func (d *Daemon) addMember(ctx context.Context, c Chat, m MemberSpec) {
-	if _, err := d.createAgent(ctx, c.ID, m.Name, RoleMember, m.Harness, m.Model, ""); err != nil {
-		log.Printf("create member %q of chat %s: %v", m.Name, c.ID, err)
-		d.post(c.ID, "", "sshido", KindError, fmt.Sprintf("Could not start %s: %v", m.Name, err))
-	}
 }
 
 func (d *Daemon) DeleteChat(ctx context.Context, id string) error {
@@ -554,108 +497,13 @@ func (d *Daemon) DeleteChat(ctx context.Context, id string) error {
 	if err := d.store.DeleteChat(id); err != nil {
 		return err
 	}
+	for _, a := range agents {
+		if err := os.RemoveAll(filepath.Join(d.cfg.WorkspaceDir, recordRoot, a.ID)); err != nil {
+			log.Printf("remove the record of %s: %v", a.ID, err)
+		}
+	}
 	d.hub.Publish(AppEvent{Type: EventChatRemoved, ChatID: id})
 	return nil
-}
-
-func (d *Daemon) runRound(chatID string) {
-	chat, err := d.store.Chat(chatID)
-	if err != nil {
-		log.Printf("round for chat %s skipped: %v", chatID, err)
-		return
-	}
-	d.endRound(chat, d.takeTurns(chat, 0, ""))
-}
-
-func (d *Daemon) takeTurns(chat Chat, turn int, last string) string {
-	if turn >= chat.TurnCap {
-		d.post(chat.ID, "", "sshido", KindProgress, fmt.Sprintf("Turn limit reached (%d turns). Your turn.", chat.TurnCap))
-		return last
-	}
-	reply, more := d.roundStep(chat, turn > 0)
-	if !more {
-		return firstNonEmpty(reply, last)
-	}
-	return d.takeTurns(chat, turn+1, firstNonEmpty(reply, last))
-}
-
-func (d *Daemon) endRound(chat Chat, last string) {
-	d.setChatStatus(chat.ID, ChatIdle)
-	if last == "" {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	d.notify(ctx, chat.Title+" replied", last, false)
-}
-
-func activeMembers(agents []Agent) []Agent {
-	out := []Agent{}
-	for _, a := range agents {
-		if a.Role != RoleMember || a.Status == StatusStopped {
-			continue
-		}
-		out = append(out, a)
-	}
-	return out
-}
-
-func (d *Daemon) roundStep(chat Chat, handBack bool) (string, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.TurnTimeout)
-	defer cancel()
-	agents, err := d.store.ChatAgents(chat.ID)
-	if err != nil {
-		log.Printf("round for chat %s: %v", chat.ID, err)
-		return "", false
-	}
-	members := activeMembers(agents)
-	if len(members) == 0 {
-		d.post(chat.ID, "", "sshido", KindError, "No members are running in this chat.")
-		return "", false
-	}
-	history, err := d.store.ChatMessagesAfter(chat.ID, 0)
-	if err != nil {
-		log.Printf("round for chat %s: %v", chat.ID, err)
-		return "", false
-	}
-	d.setChatStatus(chat.ID, ChatPicking)
-	pick, err := d.picker.Pick(ctx, pickerState(chat, members, history), pickerQuestion(handBack), pickerOptions(members, handBack))
-	if err != nil {
-		log.Printf("picker for chat %s failed: %v", chat.ID, err)
-		d.post(chat.ID, "", "sshido", KindError, "The picker could not choose who speaks next: "+err.Error())
-		return "", false
-	}
-	log.Printf("picker for chat %s chose %d of %d, probabilities %v", chat.ID, pick.Index, len(members), pick.Probs)
-	if pick.Index >= len(members) {
-		return "", false
-	}
-	d.setChatStatus(chat.ID, ChatWorking)
-	return d.memberTurn(ctx, members[pick.Index], history), true
-}
-
-func unseenBy(member Agent, history []Message) []Message {
-	out := []Message{}
-	for _, m := range history {
-		if m.ID <= member.Seen || m.AgentID == member.ID {
-			continue
-		}
-		out = append(out, m)
-	}
-	return out
-}
-
-func (d *Daemon) memberTurn(ctx context.Context, member Agent, history []Message) string {
-	prompt := memberTurnPrompt(unseenBy(member, history))
-	if err := d.store.SetSeen(member.ID, history[len(history)-1].ID); err != nil {
-		log.Printf("set seen for %s: %v", member.ID, err)
-	}
-	text, err := d.turn(ctx, member, prompt)
-	if err != nil {
-		d.post(member.ChatID, member.ID, member.Name, KindError, err.Error())
-		return ""
-	}
-	d.post(member.ChatID, member.ID, member.Name, KindReply, text)
-	return text
 }
 
 func (d *Daemon) StopAgent(ctx context.Context, id string) error {
@@ -667,17 +515,11 @@ func (d *Daemon) StopAgent(ctx context.Context, id string) error {
 		return err
 	}
 	d.setStatus(id, StatusStopped)
+	d.logEntry(a, "Stopped.")
 	return nil
 }
 
 func (d *Daemon) Recover(ctx context.Context) error {
-	chats, err := d.store.Chats()
-	if err != nil {
-		return err
-	}
-	for _, c := range chats {
-		d.recoverChat(c)
-	}
 	agents, err := d.store.Agents()
 	if err != nil {
 		return err
@@ -688,16 +530,12 @@ func (d *Daemon) Recover(ctx context.Context) error {
 	return nil
 }
 
-func (d *Daemon) recoverChat(c Chat) {
-	if c.Status == ChatIdle {
-		return
-	}
-	d.setChatStatus(c.ID, ChatIdle)
-	d.post(c.ID, "", "sshido", KindError, "The group's turn was interrupted by a restart. Send a message to continue.")
-}
-
 func (d *Daemon) recoverAgent(ctx context.Context, a Agent) {
 	if a.Status == StatusStopped {
+		return
+	}
+	if a.Role == RoleMember {
+		d.retireMember(ctx, a)
 		return
 	}
 	exists, err := d.pods.Exists(ctx, a.Container)
@@ -715,16 +553,25 @@ func (d *Daemon) recoverAgent(ctx context.Context, a Agent) {
 }
 
 func (d *Daemon) restartAgent(ctx context.Context, a Agent) {
-	if a.Mounts == mountsFingerprint(d.cfg.HostDirs) {
+	if a.Mounts == setupFingerprint(d.cfg.HostDirs) {
 		if err := d.pods.Start(ctx, a.Container); err != nil {
 			log.Printf("restart agent %s container: %v", a.ID, err)
 		}
 		return
 	}
-	log.Printf("agent %s: host folders changed; recreating its container", a.ID)
+	log.Printf("agent %s: container setup changed; recreating its container", a.ID)
 	if err := d.recontain(ctx, a); err != nil {
 		log.Printf("recreate agent %s container: %v", a.ID, err)
 		d.setStatus(a.ID, StatusFailed)
-		d.post(a.ChatID, a.ID, a.Name, KindError, "Could not apply the new host folders to this agent: "+err.Error())
+		d.post(a.ChatID, a.ID, a.Name, KindError, "Could not set up this agent's container again: "+err.Error())
 	}
+}
+
+func (d *Daemon) retireMember(ctx context.Context, a Agent) {
+	if err := d.pods.Stop(ctx, a.Container); err != nil {
+		log.Printf("stop group member %s: %v", a.ID, err)
+	}
+	d.setStatus(a.ID, StatusStopped)
+	d.post(a.ChatID, a.ID, a.Name, KindProgress,
+		"Group chats are now led by an orchestrator, so "+a.Name+" was stopped. Send a message to continue with the orchestrator.")
 }

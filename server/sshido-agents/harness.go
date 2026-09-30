@@ -95,6 +95,7 @@ func localCommand(t Turn) ([]string, error) {
 		return nil, errors.New("local harness needs a model name")
 	}
 	provider := []string{
+		"--disable", "view_image",
 		"-c", "model_provider=local",
 		"-c", `model_providers.local.name="local"`,
 		"-c", fmt.Sprintf("model_providers.local.base_url=%q", t.LocalURL),
@@ -233,5 +234,5 @@ func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return strings.ToValidUTF8(s[:n], "") + "…"
 }

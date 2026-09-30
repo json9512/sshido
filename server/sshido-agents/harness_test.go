@@ -113,6 +113,7 @@ func TestCommands(t *testing.T) {
 			[]string{"codex", "exec", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "resume", "t1", "hi"}},
 		{HarnessLocal, Turn{Prompt: "hi", Model: "qwen", LocalURL: "http://host.containers.internal:8083/v1"},
 			[]string{"codex", "exec", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox",
+				"--disable", "view_image",
 				"-c", "model_provider=local", "-c", `model_providers.local.name="local"`,
 				"-c", `model_providers.local.base_url="http://host.containers.internal:8083/v1"`,
 				"-c", `model_providers.local.wire_api="responses"`, "-m", "qwen", "hi"}},
@@ -152,9 +153,9 @@ func TestUnknownHarness(t *testing.T) {
 }
 
 func TestFirstTurnPromptsDescribeComputerUse(t *testing.T) {
-	for _, role := range []string{RoleOrchestrator, RoleWorker, RoleMember} {
-		prompt := firstTurnPrompt(Agent{Role: role, Name: "w"}, "do it", nil, nil)
-		for _, want := range []string{"agent-browser open", "network access", "/workspace"} {
+	for _, role := range []string{RoleOrchestrator, RoleWorker} {
+		prompt := firstTurnPrompt(Agent{Role: role, Name: "w"}, "do it", "brief", nil)
+		for _, want := range []string{"agent-browser open", "network access", "/workspace", "desktop screenshot", "desktop click"} {
 			if !strings.Contains(prompt, want) {
 				t.Fatalf("%s brief lacks %q", role, want)
 			}

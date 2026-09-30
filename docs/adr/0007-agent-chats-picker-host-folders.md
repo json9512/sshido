@@ -1,5 +1,8 @@
 # Agent mode: many chats, group chats with a picker, and host folders
 
+Its group chats (a picker choosing among fixed members) were replaced by
+orchestrator-led chats in [0008](0008-orchestrator-led-chats-work-records-desktop.md).
+
 Builds on [0006](0006-agent-mode.md). Agent mode had a single chat with one
 orchestrator, and agents saw only the shared `/workspace` volume.
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,35 +45,45 @@ func TestPodmanMountsHostDirReadOnly(t *testing.T) {
 	}
 }
 
-func TestLivePickerTakesTurns(t *testing.T) {
-	url, model := os.Getenv("SSHIDO_TEST_PICKER_URL"), os.Getenv("SSHIDO_TEST_PICKER_MODEL")
-	if url == "" || model == "" {
-		t.Skip("set SSHIDO_TEST_PICKER_URL and SSHIDO_TEST_PICKER_MODEL to run against a real model")
+func TestPodmanDesktopOnLoopbackPort(t *testing.T) {
+	socket, image := os.Getenv("SSHIDO_TEST_PODMAN_SOCKET"), os.Getenv("SSHIDO_TEST_AGENT_IMAGE")
+	if socket == "" || image == "" {
+		t.Skip("set SSHIDO_TEST_PODMAN_SOCKET and SSHIDO_TEST_AGENT_IMAGE to run against a real Podman")
 	}
-	picker := newPicker(url, model)
-	chat := Chat{Title: "haiku"}
-	members := []Agent{{Name: "poet", Harness: "claude"}, {Name: "critic", Harness: "codex"}}
-	user := Message{Kind: KindUser, Author: "you", Text: "Poet, write a haiku about rain. Critic, then review it in one line."}
-	poem := Message{Kind: KindReply, Author: "poet", Text: "Rain taps the tin roof / puddles gather the gray sky / a sparrow shakes dry"}
-	review := Message{Kind: KindReply, Author: "critic", Text: "Clean imagery; the last line lands. No changes needed."}
-	steps := []struct {
-		history []Message
-		want    int
-	}{
-		{[]Message{user}, 0},
-		{[]Message{user, poem}, 1},
-		{[]Message{user, poem, review}, 2},
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	pods := newPodmanAPI(socket)
+	name := "sshido-desktop-test-" + randomHex(4)
+	defer pods.Remove(context.Background(), name)
+	spec := ContainerSpec{Name: name, Image: image, Ports: []int{desktopPort}, User: "agent", WorkDir: "/tmp"}
+	if err := pods.Create(ctx, spec); err != nil {
+		t.Fatal(err)
 	}
-	for i, step := range steps {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		pick, err := picker.Pick(ctx, pickerState(chat, members, step.history), pickerQuestion(i > 0), pickerOptions(members, i > 0))
-		cancel()
-		if err != nil {
-			t.Fatalf("step %d: %v", i, err)
+	if err := pods.Start(ctx, name); err != nil {
+		t.Fatal(err)
+	}
+	serve, err := pods.Exec(ctx, name, ExecSpec{Cmd: []string{"desktop", "serve"}, User: "agent"})
+	if err != nil || serve.ExitCode != 0 || len(strings.TrimSpace(string(serve.Stdout))) != 8 {
+		t.Fatalf("serve: %v exit %d out %q err %q", err, serve.ExitCode, serve.Stdout, serve.Stderr)
+	}
+	shot, err := pods.Exec(ctx, name, ExecSpec{Cmd: []string{"sh", "-c", "desktop screenshot /tmp/s.png && test -s /tmp/s.png"}, User: "agent"})
+	if err != nil || shot.ExitCode != 0 {
+		t.Fatalf("screenshot: %v exit %d err %q", err, shot.ExitCode, shot.Stderr)
+	}
+	data, err := pods.expect(ctx, "GET", "/containers/"+name+"/json", nil, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inspect struct {
+		NetworkSettings struct {
+			Ports map[string][]struct{ HostIp, HostPort string }
 		}
-		t.Logf("step %d: picked %d, probabilities %.3f", i, pick.Index, pick.Probs)
-		if pick.Index != step.want {
-			t.Fatalf("step %d: picked %d, want %d", i, pick.Index, step.want)
-		}
+	}
+	if err := json.Unmarshal(data, &inspect); err != nil {
+		t.Fatal(err)
+	}
+	bound := inspect.NetworkSettings.Ports["6080/tcp"]
+	if len(bound) != 1 || bound[0].HostIp != "127.0.0.1" || bound[0].HostPort == "" || bound[0].HostPort == "0" {
+		t.Fatalf("desktop port must be published on a random loopback port, got %+v", bound)
 	}
 }

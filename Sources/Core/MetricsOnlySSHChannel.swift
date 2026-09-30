@@ -98,6 +98,15 @@ public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
         try await client.withExec(command, perform: perform)
     }
 
+    public func openForwardedChannel(host: String, port: Int) async throws -> SSHForwardedChannel {
+        guard let client else { throw SSHError.notConnected }
+        do {
+            return try await CitadelForwardedChannel.open(client: client, host: host, port: port)
+        } catch {
+            throw SSHError.transport("direct-tcpip open failed: \(error)")
+        }
+    }
+
     public func executeCommand(_ command: String) async throws -> Data {
         guard let client else { throw SSHError.notConnected }
         do {
