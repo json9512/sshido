@@ -14,6 +14,8 @@ struct AgentModeSettingsView: View {
     @State private var orchestratorModel = ""
     @State private var workerModel = ""
     @State private var localURL = ""
+    @State private var pickerModel = ""
+    @State private var newFolder = ""
     @State private var confirmReset = false
 
     var body: some View {
@@ -27,7 +29,9 @@ struct AgentModeSettingsView: View {
                          footer: "Each worker runs in its own Podman container. The orchestrator may pick a different harness per task.",
                          harness: agents.settings.worker, model: $workerModel,
                          pick: { h in agents.update { s in s.with(worker: h) } })
-            if usesLocalModels { localSection }
+            groupSection
+            if agents.settings.usesLocalEndpoint { localSection }
+            hostFoldersSection
             signInSection
             setupSection
         }
@@ -38,10 +42,12 @@ struct AgentModeSettingsView: View {
             orchestratorModel = agents.settings.orchestratorModel
             workerModel = agents.settings.workerModel
             localURL = agents.settings.localURL
+            pickerModel = agents.settings.pickerModel
         }
         .onChange(of: orchestratorModel) { _, v in agents.update { $0.with(orchestratorModel: v) } }
         .onChange(of: workerModel) { _, v in agents.update { $0.with(workerModel: v) } }
         .onChange(of: localURL) { _, v in agents.update { $0.with(localURL: v) } }
+        .onChange(of: pickerModel) { _, v in agents.update { $0.with(pickerModel: v) } }
         .confirmationDialog("Remove the agents and the chat history on the host?", isPresented: $confirmReset,
                             titleVisibility: .visible) {
             Button("Remove agents", role: .destructive) { Task { await agents.resetHost() } }
@@ -50,8 +56,65 @@ struct AgentModeSettingsView: View {
         }
     }
 
-    private var usesLocalModels: Bool {
-        agents.settings.orchestrator == .local || agents.settings.worker == .local
+    private var groupSection: some View {
+        Section {
+            TextField("Picker model, e.g. qwen3.6:35b-instruct", text: $pickerModel)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .dsRow()
+        } header: {
+            DSSectionHeader("Group chats")
+        } footer: {
+            Text("In a group chat, this model chooses who speaks next. It runs on the local endpoint below, answers with one letter, and must be an instruct (non-thinking) model whose server returns logprobs. Leave empty to turn group chats off.")
+                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+        }
+    }
+
+    private var folderProblem: String? {
+        newFolder.trimmingCharacters(in: .whitespaces).isEmpty
+            ? nil
+            : AgentModeSettings.hostDirectoryProblem(newFolder, among: agents.settings.hostDirectories)
+    }
+
+    private var hostFoldersSection: some View {
+        Section {
+            ForEach(agents.settings.hostDirectories, id: \.self) { dir in
+                HStack {
+                    Image(systemName: "folder").foregroundStyle(DS.Color.accent)
+                    Text(dir).font(DS.Font.monoSmall).foregroundStyle(DS.Color.textPrimary).lineLimit(2)
+                    Spacer()
+                    Button(role: .destructive) {
+                        agents.update { $0.with(hostDirectories: $0.hostDirectories.filter { $0 != dir }) }
+                    } label: {
+                        Image(systemName: "minus.circle.fill").foregroundStyle(DS.Color.error)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Stop sharing \(dir)")
+                }
+                .dsRow()
+            }
+            HStack {
+                TextField("/Users/you/code", text: $newFolder)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(DS.Font.monoSmall)
+                Button("Add") {
+                    let dir = AgentModeSettings.normalizedHostDirectory(newFolder)
+                    agents.update { $0.with(hostDirectories: $0.hostDirectories + [dir]) }
+                    newFolder = ""
+                }
+                .disabled(newFolder.trimmingCharacters(in: .whitespaces).isEmpty || folderProblem != nil)
+            }
+            .dsRow()
+            if let folderProblem {
+                Text(folderProblem).font(DS.Font.caption).foregroundStyle(DS.Color.warning).dsRow()
+            }
+        } header: {
+            DSSectionHeader("Host folders")
+        } footer: {
+            Text("Every agent can read these host folders, read-only, at /host/<folder name>, and copies what it needs into /workspace. On a Mac, Podman can only see folders under /Users. Tap Apply settings below after changing this list.")
+                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+        }
     }
 
     private var hostSection: some View {
@@ -157,6 +220,13 @@ struct AgentModeSettingsView: View {
             }
             .disabled(agents.busy || agents.settings.hostID == nil)
             .dsRow()
+            Button {
+                Task { await agents.applySettings() }
+            } label: {
+                Label("Apply settings", systemImage: "arrow.triangle.2.circlepath").font(DS.Font.rowTitle)
+            }
+            .disabled(agents.busy || agents.settings.hostID == nil)
+            .dsRow()
             Button(role: .destructive) {
                 confirmReset = true
             } label: {
@@ -173,7 +243,7 @@ struct AgentModeSettingsView: View {
         } header: {
             DSSectionHeader("Host setup")
         } footer: {
-            Text("Needs Podman and the two sshido agent images on the host.")
+            Text("Needs Podman and the two sshido agent images on the host. Apply settings restarts the daemon with the settings above; running turns are interrupted, and chats and logins stay.")
                 .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
         }
     }

@@ -152,8 +152,8 @@ func TestUnknownHarness(t *testing.T) {
 }
 
 func TestFirstTurnPromptsDescribeComputerUse(t *testing.T) {
-	for _, role := range []string{RoleOrchestrator, RoleWorker} {
-		prompt := firstTurnPrompt(role, "w", "do it")
+	for _, role := range []string{RoleOrchestrator, RoleWorker, RoleMember} {
+		prompt := firstTurnPrompt(Agent{Role: role, Name: "w"}, "do it", nil, nil)
 		for _, want := range []string{"agent-browser open", "network access", "/workspace"} {
 			if !strings.Contains(prompt, want) {
 				t.Fatalf("%s brief lacks %q", role, want)

@@ -19,6 +19,7 @@ type fakePods struct {
 	prompts map[string][]string
 	replies map[string][]string
 	missing map[string]bool
+	removed []string
 }
 
 func newFakePods() *fakePods {
@@ -49,7 +50,12 @@ func (f *fakePods) Stop(_ context.Context, name string) error {
 	return nil
 }
 
-func (f *fakePods) Remove(context.Context, string) error { return nil }
+func (f *fakePods) Remove(_ context.Context, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.removed = append(f.removed, name)
+	return nil
+}
 
 func (f *fakePods) Exists(_ context.Context, name string) (bool, error) {
 	f.mu.Lock()
@@ -117,7 +123,19 @@ func testDaemon(t *testing.T) (*Daemon, *fakePods, *fakePush) {
 		WorkerHarness: HarnessClaude, WorkspaceVolume: "ws", BusVolume: "bus", TurnTimeout: time.Minute,
 	}
 	pods, push := newFakePods(), &fakePush{}
-	return newDaemon(cfg, store, pods, push), pods, push
+	if _, err := store.AddChat(firstChatTitle, ChatOrchestrated, 0); err != nil {
+		t.Fatal(err)
+	}
+	return newDaemon(cfg, store, pods, push, noPicker{}), pods, push
+}
+
+func firstChat(t *testing.T, d *Daemon) string {
+	t.Helper()
+	chats, err := d.store.Chats()
+	if err != nil || len(chats) == 0 {
+		t.Fatalf("no chat: %v", err)
+	}
+	return chats[0].ID
 }
 
 func waitFor(t *testing.T, what string, cond func() bool) {
@@ -162,7 +180,7 @@ func tokenOf(t *testing.T, pods *fakePods, role string) (string, string) {
 
 func TestUserMessageGetsOrchestratorReply(t *testing.T) {
 	d, pods, push := testDaemon(t)
-	if err := d.HandleUserMessage(context.Background(), "build me a thing"); err != nil {
+	if err := d.HandleUserMessage(context.Background(), firstChat(t, d), "build me a thing"); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "orchestrator reply", func() bool { return len(messagesOfKind(t, d, KindReply)) == 1 })
@@ -174,7 +192,7 @@ func TestUserMessageGetsOrchestratorReply(t *testing.T) {
 	if !strings.Contains(prompt, "You are the orchestrator") || !strings.HasSuffix(prompt, "build me a thing") {
 		t.Fatalf("first turn should carry the brief and the message, got %q", truncate(prompt, 120))
 	}
-	orch, _ := d.store.Orchestrator()
+	orch, _ := d.store.Orchestrator(firstChat(t, d))
 	if orch.Session != "sess-"+container || orch.Status != StatusIdle {
 		t.Fatalf("orchestrator not idle with a session: %+v", orch)
 	}
@@ -182,7 +200,7 @@ func TestUserMessageGetsOrchestratorReply(t *testing.T) {
 		t.Fatalf("want one normal push, got %v", got)
 	}
 
-	if err := d.HandleUserMessage(context.Background(), "and another"); err != nil {
+	if err := d.HandleUserMessage(context.Background(), firstChat(t, d), "and another"); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "second reply", func() bool { return len(messagesOfKind(t, d, KindReply)) == 2 })
@@ -199,7 +217,7 @@ func TestUserMessageGetsOrchestratorReply(t *testing.T) {
 
 func TestSpawnedWorkerReportsBackToOrchestrator(t *testing.T) {
 	d, pods, _ := testDaemon(t)
-	if err := d.HandleUserMessage(context.Background(), "start"); err != nil {
+	if err := d.HandleUserMessage(context.Background(), firstChat(t, d), "start"); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "orchestrator", func() bool { return len(messagesOfKind(t, d, KindReply)) == 1 })
@@ -232,7 +250,7 @@ func TestBusDeniesBadTokenAndWorkerSpawn(t *testing.T) {
 	if resp := d.handleBus(context.Background(), []byte("{not json")); resp.OK {
 		t.Fatal("malformed request must be denied")
 	}
-	if _, err := d.orchestrator(context.Background()); err != nil {
+	if _, err := d.orchestrator(context.Background(), firstChat(t, d)); err != nil {
 		t.Fatal(err)
 	}
 	orchToken, _ := tokenOf(t, pods, RoleOrchestrator)
@@ -254,7 +272,7 @@ func TestBusDeniesBadTokenAndWorkerSpawn(t *testing.T) {
 
 func TestNeedsInputReportPushesHigh(t *testing.T) {
 	d, pods, push := testDaemon(t)
-	if _, err := d.orchestrator(context.Background()); err != nil {
+	if _, err := d.orchestrator(context.Background(), firstChat(t, d)); err != nil {
 		t.Fatal(err)
 	}
 	token, _ := tokenOf(t, pods, RoleOrchestrator)
@@ -272,12 +290,12 @@ func TestNeedsInputReportPushesHigh(t *testing.T) {
 
 func TestFailedTurnIsReported(t *testing.T) {
 	d, pods, push := testDaemon(t)
-	orch, err := d.orchestrator(context.Background())
+	orch, err := d.orchestrator(context.Background(), firstChat(t, d))
 	if err != nil {
 		t.Fatal(err)
 	}
 	pods.script(orch.Container, "!fail")
-	if err := d.HandleUserMessage(context.Background(), "go"); err != nil {
+	if err := d.HandleUserMessage(context.Background(), firstChat(t, d), "go"); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "error message", func() bool { return len(messagesOfKind(t, d, KindError)) == 1 })
@@ -293,7 +311,7 @@ func TestFailedTurnIsReported(t *testing.T) {
 
 func TestRecoverMarksInterruptedTurns(t *testing.T) {
 	d, pods, _ := testDaemon(t)
-	orch, err := d.orchestrator(context.Background())
+	orch, err := d.orchestrator(context.Background(), firstChat(t, d))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,8 +336,8 @@ func TestRecoverMarksInterruptedTurns(t *testing.T) {
 
 func TestAppHelloReplaysSince(t *testing.T) {
 	d, _, _ := testDaemon(t)
-	d.post("", "you", KindUser, "first")
-	d.post("", "you", KindUser, "second")
+	d.post(firstChat(t, d), "", "you", KindUser, "first")
+	d.post(firstChat(t, d), "", "you", KindUser, "second")
 	out := make(chan AppEvent, 16)
 	d.appHello(1, out)
 	close(out)

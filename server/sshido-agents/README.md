@@ -36,6 +36,16 @@ Then open **Settings → Agent mode** in the app, pick the host, and tap
 | `SSHIDO_ORCHESTRATOR`, `SSHIDO_WORKER_HARNESS` | `claude`, `codex`, `gemini`, `grok` or `local` |
 | `SSHIDO_ORCHESTRATOR_MODEL`, `SSHIDO_WORKER_MODEL` | model names; required for `local` |
 | `SSHIDO_LOCAL_URL` | OpenAI-compatible endpoint with the Responses API, as seen from a container, e.g. `http://host.containers.internal:8083/v1` |
+| `SSHIDO_PICKER_MODEL` | instruct (non-thinking) model on `SSHIDO_LOCAL_URL` that picks who speaks next in group chats; the endpoint must return logprobs from `/chat/completions`. Without it, group chats are refused |
+| `SSHIDO_HOST_DIRS` | JSON array of absolute host paths, e.g. `["/Users/me/code"]`. Every agent gets each one read-only at `/host/<folder name>`. On macOS the Podman VM only sees `/Users`, `/private` and `/var/folders` |
+
+Every chat has its own agents and history. An orchestrated chat has an
+orchestrator that starts workers. A group chat has fixed members; after each
+message from the person, the picker model chooses which member speaks next,
+one at a time, until it hands the chat back or the chat's turn limit is hit.
+
+When `SSHIDO_HOST_DIRS` changes, restart the daemon: existing agents are
+recreated with the new folders and keep their sessions.
 
 Agents share one workspace volume (`sshido-agents-workspace` at `/workspace`).
 Each harness keeps its login in its own volume (`sshido-auth-claude`,
@@ -45,7 +55,10 @@ Each harness keeps its login in its own volume (`sshido-auth-claude`,
 ## Try it without the app
 
 ```bash
-printf '{"op":"hello","since":0}\n{"op":"send","text":"Create hello.txt with one worker"}\n' \
+printf '{"op":"createChat","title":"Try it","kind":"orchestrated"}\n{"op":"hello","since":0}\n' \
+  | podman exec -i sshido-agents /usr/local/bin/sshido-agents attach
+# take the chat id from the "chat" event, then:
+printf '{"op":"send","chatId":"<chat id>","text":"Create hello.txt with one worker"}\n' \
   | podman exec -i sshido-agents /usr/local/bin/sshido-agents attach
 ```
 
@@ -53,6 +66,13 @@ printf '{"op":"hello","since":0}\n{"op":"send","text":"Create hello.txt with one
 
 ```bash
 go test -race ./...
+```
+
+Two opt-in tests run against real services:
+
+```bash
+SSHIDO_TEST_PODMAN_SOCKET=<Podman API socket> SSHIDO_TEST_AGENT_IMAGE=localhost/sshido-agent:latest go test -run Podman ./...
+SSHIDO_TEST_PICKER_URL=http://127.0.0.1:8083/v1 SSHIDO_TEST_PICKER_MODEL=qwen3.6:35b-instruct go test -run LivePicker ./...
 ```
 
 The Swift side has an opt-in end-to-end test against a real host; see

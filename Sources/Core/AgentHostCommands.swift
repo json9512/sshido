@@ -43,6 +43,8 @@ public enum AgentHostCommands {
             ("SSHIDO_WORKER_HARNESS", settings.worker.rawValue),
             ("SSHIDO_WORKER_MODEL", settings.workerModel),
             ("SSHIDO_LOCAL_URL", settings.localURL),
+            ("SSHIDO_PICKER_MODEL", settings.pickerModel),
+            ("SSHIDO_HOST_DIRS", hostDirsJSON(settings.hostDirectories)),
             ("SSHIDO_HOST_NAME", hostName),
         ]
         let envFlags = env.map { "-e \(q("\($0.0)=\($0.1)"))" }.joined(separator: " ")
@@ -53,6 +55,18 @@ public enum AgentHostCommands {
             notify ? "--secret \(notifySecret),type=env,target=SSHIDO_NOTIFY_URL" : nil,
             envFlags, daemonImage, "daemon",
         ].compactMap { $0 }.joined(separator: " ")
+    }
+
+    static func hostDirsJSON(_ dirs: [String]) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        guard let data = try? encoder.encode(dirs) else { return "[]" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    public static func replaceDaemon(podman: String, socketPath: String, settings: AgentModeSettings, hostName: String, notify: Bool) -> String {
+        "\(q(podman)) rm -f \(daemonContainer) >/dev/null && "
+            + startDaemon(podman: podman, socketPath: socketPath, settings: settings, hostName: hostName, notify: notify)
     }
 
     public static func restartDaemon(podman: String) -> String {

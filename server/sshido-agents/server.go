@@ -99,10 +99,10 @@ func (d *Daemon) busReport(ctx context.Context, caller Agent, req BusRequest) Bu
 	}
 	switch req.Kind {
 	case KindProgress:
-		d.post(caller.ID, caller.Name, KindProgress, req.Text)
+		d.post(caller.ChatID, caller.ID, caller.Name, KindProgress, req.Text)
 		return BusResponse{OK: true}
 	case KindNeedsInput:
-		d.post(caller.ID, caller.Name, KindNeedsInput, req.Text)
+		d.post(caller.ChatID, caller.ID, caller.Name, KindNeedsInput, req.Text)
 		d.notify(ctx, caller.Name+" needs input", req.Text, true)
 		return BusResponse{OK: true}
 	}
@@ -110,7 +110,7 @@ func (d *Daemon) busReport(ctx context.Context, caller Agent, req BusRequest) Bu
 }
 
 func (d *Daemon) busList(caller Agent) BusResponse {
-	agents, err := d.store.Agents()
+	agents, err := d.store.ChatAgents(caller.ChatID)
 	if err != nil {
 		log.Printf("bus: list for %s failed: %v", caller.ID, err)
 		return BusResponse{Error: err.Error()}
@@ -128,12 +128,12 @@ func (d *Daemon) busSpawn(ctx context.Context, caller Agent, req BusRequest) Bus
 	}
 	harness := firstNonEmpty(req.Harness, d.cfg.WorkerHarness)
 	model := firstNonEmpty(req.Model, d.cfg.WorkerModel)
-	worker, err := d.createAgent(ctx, name, RoleWorker, harness, model, req.Task)
+	worker, err := d.createAgent(ctx, caller.ChatID, name, RoleWorker, harness, model, req.Task)
 	if err != nil {
 		log.Printf("bus: spawn %q for %s failed: %v", name, caller.ID, err)
 		return BusResponse{Error: err.Error()}
 	}
-	d.post(worker.ID, "orchestrator", KindProgress, fmt.Sprintf("Started %s (%s) on: %s", name, harness, truncate(req.Task, 200)))
+	d.post(caller.ChatID, worker.ID, "orchestrator", KindProgress, fmt.Sprintf("Started %s (%s) on: %s", name, harness, truncate(req.Task, 200)))
 	d.enqueue(worker, req.Task)
 	return BusResponse{OK: true, AgentID: worker.ID}
 }
@@ -143,7 +143,7 @@ func (d *Daemon) busAttach(caller Agent, req BusRequest) BusResponse {
 	if err != nil {
 		return busDeny("agent %s: attach %q: %v", caller.ID, req.Path, err)
 	}
-	m, err := d.store.AddAttachment(caller.ID, caller.Name, strings.TrimSpace(req.Text), att)
+	m, err := d.store.AddAttachment(caller.ChatID, caller.ID, caller.Name, strings.TrimSpace(req.Text), att)
 	if err != nil {
 		log.Printf("bus: attach for %s failed: %v", caller.ID, err)
 		return BusResponse{Error: err.Error()}
@@ -159,6 +159,9 @@ func (d *Daemon) busSend(caller Agent, req BusRequest) BusResponse {
 	target, err := d.store.Agent(req.To)
 	if err != nil {
 		return busDeny("send from %s to unknown agent %q", caller.ID, req.To)
+	}
+	if target.ChatID != caller.ChatID {
+		return busDeny("send from %s to agent %s in another chat", caller.ID, req.To)
 	}
 	if strings.TrimSpace(req.Text) == "" {
 		return busDeny("send from %s to %s without text", caller.ID, req.To)
@@ -220,8 +223,18 @@ func (d *Daemon) handleApp(ctx context.Context, line []byte, out chan AppEvent) 
 	case OpHello:
 		d.appHello(req.Since, out)
 	case OpSend:
-		if err := d.HandleUserMessage(ctx, req.Text); err != nil {
+		if err := d.HandleUserMessage(ctx, req.ChatID, req.Text); err != nil {
 			appDeny(out, "send: %v", err)
+		}
+	case OpCreateChat:
+		go func() {
+			if _, err := d.CreateChat(ctx, req); err != nil {
+				appDeny(out, "create chat: %v", err)
+			}
+		}()
+	case OpDeleteChat:
+		if err := d.DeleteChat(ctx, req.ChatID); err != nil {
+			appDeny(out, "delete chat %s: %v", req.ChatID, err)
 		}
 	case OpStop:
 		if err := d.StopAgent(ctx, req.AgentID); err != nil {
@@ -233,6 +246,11 @@ func (d *Daemon) handleApp(ctx context.Context, line []byte, out chan AppEvent) 
 }
 
 func (d *Daemon) appHello(since int64, out chan AppEvent) {
+	chats, err := d.store.Chats()
+	if err != nil {
+		appDeny(out, "list chats: %v", err)
+		return
+	}
 	agents, err := d.store.Agents()
 	if err != nil {
 		appDeny(out, "list agents: %v", err)
@@ -242,6 +260,9 @@ func (d *Daemon) appHello(since int64, out chan AppEvent) {
 	if err != nil {
 		appDeny(out, "history: %v", err)
 		return
+	}
+	for i := range chats {
+		out <- AppEvent{Type: EventChat, Chat: &chats[i]}
 	}
 	for i := range agents {
 		out <- AppEvent{Type: EventAgent, Agent: &agents[i]}

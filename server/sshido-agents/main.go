@@ -50,10 +50,8 @@ func runDaemon() int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	d := newDaemon(cfg, store, newPodmanAPI(cfg.PodmanSocket), newRelayPusher(cfg.NotifyURL, cfg.HostName))
-	if err := d.Recover(ctx); err != nil {
-		log.Printf("recover: %v", err)
-	}
+	d := newDaemon(cfg, store, newPodmanAPI(cfg.PodmanSocket), newRelayPusher(cfg.NotifyURL, cfg.HostName),
+		newPicker(cfg.LocalURL, cfg.PickerModel))
 	bus, err := listenUnix(filepath.Join(cfg.BusDir, "bus.sock"), 0o666)
 	if err != nil {
 		log.Printf("%v", err)
@@ -64,7 +62,11 @@ func runDaemon() int {
 		log.Printf("%v", err)
 		return 1
 	}
-	log.Printf("sshido-agents daemon ready: orchestrator=%s worker=%s image=%s", cfg.OrchestratorHarness, cfg.WorkerHarness, cfg.AgentImage)
+	if err := d.Recover(ctx); err != nil {
+		log.Printf("recover: %v", err)
+	}
+	log.Printf("sshido-agents daemon ready: orchestrator=%s worker=%s picker=%q host folders=%d image=%s",
+		cfg.OrchestratorHarness, cfg.WorkerHarness, cfg.PickerModel, len(cfg.HostDirs), cfg.AgentImage)
 	go serve(ctx, bus, d.ServeBus)
 	serve(ctx, app, d.ServeApp)
 	return 0

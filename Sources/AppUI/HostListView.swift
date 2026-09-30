@@ -117,7 +117,9 @@ public struct HostListView: View {
         case .performance(let host):
             ServerPerformanceView(host: host)
         case .agentChat:
-            AgentChatView()
+            AgentChatsView()
+        case .agentConversation(let id):
+            AgentChatView(chatID: id)
         }
     }
 
@@ -234,7 +236,7 @@ public struct HostListView: View {
                     .foregroundStyle(DS.Color.accent)
                 VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
                     Text("Agent chat").font(DS.Font.rowTitle).foregroundStyle(DS.Color.textPrimary)
-                    Text("Your orchestrator and its agents").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                    Text("Your chats with agents").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(DS.Color.textTertiary)
