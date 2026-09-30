@@ -20,6 +20,7 @@ type ContainerSpec struct {
 	Env     map[string]string
 	Labels  map[string]string
 	Volumes map[string]string
+	Binds   []HostDir
 	User    string
 	WorkDir string
 }
@@ -100,21 +101,45 @@ type namedVolume struct {
 	Dest string `json:"Dest"`
 }
 
+type bindMount struct {
+	Destination string   `json:"destination"`
+	Source      string   `json:"source"`
+	Type        string   `json:"type"`
+	Options     []string `json:"options"`
+}
+
+func selinuxFor(binds []HostDir) []string {
+	if len(binds) == 0 {
+		return nil
+	}
+	return []string{"disable"}
+}
+
+func readOnlyBinds(dirs []HostDir) []bindMount {
+	out := make([]bindMount, 0, len(dirs))
+	for _, d := range dirs {
+		out = append(out, bindMount{Destination: d.Target(), Source: d.Source, Type: "bind", Options: []string{"ro", "rbind"}})
+	}
+	return out
+}
+
 func (p *podmanAPI) Create(ctx context.Context, spec ContainerSpec) error {
 	volumes := make([]namedVolume, 0, len(spec.Volumes))
 	for name, dest := range spec.Volumes {
 		volumes = append(volumes, namedVolume{Name: name, Dest: dest})
 	}
 	body := map[string]any{
-		"name":     spec.Name,
-		"image":    spec.Image,
-		"command":  []string{"sleep", "infinity"},
-		"env":      spec.Env,
-		"labels":   spec.Labels,
-		"volumes":  volumes,
-		"user":     spec.User,
-		"work_dir": spec.WorkDir,
-		"init":     true,
+		"name":         spec.Name,
+		"image":        spec.Image,
+		"command":      []string{"sleep", "infinity"},
+		"env":          spec.Env,
+		"labels":       spec.Labels,
+		"volumes":      volumes,
+		"user":         spec.User,
+		"work_dir":     spec.WorkDir,
+		"init":         true,
+		"mounts":       readOnlyBinds(spec.Binds),
+		"selinux_opts": selinuxFor(spec.Binds),
 	}
 	_, err := p.expect(ctx, http.MethodPost, "/containers/create", body, http.StatusCreated)
 	return err

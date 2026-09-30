@@ -104,7 +104,7 @@ func TestParseCtlAttach(t *testing.T) {
 func TestBusAttachPostsAttachment(t *testing.T) {
 	d, pods, _ := testDaemon(t)
 	d.cfg.WorkspaceDir = workspaceWith(t, map[string][]byte{"hn.png": pngHeader})
-	if _, err := d.orchestrator(context.Background()); err != nil {
+	if _, err := d.orchestrator(context.Background(), firstChat(t, d)); err != nil {
 		t.Fatal(err)
 	}
 	token, _ := tokenOf(t, pods, RoleOrchestrator)

@@ -34,6 +34,13 @@ final class AgentModeController: ObservableObject {
         case failed(String)
     }
 
+    enum Creation: Equatable {
+        case idle
+        case waiting(known: Set<String>)
+        case created(String)
+        case failed(String)
+    }
+
     @Published private(set) var settings: AgentModeSettings
     @Published private(set) var status: AgentHostStatus?
     @Published private(set) var setupLog: [String] = []
@@ -41,12 +48,19 @@ final class AgentModeController: ObservableObject {
     @Published private(set) var messages: [AgentChatMessage] = []
     @Published private(set) var agents: [AgentInfo] = []
     @Published private(set) var connection: Connection = .disconnected
+    @Published private(set) var chats: [AgentChat] = []
+    @Published private(set) var pending: [AgentPendingSend] = []
+    @Published private(set) var historyLoaded = false
+    @Published private(set) var creation: Creation = .idle
+    @Published var notice: String?
     @Published private(set) var attachmentFiles: [Int64: URL] = [:]
     private var attachmentLoads: [Int64: Task<URL, Error>] = [:]
 
     private let store = AgentModeSettingsStore()
     private var bridge: AgentBridge?
     private var streamTask: Task<Void, Never>?
+    private var holders = 0
+    private var releaseTask: Task<Void, Never>?
 
     private init() {
         self.settings = AgentModeSettingsStore().load()
@@ -120,8 +134,36 @@ final class AgentModeController: ObservableObject {
             _ = try await bridge.run(AgentHostCommands.reset(podman: podman))
             self.messages = []
             self.agents = []
+            self.chats = []
+            self.pending = []
             self.log("Removed the agents and chat history. Set up the host again to start fresh.")
         }
+    }
+
+    func applySettings() async {
+        await runSetup { bridge in
+            let podman = try await self.podman(using: bridge)
+            let before = AgentHostStatus.parse(try await bridge.run(AgentHostCommands.status(podman: podman)))
+            guard before.daemonImage, before.agentImage else { throw AgentModeError.missingImages }
+            guard let host = await self.host() else { throw AgentModeError.noHost }
+            let notify = try await self.ensureNotifySecret(bridge: bridge, podman: podman)
+            self.log("Restarting the agents daemon with the current settings. Running turns are interrupted.")
+            let command = before.daemon == .missing
+                ? AgentHostCommands.startDaemon(podman: podman, socketPath: before.socketPath, settings: self.settings,
+                                                hostName: host.name, notify: notify)
+                : AgentHostCommands.replaceDaemon(podman: podman, socketPath: before.socketPath, settings: self.settings,
+                                                  hostName: host.name, notify: notify)
+            _ = try await bridge.run(command)
+            let after = AgentHostStatus.parse(try await bridge.run(AgentHostCommands.status(podman: podman)))
+            self.status = after
+            self.log(Self.describe(after, podman: podman))
+            self.reconnectIfHeld()
+        }
+    }
+
+    private func reconnectIfHeld() {
+        stopChat()
+        if holders > 0 { startChat() }
     }
 
     private func ensureNotifySecret(bridge: AgentBridge, podman: String) async throws -> Bool {
@@ -180,9 +222,28 @@ final class AgentModeController: ObservableObject {
         await old?.disconnect()
     }
 
+    func hold() {
+        holders += 1
+        releaseTask?.cancel()
+        releaseTask = nil
+        startChat()
+    }
+
+    func release() {
+        holders = max(0, holders - 1)
+        guard holders == 0 else { return }
+        releaseTask?.cancel()
+        releaseTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self, self.holders == 0 else { return }
+            self.stopChat()
+        }
+    }
+
     func startChat() {
         guard streamTask == nil else { return }
         connection = .connecting
+        historyLoaded = false
         streamTask = Task { [weak self] in
             await self?.runChat()
         }
@@ -220,28 +281,88 @@ final class AgentModeController: ObservableObject {
         switch output {
         case .event(.ready):
             connection = .connected
+            historyLoaded = true
         case .event(.message(let m)):
             guard !messages.contains(where: { $0.id == m.id }) else { return }
             messages = messages + [m]
+            pending = AgentPendingSend.removingEcho(of: m, from: pending)
         case .event(.agent(let a)):
             agents = (agents.filter { $0.id != a.id } + [a]).sorted { $0.createdAt < $1.createdAt }
+        case .event(.chat(let c)):
+            chats = (chats.filter { $0.id != c.id } + [c]).sorted { $0.createdAt < $1.createdAt }
+            creation = Self.creation(creation, seeing: c.id)
+        case .event(.chatRemoved(let id)):
+            chats = chats.filter { $0.id != id }
+            messages = messages.filter { $0.chatId != id }
+            agents = agents.filter { $0.chatId != id }
+            pending = pending.filter { $0.chatId != id }
         case .event(.error(let text)):
-            messages = messages + [AgentChatMessage(id: -Int64(messages.count + 1), agentId: nil, author: "sshido",
-                                                    kind: .error, text: text, createdAt: Int64(Date().timeIntervalSince1970 * 1000))]
+            report(text)
         case .undecodable(let line):
             log("Ignored a line from the host that was not an agent event: \(line.prefix(120))")
         }
     }
 
-    func send(_ text: String) async -> Bool {
+    static func creation(_ state: Creation, seeing chatID: String) -> Creation {
+        guard case .waiting(let known) = state, !known.contains(chatID) else { return state }
+        return .created(chatID)
+    }
+
+    private func report(_ text: String) {
+        guard case .waiting = creation else {
+            notice = text
+            return
+        }
+        creation = .failed(text)
+    }
+
+    func chat(_ id: String) -> AgentChat? { chats.first { $0.id == id } }
+    func messages(in chatID: String) -> [AgentChatMessage] { messages.filter { $0.chatId == chatID } }
+    func agents(in chatID: String) -> [AgentInfo] { agents.filter { $0.chatId == chatID } }
+    func pending(in chatID: String) -> [AgentPendingSend] { pending.filter { $0.chatId == chatID } }
+
+    func send(_ text: String, to chatID: String) async -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let bridge, connection == .connected else { return false }
+        let entry = AgentPendingSend(id: UUID(), chatId: chatID, text: trimmed)
+        pending = pending + [entry]
         do {
-            try await bridge.send(.send(trimmed))
+            try await bridge.send(.send(chatID: chatID, text: trimmed))
             return true
         } catch {
+            pending = pending.filter { $0.id != entry.id }
             connection = .failed(Self.message(for: error))
             return false
+        }
+    }
+
+    func createChat(_ request: AgentRequest) async {
+        guard let bridge, connection == .connected else {
+            creation = .failed("Not connected to the agents.")
+            return
+        }
+        creation = .waiting(known: Set(chats.map(\.id)))
+        do {
+            try await bridge.send(request)
+        } catch {
+            creation = .failed(Self.message(for: error))
+            connection = .failed(Self.message(for: error))
+        }
+    }
+
+    func resetCreation() {
+        creation = .idle
+    }
+
+    func deleteChat(_ id: String) async {
+        guard let bridge, connection == .connected else {
+            notice = "Not connected to the agents."
+            return
+        }
+        do {
+            try await bridge.send(.deleteChat(id: id))
+        } catch {
+            connection = .failed(Self.message(for: error))
         }
     }
 

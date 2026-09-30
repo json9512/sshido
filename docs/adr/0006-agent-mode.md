@@ -26,7 +26,9 @@ the main surface in this mode.
   user still presses send), one orchestrator that spawns subagents, and
   progress/done messages in the chat and as pushes. Group chats between
   agents, browser use, computer use and the container desktop view
-  (VNC through the existing SSH port forwarding) come later.
+  (VNC through the existing SSH port forwarding) come later. Many chats,
+  group chats and read-only host folders followed in
+  [0007](0007-agent-chats-picker-host-folders.md).
 
 ## Where things run
 
