@@ -9,10 +9,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// ipLimiter is a per-source-IP token-bucket rate limiter. It keeps a
-// rate.Limiter for each IP it has seen and sweeps entries that haven't
-// been touched within ttl.
-//
 // State is in-process only. Cloud Run runs up to max-instances copies,
 // so the actual ceiling is rps × instances. The abuse vectors we care
 // about (subscriber-spam, leaked-notify-URL spam) are unaffected by

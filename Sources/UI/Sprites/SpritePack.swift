@@ -1,9 +1,6 @@
 #if canImport(UIKit)
 import UIKit
 
-// MARK: - Manifest (the community contract)
-
-/// The JSON manifest that ships with every sprite pack.
 /// For GIF-based packs, frameSize and animations are optional —
 /// they're auto-detected from the GIF files.
 public struct SpriteManifest: Codable, Sendable {
@@ -27,14 +24,12 @@ public struct SpriteManifest: Codable, Sendable {
 
     public var isGIF: Bool { format == "gif" }
 
-    /// All 6 moods are required.
     public static let requiredMoods: Set<String> = [
         "sitting", "watching", "excited", "spooked", "happy", "napping"
     ]
 
     public var frameSizePx: Int { frameSize?.first ?? 32 }
 
-    /// Display size in points
     public var displaySize: CGFloat {
         let px = frameSizePx
         if px >= 64 { return CGFloat(px) }
@@ -88,9 +83,6 @@ public enum PackError: LocalizedError {
     }
 }
 
-// MARK: - Loaded sprite pack
-
-/// A fully loaded, ready-to-render sprite pack.
 @MainActor
 public final class SpritePack {
     public let manifest: SpriteManifest
@@ -99,19 +91,14 @@ public final class SpritePack {
     public let sheets: [MascotMood: SpriteSheet]
     public let preview: UIImage?
 
-    /// Group ID for mascots with color variants (e.g. "wolf", "fox").
-    /// Nil for standalone mascots.
     public let group: String?
-    /// Variant label within a group (e.g. "Fire", "Water").
     public let variant: String?
 
-    /// Extra animations beyond the 6 core moods, accessible via double-tap cycling.
     public let extras: [String: SpriteSheet]
 
     public var name: String { manifest.name }
     public var author: String { manifest.author }
 
-    /// Display size in points. Larger on iPad for visibility.
     public var displaySize: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 120 : 80
     }
@@ -127,9 +114,6 @@ public final class SpritePack {
         self.extras = extras
     }
 
-    /// Animation definition for a mood.
-    /// For GIF packs, derived from the SpriteSheet's extracted metadata.
-    /// For PNG packs, sourced from the manifest.
     public func animationDef(for mood: MascotMood) -> MascotAnimationDef {
         let sheet = sheets[mood]
 
@@ -146,7 +130,6 @@ public final class SpritePack {
         return MascotAnimationDef(frames: 0...(def.frames - 1), fps: def.fps, looping: def.looping)
     }
 
-    /// Animation definition for an extra animation (derived from GIF metadata).
     public func extraAnimationDef(for name: String) -> MascotAnimationDef? {
         guard let sheet = extras[name] else { return nil }
         let count = sheet.frameCount
@@ -155,7 +138,6 @@ public final class SpritePack {
         return MascotAnimationDef(frames: 0...(max(0, count - 1)), fps: fps, looping: looping)
     }
 
-    /// Load a sprite pack from a directory containing manifest.json + PNGs or GIFs.
     public static func load(from directory: URL) throws -> SpritePack {
         let manifestURL = directory.appendingPathComponent("manifest.json")
         guard FileManager.default.fileExists(atPath: manifestURL.path) else {

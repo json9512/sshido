@@ -12,6 +12,17 @@ attention.
 └────────────────┘
 ```
 
+## Before you start
+
+APNs only delivers pushes signed with a key from the team that ships the app.
+The App Store build of sshido (`com.sshido.app`) can therefore only use
+`push.sshido.com`. A relay you run yourself needs:
+
+- an Apple Developer account and an APNs `.p8` key from it,
+- sshido built and installed with your own bundle id (set `BUNDLE_ID` and
+  `DEVELOPMENT_TEAM` in `XcodeProject/Signing.local.xcconfig`), and that same
+  id passed to the relay as `-bundle-id`.
+
 ## Deployment paths
 
 Two supported modes, picked via `-storage` / `STORAGE` env var:
@@ -47,6 +58,8 @@ On a real server use a systemd unit (Linux) or launchd (macOS).
   omitting it preserves the current state, so old clients never unmute a device.
 - `POST /n/<id>` — body `{"title":"...", "body":"...", "priority":"normal|high", "sessionRef":"...", "hostRef":"..."}`.
   Called by your Claude Code hook (or any CLI wrapper) to push an alert.
+  Markdown in `title` and `body` is converted to plain text before it goes
+  to APNs (`plaintext.go`).
   Returns 204 without pushing when the subscriber is muted, so hooks keep
   succeeding while the phone stays quiet.
 

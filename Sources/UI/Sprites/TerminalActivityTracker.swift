@@ -1,7 +1,6 @@
 #if canImport(UIKit)
 import Foundation
 
-/// Interprets raw terminal events into sprite mood suggestions.
 @MainActor
 @Observable
 public final class TerminalActivityTracker {
@@ -14,8 +13,6 @@ public final class TerminalActivityTracker {
     private var connected = false
 
     public init() {}
-
-    // MARK: - Event hooks (called from bridge/view)
 
     public func onDataReceived(byteCount: Int) {
         recentOutputBytes += byteCount
@@ -50,8 +47,6 @@ public final class TerminalActivityTracker {
         connected = false
         suggestedMood = .spooked
     }
-
-    // MARK: - Mood evaluation
 
     private func evaluateMood() {
         let now = Date.now

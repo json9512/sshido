@@ -26,6 +26,9 @@ packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
     from: 1.2.0
+  Lottie:
+    url: https://github.com/airbnb/lottie-spm.git
+    from: 4.6.1
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: 8.0.0
@@ -50,6 +53,8 @@ targets:
         product: SwiftTerm
       - package: Sentry
         product: Sentry
+      - package: Lottie
+        product: Lottie
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID)

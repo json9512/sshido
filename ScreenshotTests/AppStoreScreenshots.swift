@@ -14,6 +14,8 @@ final class AppStoreScreenshots: XCTestCase {
             "-AppleLocale", "en_US",
         ]
         app.launch()
+        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]
+        if allow.waitForExistence(timeout: 4) { allow.tap() }
     }
 
     private func setting(_ key: String) throws -> String {
@@ -36,87 +38,128 @@ final class AppStoreScreenshots: XCTestCase {
         element.typeText(text)
     }
 
+    private func button(startingWith prefix: String) -> XCUIElement {
+        let matches = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", prefix))
+        _ = matches.firstMatch.waitForExistence(timeout: 20)
+        return matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
+    }
+
     private func trustHostKeyIfAsked() {
         let trust = app.buttons["Trust & connect"]
         if trust.waitForExistence(timeout: 8) { trust.tap() }
     }
 
-    private func waitForLog(_ text: String, timeout: TimeInterval) {
-        let line = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
-        XCTAssertTrue(line.waitForExistence(timeout: timeout), "no setup log line containing \(text)")
+    private func dismissKeyboard() {
+        let hide = app.buttons["Hide keyboard"].firstMatch
+        if hide.waitForExistence(timeout: 2) { hide.tap() }
+    }
+
+    private func replace(_ field: XCUIElement, with value: String) {
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        let current = field.value as? String ?? ""
+        guard current != value else { return }
+        tap(field)
+        let stale = current == field.placeholderValue ? 0 : current.count
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: stale) + value)
+    }
+
+    private func localModelFields() -> XCUIElementQuery {
+        app.textFields.matching(identifier: "Local model, e.g. qwen3.6:35b")
+    }
+
+    private func openSettings(_ entry: String) {
+        tap(app.buttons["Settings"].firstMatch)
+        tap(button(startingWith: entry))
     }
 
     func test1SetUpHostAndAgentMode() throws {
         let pem = try String(contentsOfFile: try setting("SSHIDO_SCREENSHOT_KEY"), encoding: .utf8)
         let model = try setting("SSHIDO_SCREENSHOT_MODEL")
 
-        tap(app.buttons["Add"].firstMatch)
-        tap(app.buttons["Add new key…"])
-        type("MacBook key", into: app.textFields["e.g. MacBook id_ed25519"])
+        sleep(2)
+        try capture("design-home-empty")
+        tap(app.buttons["Add server"].firstMatch)
+        tap(app.buttons["New key"])
+        type("MacBook key", into: app.textFields["Label"])
         type(pem, into: app.textViews.firstMatch)
-        tap(app.buttons["Import"])
-        tap(app.buttons["Done"])
+        dismissKeyboard()
+        tap(app.navigationBars["New key"].buttons["Save"])
+        sleep(1)
+        try capture("design-key-installed")
+        tap(app.navigationBars["Install key"].buttons["Save"])
         type("MacBook", into: app.textFields["Name"])
         type(try setting("SSHIDO_SCREENSHOT_HOST"), into: app.textFields["Host"])
-        type(try setting("SSHIDO_SCREENSHOT_USER"), into: app.textFields["Username"])
-        tap(app.buttons["Save"])
+        type(try setting("SSHIDO_SCREENSHOT_USER"), into: app.textFields["User"])
+        dismissKeyboard()
+        try capture("design-add-server")
+        tap(app.navigationBars["New server"].buttons["Save"])
         trustHostKeyIfAsked()
+        XCTAssertTrue(app.staticTexts["MacBook"].firstMatch.waitForExistence(timeout: 30))
 
-        tap(app.buttons["gearshape"].firstMatch)
-        let toggle = app.switches["Agent mode"].firstMatch
+        openSettings("Agents")
+        let toggle = app.switches.containing(NSPredicate(format: "label BEGINSWITH 'Agents'")).firstMatch
         XCTAssertTrue(toggle.waitForExistence(timeout: 10))
         if toggle.value as? String != "1" { toggle.switches.firstMatch.tap() }
-        tap(app.buttons.containing(NSPredicate(format: "label BEGINSWITH 'Agent mode'")).element(boundBy: 0))
-
-        tap(app.buttons.containing(NSPredicate(format: "label BEGINSWITH 'Agents host'")).firstMatch)
+        tap(button(startingWith: "Host"))
         tap(app.buttons["MacBook"].firstMatch)
-        let local = app.segmentedControls.element(boundBy: 0).buttons["Local"]
-        tap(local)
-        type(model, into: app.textFields["Local model name, e.g. qwen3.6:35b"].firstMatch)
+        tap(app.segmentedControls.element(boundBy: 0).buttons["Local"])
+        replace(localModelFields().element(boundBy: 0), with: model)
+        dismissKeyboard()
         tap(app.segmentedControls.element(boundBy: 1).buttons["Local"])
-        type(model, into: app.textFields.matching(identifier: "Local model name, e.g. qwen3.6:35b").element(boundBy: 1))
-        app.swipeUp()
-        app.swipeUp()
-        tap(app.buttons["Apply settings"])
+        replace(localModelFields().element(boundBy: 1), with: model)
+        dismissKeyboard()
+        let apply = app.buttons["Apply settings"]
+        for _ in 0..<8 where !(apply.exists && apply.isHittable) { app.swipeUp() }
+        tap(apply)
         trustHostKeyIfAsked()
-        waitForLog("Daemon running", timeout: 180)
+        let running = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Daemon running'")).firstMatch
+        let deadline = Date().addingTimeInterval(180)
+        while !running.exists && Date() < deadline {
+            app.swipeUp()
+            sleep(3)
+        }
+        XCTAssertTrue(running.exists, "the daemon did not report running")
+        try capture("design-agents-settings")
     }
 
     func test2CaptureSettings() throws {
-        tap(app.buttons["gearshape"].firstMatch)
-        tap(app.buttons.containing(NSPredicate(format: "label BEGINSWITH 'Agent mode'")).element(boundBy: 0))
-        XCTAssertTrue(app.segmentedControls.element(boundBy: 1).waitForExistence(timeout: 10))
+        tap(app.buttons["Settings"].firstMatch)
+        sleep(2)
+        try capture("design-settings")
+        tap(button(startingWith: "Agents"))
         tap(app.segmentedControls.element(boundBy: 1).buttons["Auto"])
         let claude = app.switches["Claude Code"].firstMatch
         if claude.waitForExistence(timeout: 5), claude.value as? String != "1" { claude.switches.firstMatch.tap() }
-        let localToggle = app.switches["Local model"].firstMatch
-        if localToggle.waitForExistence(timeout: 5), localToggle.value as? String != "1" { localToggle.switches.firstMatch.tap() }
-        let fields = app.textFields.matching(identifier: "Local model name, e.g. qwen3.6:35b")
-        let field = fields.element(boundBy: max(fields.count - 1, 0))
-        let model = try setting("SSHIDO_SCREENSHOT_MODEL")
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let current = field.value as? String ?? ""
-        if current != model {
-            tap(field)
-            let stale = current.hasPrefix("Local model name") ? 0 : current.count
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: stale) + model)
-        }
-        app.navigationBars.staticTexts["Agent mode"].firstMatch.tap()
-        let hideKeys = app.keyboards.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'hide' OR label CONTAINS[c] 'dismiss'"))
-        if app.keyboards.count > 0, hideKeys.count > 0 { hideKeys.firstMatch.tap() }
+        let local = app.switches["Local model"].firstMatch
+        if local.waitForExistence(timeout: 5), local.value as? String != "1" { local.switches.firstMatch.tap() }
+        let fields = localModelFields()
+        replace(fields.element(boundBy: max(fields.count - 1, 0)), with: try setting("SSHIDO_SCREENSHOT_MODEL"))
+        dismissKeyboard()
+        app.swipeDown()
         sleep(1)
         try capture("settings-models")
         tap(app.segmentedControls.element(boundBy: 1).buttons["Local"])
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        for (entry, name) in [("Notifications", "design-notifications"), ("Servers & keys", "design-servers"),
+                              ("Appearance", "design-appearance"), ("Set up a host", "design-agent-guide")] {
+            tap(button(startingWith: entry))
+            sleep(2)
+            try capture(name)
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
     }
 
     func test3CaptureAgentChat() throws {
         let chatTitle = try setting("SSHIDO_SCREENSHOT_CHAT")
-        tap(app.buttons.containing(NSPredicate(format: "label BEGINSWITH 'Agent chat'")).element(boundBy: 0))
-        let chat = app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", chatTitle)).firstMatch
+        sleep(3)
+        try capture("design-home")
+        tap(button(startingWith: "Agents"))
+        let chat = button(startingWith: chatTitle)
         XCTAssertTrue(chat.waitForExistence(timeout: 60))
         try capture("chat-list")
         chat.tap()
-        XCTAssertTrue(app.textFields["Message the orchestrator"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.textFields["Message"].waitForExistence(timeout: 30))
         sleep(4)
         try capture("chat-bottom")
         for step in 1...4 {
@@ -127,7 +170,6 @@ final class AppStoreScreenshots: XCTestCase {
 
         let chip = app.buttons.containing(NSPredicate(format: "label CONTAINS 'verdict pass' AND NOT (label BEGINSWITH 'orchestrator')")).firstMatch
         tap(chip, timeout: 30)
-        XCTAssertTrue(app.staticTexts["Work record"].waitForExistence(timeout: 20) || app.staticTexts["WORK RECORD"].waitForExistence(timeout: 5))
         sleep(4)
         try capture("agent-card")
         app.swipeUp()
@@ -143,7 +185,9 @@ final class AppStoreScreenshots: XCTestCase {
 
     func test4CaptureTerminal() throws {
         tap(app.staticTexts["MacBook"].firstMatch)
-        tap(app.buttons.containing(NSPredicate(format: "label CONTAINS 'New session'")).firstMatch)
+        sleep(2)
+        try capture("design-sessions")
+        tap(app.buttons["New session"].firstMatch)
         trustHostKeyIfAsked()
         sleep(8)
         let keyboardToggle = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] 'keyboard' AND NOT (label CONTAINS[c] 'next')")).firstMatch

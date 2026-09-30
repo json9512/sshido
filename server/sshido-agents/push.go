@@ -32,7 +32,7 @@ func (p *relayPusher) Push(ctx context.Context, title, body string, high bool) e
 		priority = "high"
 	}
 	payload, err := json.Marshal(map[string]string{
-		"title": title, "body": truncate(body, 400), "priority": priority,
+		"title": plainText(title), "body": truncate(plainText(body), 400), "priority": priority,
 		"sessionRef": "agents", "hostRef": p.host,
 	})
 	if err != nil {
