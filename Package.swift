@@ -34,7 +34,6 @@ let package = Package(
             exclude: ["Sprites/Assets/README.md"],
             resources: [
                 .process("Metal/Shaders.metal"),
-                .process("Metal/ChromeShaders.metal"),
                 .process("Sprites/Assets"),
             ]
         ),

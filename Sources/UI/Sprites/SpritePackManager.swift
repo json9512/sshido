@@ -5,7 +5,6 @@ import UIKit
 import sshidoCore
 #endif
 
-/// Manages sprite pack storage, downloading, and active pack selection.
 @MainActor
 @Observable
 public final class SpritePackManager {
@@ -28,18 +27,10 @@ public final class SpritePackManager {
         }
     }
 
-    // MARK: - Directory layout
-    //   Documents/SpritePacks/<pack-id>/
-    //     manifest.json
-    //     idle.png, typing.png, ...
-    //     preview.png (optional)
-
     private var packsRoot: URL {
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return docs.appendingPathComponent("SpritePacks", isDirectory: true)
     }
-
-    // MARK: - Persistence of active pack ID
 
     private static let activePackKey = "sshido.activeSpritePack"
 
@@ -47,8 +38,6 @@ public final class SpritePackManager {
         get { UserDefaults.standard.string(forKey: Self.activePackKey) }
         set { UserDefaults.standard.set(newValue, forKey: Self.activePackKey) }
     }
-
-    // MARK: - Load installed packs from disk
 
     public func loadInstalledPacks() {
         var packs: [SpritePack] = []
@@ -125,16 +114,6 @@ public final class SpritePackManager {
         activePackID = pack.id
     }
 
-    // MARK: - Install from a base URL
-    //
-    // The marketplace serves packs as a directory of files at a base URL:
-    //   https://sprites.sshido.app/packs/cool-robot/manifest.json
-    //   https://sprites.sshido.app/packs/cool-robot/idle.png
-    //   https://sprites.sshido.app/packs/cool-robot/typing.png
-    //   ...
-    //
-    // The app downloads manifest.json first, validates it, then downloads all PNGs.
-
     public func install(from baseURL: URL) async throws {
         isDownloading = true
         downloadError = nil
@@ -183,8 +162,6 @@ public final class SpritePackManager {
         }
     }
 
-    // MARK: - Delete a downloaded pack
-
     public func delete(_ pack: SpritePack) throws {
         guard let dir = pack.directory else { return }
         try fm.removeItem(at: dir)
@@ -198,8 +175,6 @@ public final class SpritePackManager {
             activePackID = activePack?.id
         }
     }
-
-    // MARK: - Helpers
 
     private func sanitize(_ name: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-_"))

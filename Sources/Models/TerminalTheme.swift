@@ -1,15 +1,9 @@
 import Foundation
 
-/// A named terminal theme. Currently customises the background + default
-/// foreground pair; ANSI 16-color palette remains at SwiftTerm defaults.
-/// Expanding the palette is a follow-up (requires calling SwiftTerm's
-/// `Terminal.installColors` on every theme switch).
 public struct TerminalTheme: Codable, Hashable, Sendable, Identifiable {
     public let id: String
     public let name: String
-    /// Background hex without the leading '#'. Six hex chars.
     public let bgHex: String
-    /// Default foreground hex.
     public let fgHex: String
 
     public init(id: String, name: String, bgHex: String, fgHex: String) {

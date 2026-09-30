@@ -1,8 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
 
-/// A pixel-art cat companion that sits in the terminal overlay.
-/// Draggable. Renders at 8fps with nearest-neighbor scaling.
 public struct MascotSpriteView: View {
     let state: MascotSpriteState
     let sheets: [MascotMood: SpriteSheet]
@@ -88,7 +86,6 @@ public struct MascotSpriteView: View {
     }
 }
 
-/// Pure rendering view — no mutations in body.
 private struct SpriteFrame: View {
     let mood: MascotMood
     let extraName: String?
