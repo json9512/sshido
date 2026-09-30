@@ -102,6 +102,8 @@ final class AppStoreScreenshots: XCTestCase {
             field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: stale) + model)
         }
         app.navigationBars.staticTexts["Agent mode"].firstMatch.tap()
+        let hideKeys = app.keyboards.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'hide' OR label CONTAINS[c] 'dismiss'"))
+        if app.keyboards.count > 0, hideKeys.count > 0 { hideKeys.firstMatch.tap() }
         sleep(1)
         try capture("settings-models")
         tap(app.segmentedControls.element(boundBy: 1).buttons["Local"])
