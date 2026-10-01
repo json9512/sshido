@@ -483,7 +483,11 @@ final class AgentModeController: ObservableObject {
 
     func signIn(_ harness: AgentHarness, router: AppRouter) async {
         guard !settings.podmanPath.isEmpty,
-              let command = AgentHostCommands.login(podman: settings.podmanPath, harness: harness) else { return }
+              let command = AgentHostCommands.login(podman: settings.podmanPath, harness: harness) else {
+            notice = "Run Check host in Settings → Agents before signing in to \(harness.label)."
+            log("Could not sign in to \(harness.label): run Check host first so the app knows where Podman is.")
+            return
+        }
         await openTerminal(typing: command, title: "sign in \(harness.label)", router: router)
     }
 }

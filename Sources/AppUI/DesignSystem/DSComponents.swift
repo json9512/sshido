@@ -294,6 +294,7 @@ private struct SheetActionsModifier: ViewModifier {
     let confirm: (() -> Void)?
     let confirmEnabled: Bool
     let working: Bool
+    let confirmCoach: CoachStep?
 
     func body(content: Content) -> some View {
         content.toolbar {
@@ -310,6 +311,7 @@ private struct SheetActionsModifier: ViewModifier {
                     } else {
                         ToolbarIcon(systemName: "checkmark", label: "Save", tint: confirmEnabled ? DS.Color.accent : DS.Color.textTertiary, action: confirm)
                             .disabled(!confirmEnabled)
+                            .coachTarget(confirmCoach)
                     }
                 }
             }
@@ -347,8 +349,8 @@ extension View {
         modifier(ToastModifier(message: message, duration: duration))
     }
 
-    func sheetActions(cancel: (() -> Void)? = nil, confirm: (() -> Void)? = nil, confirmEnabled: Bool = true, working: Bool = false) -> some View {
-        modifier(SheetActionsModifier(cancel: cancel, confirm: confirm, confirmEnabled: confirmEnabled, working: working))
+    func sheetActions(cancel: (() -> Void)? = nil, confirm: (() -> Void)? = nil, confirmEnabled: Bool = true, working: Bool = false, confirmCoach: CoachStep? = nil) -> some View {
+        modifier(SheetActionsModifier(cancel: cancel, confirm: confirm, confirmEnabled: confirmEnabled, working: working, confirmCoach: confirmCoach))
     }
 
     func keyboardDismissButton() -> some View { modifier(KeyboardDismissModifier()) }

@@ -96,7 +96,7 @@ struct AgentChatView: View {
                             .padding(.top, DS.Spacing.xxl)
                     }
                     ForEach(ChatItem.build(chatMessages, agents: chatAgents)) { item in
-                        ChatItemView(item: item, retry: retryAction(for: item)).id(item.id)
+                        ChatItemView(item: item, retry: retryAction(for: item), signIn: signInAction(for: item)).id(item.id)
                     }
                     ForEach(agents.pending(in: chatID)) { entry in
                         UserMessageBubble(text: entry.text, sending: true)
@@ -180,6 +180,13 @@ struct AgentChatView: View {
               !chatAgents.contains(where: { $0.status == .working || $0.status == .starting }),
               agents.connection == .connected else { return nil }
         return { Task { _ = await agents.send(Self.continuePrompt, to: chatID) } }
+    }
+
+    private func signInAction(for item: ChatItem) -> (() -> Void)? {
+        guard case .event(let message, _, .error) = item,
+              let harness = AgentHarness.signInNeeded(by: chatAgents.first { $0.id == message.agentId }, error: message.text)
+        else { return nil }
+        return { Task { await agents.signIn(harness, router: router) } }
     }
 
     private func send() async {
@@ -268,6 +275,7 @@ private struct AgentStatusChip: View {
 private struct ChatItemView: View {
     let item: ChatItem
     let retry: (() -> Void)?
+    let signIn: (() -> Void)?
 
     var body: some View {
         switch item {
@@ -290,7 +298,7 @@ private struct ChatItemView: View {
             }
             .padding(.top, header ? DS.Spacing.sm : 0)
         case .event(let message, let identity, let style):
-            AgentEventRow(identity: identity, text: message.text, style: style, onRetry: style == .error ? retry : nil)
+            AgentEventRow(identity: identity, text: message.text, style: style, onRetry: style == .error ? retry : nil, onSignIn: signIn)
         case .question(let message, let identity):
             AgentQuestionCard(identity: identity, text: message.text)
         }
