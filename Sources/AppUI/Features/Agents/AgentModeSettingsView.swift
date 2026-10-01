@@ -312,7 +312,7 @@ struct AgentModeSettingsView: View {
                 }
                 .tideRow()
             }
-            ForEach(Array(agents.setupLog.enumerated()), id: \.offset) { _, line in
+            ForEach(Array(agents.setupLog.reversed().enumerated()), id: \.offset) { _, line in
                 Text(line).font(DS.Font.monoSmall).foregroundStyle(DS.Color.textSecondary).tideRow()
             }
         } header: {

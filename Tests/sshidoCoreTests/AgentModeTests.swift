@@ -32,6 +32,20 @@ final class AgentModeTests: XCTestCase {
         XCTAssertEqual(outputs[3], .event(.ready))
     }
 
+    private func agent(harness: String) throws -> AgentInfo {
+        let json = #"{"id":"a1","chatId":"c1","name":"orchestrator","role":"orchestrator","harness":"\#(harness)","status":"failed","container":"sshido-agent-a1","createdAt":1,"updatedAt":1}"#
+        return try JSONDecoder().decode(AgentInfo.self, from: Data(json.utf8))
+    }
+
+    func testSignInNeededForLoggedOutHarness() throws {
+        let error = "turn failed: claude success: Not logged in · Please run /login (exit 1, stderr: )"
+        XCTAssertEqual(AgentHarness.signInNeeded(by: try agent(harness: "claude"), error: error), .claude)
+        XCTAssertEqual(AgentHarness.signInNeeded(by: try agent(harness: "codex"), error: error), .codex)
+        XCTAssertNil(AgentHarness.signInNeeded(by: try agent(harness: "local"), error: error))
+        XCTAssertNil(AgentHarness.signInNeeded(by: nil, error: error))
+        XCTAssertNil(AgentHarness.signInNeeded(by: try agent(harness: "claude"), error: "turn failed: claude error_max_turns: stopped"))
+    }
+
     func testDecodesAttachmentMessage() {
         let line = #"{"type":"message","message":{"id":9,"chatId":"c1","agentId":"a1","author":"orchestrator","kind":"file","text":"front page","createdAt":1,"attachment":{"name":"hn.png","mime":"image/png","size":138405}}}"#
         guard case .event(.message(let m)) = feed([line + "\n"]).first else { return XCTFail("want message") }

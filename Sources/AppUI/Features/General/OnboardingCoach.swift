@@ -97,20 +97,30 @@ private struct CoachOverlay: View {
     let step: CoachStep
     @ObservedObject private var coach = OnboardingCoach.shared
     @State private var pulse: CGFloat = 0
-    @State private var keyboardHeight: CGFloat = 0
     @State private var dismissed = false
 
-    private let padding: CGFloat = 10
-    private let cornerRadius: CGFloat = 14
+    private let padding: CGFloat = 6
+    private let gap: CGFloat = 10
+    private let edge: CGFloat = 16
+    private let arrowSize = CGSize(width: 18, height: 9)
 
-    private var cutout: CGRect { rect.insetBy(dx: -padding, dy: -padding) }
+    private var cutout: CGRect {
+        let padded = rect.insetBy(dx: -padding, dy: -padding)
+        guard abs(padded.width - padded.height) < 16 else { return padded }
+        let side = max(padded.width, padded.height)
+        return CGRect(x: padded.midX - side / 2, y: padded.midY - side / 2, width: side, height: side)
+    }
+    private var cornerRadius: CGFloat { cutout.width == cutout.height ? cutout.width / 2 : 16 }
+    private var cardWidth: CGFloat { min(300, containerSize.width - edge * 2) }
+    private var placeBelow: Bool { cutout.midY < containerSize.height / 2 }
+    private var cardMinX: CGFloat { min(max(cutout.midX - cardWidth / 2, edge), containerSize.width - cardWidth - edge) }
+    private var arrowX: CGFloat { min(max(cutout.midX - cardMinX, 22), cardWidth - 22) }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             if !dismissed {
                 dimmer
                 pulseRing
-                tooltip
                 if step == .save {
                     Color.clear
                         .contentShape(Rectangle())
@@ -118,16 +128,8 @@ private struct CoachOverlay: View {
                             withAnimation(.easeOut(duration: 0.2)) { dismissed = true }
                         }
                 }
-                skipButton
+                tooltip
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notif in
-            if let frame = (notif.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue {
-                keyboardHeight = frame.height
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            keyboardHeight = 0
         }
     }
 
@@ -141,65 +143,84 @@ private struct CoachOverlay: View {
     }
 
     private var pulseRing: some View {
-        RoundedRectangle(cornerRadius: cornerRadius)
-            .stroke(DS.Color.accent, lineWidth: 2)
-            .frame(width: cutout.width, height: cutout.height)
-            .scaleEffect(1 + 0.18 * pulse)
-            .opacity(1 - pulse)
-            .position(x: cutout.midX, y: cutout.midY)
-            .allowsHitTesting(false)
-            .onAppear {
-                pulse = 0
-                withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
-                    pulse = 1
-                }
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .stroke(DS.Color.accent, lineWidth: 2)
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .stroke(DS.Color.accent, lineWidth: 2)
+                .scaleEffect(1 + 0.12 * pulse)
+                .opacity(1 - pulse)
+        }
+        .frame(width: cutout.width, height: cutout.height)
+        .position(x: cutout.midX, y: cutout.midY)
+        .allowsHitTesting(false)
+        .onAppear {
+            pulse = 0
+            withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
+                pulse = 1
             }
+        }
     }
 
-    @ViewBuilder
     private var tooltip: some View {
-        let placement = tooltipPlacement()
-        VStack(spacing: DS.Spacing.xs) {
+        VStack(spacing: 0) {
+            if placeBelow { arrow(pointingUp: true) }
+            card
+            if !placeBelow { arrow(pointingUp: false) }
+        }
+        .frame(width: cardWidth)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: placeBelow ? .topLeading : .bottomLeading)
+        .padding(.leading, cardMinX)
+        .padding(.top, placeBelow ? cutout.maxY + gap : 0)
+        .padding(.bottom, placeBelow ? 0 : containerSize.height - cutout.minY + gap)
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
             Text(step.tooltip)
                 .font(DS.Font.callout).bold()
                 .foregroundStyle(DS.Color.textPrimary)
-                .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Step \(step.rawValue + 1) of \(CoachStep.allCases.count)")
-                .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+            HStack {
+                Text("Step \(step.rawValue + 1) of \(CoachStep.allCases.count)")
+                    .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                Spacer()
+                Button("Skip tour") { coach.finish() }
+                    .font(DS.Font.caption.bold())
+                    .foregroundStyle(DS.Color.accent)
+            }
         }
         .padding(.horizontal, DS.Spacing.lg)
         .padding(.vertical, DS.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 14)
                 .fill(DS.Color.surface1)
                 .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
         )
-        .frame(maxWidth: min(320, containerSize.width - 48))
-        .position(placement)
-        .allowsHitTesting(false)
     }
 
-    private var skipButton: some View {
-        Button {
-            coach.finish()
-        } label: {
-            Text("Skip tour")
-                .font(DS.Font.caption)
-                .foregroundStyle(DS.Color.textSecondary)
-                .padding(.horizontal, DS.Spacing.sm)
-                .padding(.vertical, DS.Spacing.xs)
-                .background(
-                    Capsule().fill(DS.Color.surface1.opacity(0.85))
-                )
+    private func arrow(pointingUp: Bool) -> some View {
+        CoachArrow(pointingUp: pointingUp)
+            .fill(DS.Color.surface1)
+            .frame(width: arrowSize.width, height: arrowSize.height)
+            .padding(.leading, arrowX - arrowSize.width / 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct CoachArrow: Shape {
+    let pointingUp: Bool
+
+    func path(in r: CGRect) -> Path {
+        let tip = CGPoint(x: r.midX, y: pointingUp ? r.minY : r.maxY)
+        let baseY = pointingUp ? r.maxY : r.minY
+        return Path { p in
+            p.move(to: tip)
+            p.addLine(to: CGPoint(x: r.maxX, y: baseY))
+            p.addLine(to: CGPoint(x: r.minX, y: baseY))
+            p.closeSubpath()
         }
-        .position(x: containerSize.width - 60, y: 50)
-    }
-
-    private func tooltipPlacement() -> CGPoint {
-        let bottomBuffer: CGFloat = keyboardHeight > 0 ? keyboardHeight + 70 : 120
-        let y = containerSize.height - bottomBuffer
-        return CGPoint(x: containerSize.width / 2, y: y)
     }
 }
 #endif
