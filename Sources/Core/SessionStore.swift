@@ -25,9 +25,9 @@ public actor SessionStore {
     private var channels: [UUID: SSHChannel] = [:]
     private var tmuxPaths: [UUID: String] = [:]
 
-    public init() {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("sshido", isDirectory: true)
+    public init(directory: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("sshido", isDirectory: true)) {
+        let dir = directory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.url = dir.appendingPathComponent("sessions.json")
         if let data = try? Data(contentsOf: url),
@@ -288,7 +288,7 @@ public actor SessionStore {
     }
 
     public func ensureChannel(for session: Session, host: RemoteHost, auth: SSHAuth) async -> SSHChannel {
-        if let existing = channels[session.id], await existing.isConnected {
+        if let existing = channels[session.id], await !existing.isClosed {
             return existing
         }
         if let dead = channels.removeValue(forKey: session.id) {

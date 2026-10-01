@@ -56,6 +56,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     }
 
     public var isConnected: Bool { get async { connected } }
+    public var isClosed: Bool { get async { didClose } }
 
     public func setOutputHandler(onData: @escaping @Sendable (Data) async -> Void,
                                  onClose: @escaping @Sendable () -> Void) {

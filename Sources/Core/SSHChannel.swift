@@ -15,6 +15,7 @@ public protocol SSHChannel: AnyObject, Sendable {
     func setOutputHandler(onData: @escaping @Sendable (Data) async -> Void,
                           onClose: @escaping @Sendable () -> Void)
     var isConnected: Bool { get async }
+    var isClosed: Bool { get async }
 }
 
 public extension SSHChannel {

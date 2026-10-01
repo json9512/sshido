@@ -44,6 +44,7 @@ private final class RecordingSSHChannel: SSHChannel, @unchecked Sendable {
     func setOutputHandler(onData: @escaping @Sendable (Data) async -> Void,
                           onClose: @escaping @Sendable () -> Void) {}
     var isConnected: Bool { get async { true } }
+    var isClosed: Bool { get async { false } }
 
     func openForwardedChannel(host: String, port: Int) async throws -> SSHForwardedChannel {
         lock.withLock { recorded.append(Target(host: host, port: port)) }

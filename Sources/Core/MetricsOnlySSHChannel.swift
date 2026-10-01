@@ -15,6 +15,7 @@ public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
     private let hostKeyConfirm: HostKeyConfirmCallback
     private var client: SSHClient?
     private var connected = false
+    private var closed = false
 
     public init(
         host: String,
@@ -31,6 +32,7 @@ public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
     }
 
     public var isConnected: Bool { get async { connected } }
+    public var isClosed: Bool { get async { closed } }
 
     public func setOutputHandler(onData: @escaping @Sendable (Data) async -> Void,
                                  onClose: @escaping @Sendable () -> Void) {
@@ -80,6 +82,7 @@ public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
         }
         client = nil
         connected = false
+        closed = true
         onClose?()
     }
 
