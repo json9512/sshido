@@ -65,6 +65,7 @@ struct AgentModeSettingsView: View {
             workerModel = agents.settings.workerModel
             workerLocalModel = agents.settings.workerLocalModel
             localURL = agents.settings.localURL
+            if agents.settings.usesLocalEndpoint && agents.localModels.isEmpty { await agents.refreshLocalModels() }
         }
         .onChange(of: orchestratorModel) { _, v in agents.update { $0.with(orchestratorModel: v) } }
         .onChange(of: workerModel) { _, v in agents.update { $0.with(workerModel: v) } }
@@ -135,6 +136,46 @@ struct AgentModeSettingsView: View {
         .tideRow()
     }
 
+    @ViewBuilder
+    private func localModelPicker(_ selection: Binding<String>) -> some View {
+        if agents.localModels.isEmpty {
+            HStack(spacing: DS.Spacing.sm) {
+                modelField("Local model, e.g. qwen3.6:35b", selection)
+                refreshModelsButton
+            }
+        } else {
+            HStack(spacing: DS.Spacing.sm) {
+                Menu {
+                    ForEach(agents.localModels, id: \.self) { model in
+                        Button { selection.wrappedValue = model } label: {
+                            if model == selection.wrappedValue { Label(model, systemImage: "checkmark") } else { Text(model) }
+                        }
+                    }
+                } label: {
+                    TideRow(icon: "cpu", title: selection.wrappedValue.isEmpty ? "Choose a model" : selection.wrappedValue) {
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(DS.Color.textTertiary)
+                    }
+                }
+                .accessibilityLabel("Model, \(selection.wrappedValue.isEmpty ? "none" : selection.wrappedValue)")
+                refreshModelsButton
+            }
+            .tideRow()
+        }
+    }
+
+    private var refreshModelsButton: some View {
+        Group {
+            if agents.loadingLocalModels {
+                ProgressView().tint(DS.Color.accent).frame(width: 36, height: 36)
+            } else {
+                IconButton(systemName: "arrow.clockwise", label: "Load models from the endpoint", kind: .quiet, size: 36) {
+                    Task { await agents.refreshLocalModels() }
+                }
+                .disabled(agents.settings.hostID == nil)
+            }
+        }
+    }
+
     private var orchestratorSection: some View {
         Section {
             kindPicker(orchestratorKind, options: [.frontier, .local])
@@ -142,7 +183,7 @@ struct AgentModeSettingsView: View {
                 harnessPicker(agents.settings.orchestrator) { h in agents.update { $0.with(orchestrator: h) } }
                 modelField("Model (optional)", $orchestratorModel)
             } else {
-                modelField("Local model, e.g. qwen3.6:35b", $orchestratorModel)
+                localModelPicker($orchestratorModel)
             }
         } header: {
             SectionLabel("Orchestrator")
@@ -157,7 +198,7 @@ struct AgentModeSettingsView: View {
                 harnessPicker(agents.settings.worker) { h in agents.update { $0.with(worker: h) } }
                 modelField("Model (optional)", $workerModel)
             case .local:
-                modelField("Local model, e.g. qwen3.6:35b", $workerModel)
+                localModelPicker($workerModel)
             case .auto:
                 ForEach(AgentHarness.allCases) { h in
                     Toggle(isOn: Binding(get: { agents.settings.workerAllowed.contains(h) }, set: { on in agents.update { $0.allowing(h, on) } })) {
@@ -166,7 +207,7 @@ struct AgentModeSettingsView: View {
                     .tideRow()
                 }
                 if agents.settings.workerAllowed.contains(.local) {
-                    modelField("Local model, e.g. qwen3.6:35b", $workerLocalModel)
+                    localModelPicker($workerLocalModel)
                 }
             }
             if let problem = agents.settings.problem {

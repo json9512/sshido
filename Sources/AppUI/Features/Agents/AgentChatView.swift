@@ -87,7 +87,7 @@ struct AgentChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                LazyVStack(alignment: .leading, spacing: DS.Spacing.md) {
                     if !agents.historyLoaded && chatMessages.isEmpty {
                         ForEach(0..<4, id: \.self) { i in AgentMessageSkeleton(trailing: i == 0) }
                     } else if chatMessages.isEmpty && agents.pending(in: chatID).isEmpty {
@@ -95,11 +95,11 @@ struct AgentChatView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.top, DS.Spacing.xxl)
                     }
-                    ForEach(chatMessages) { message in
-                        AgentMessageRow(message: message).id(message.id)
+                    ForEach(ChatItem.build(chatMessages, agents: chatAgents)) { item in
+                        ChatItemView(item: item).id(item.id)
                     }
                     ForEach(agents.pending(in: chatID)) { entry in
-                        PendingMessageRow(text: entry.text)
+                        UserMessageBubble(text: entry.text, sending: true)
                     }
                     activity
                     Color.clear.frame(height: 1).id("bottom")
@@ -213,24 +213,6 @@ private struct ActivityRow: View {
     }
 }
 
-private struct PendingMessageRow: View {
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: DS.Spacing.xs) {
-            Spacer(minLength: DS.Spacing.xxl)
-            ProgressView().controlSize(.mini)
-            Text(text)
-                .font(DS.Font.body)
-                .foregroundStyle(DS.Color.textOnAccent)
-                .padding(DS.Spacing.sm)
-                .background(DS.Color.accent.opacity(0.5), in: RoundedRectangle(cornerRadius: DS.Radius.card))
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Sending: \(text)")
-    }
-}
-
 private struct AgentMessageSkeleton: View {
     let trailing: Bool
 
@@ -272,65 +254,37 @@ private struct AgentStatusChip: View {
     }
 }
 
-private struct AgentMessageRow: View {
-    let message: AgentChatMessage
+private struct ChatItemView: View {
+    let item: ChatItem
 
     var body: some View {
-        if message.kind == .user {
-            HStack {
-                Spacer(minLength: DS.Spacing.xxl)
-                Text(message.text)
-                    .font(DS.Font.body)
-                    .foregroundStyle(DS.Color.textOnAccent)
-                    .padding(DS.Spacing.sm)
-                    .background(DS.Color.accent, in: RoundedRectangle(cornerRadius: DS.Radius.card))
-                    .textSelection(.enabled)
-            }
-        } else {
-            VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
-                HStack(spacing: DS.Spacing.xs) {
-                    Image(systemName: icon).foregroundStyle(tint)
-                    Text(message.author).font(DS.Font.captionMedium).foregroundStyle(DS.Color.textSecondary)
+        switch item {
+        case .user(let message):
+            UserMessageBubble(text: message.text)
+                .padding(.top, DS.Spacing.xs)
+        case .agent(let message, let identity, let header, let collapsible):
+            VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+                if header {
+                    AgentMessageHeader(identity: identity, date: Date(timeIntervalSince1970: TimeInterval(message.createdAt) / 1000))
                 }
-                if let attachment = message.attachment {
-                    AgentAttachmentView(message: message, attachment: attachment)
-                } else {
-                    Text(LocalizedStringKey(message.text))
-                        .font(message.kind == .progress ? DS.Font.caption : DS.Font.body)
-                        .foregroundStyle(message.kind == .progress ? DS.Color.textSecondary : DS.Color.textPrimary)
-                        .textSelection(.enabled)
+                Group {
+                    if let attachment = message.attachment {
+                        AgentAttachmentView(message: message, attachment: attachment)
+                    } else {
+                        AgentMessageBody(text: message.text, collapsible: collapsible)
+                    }
                 }
+                .padding(.leading, 36)
             }
-            .padding(DS.Spacing.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(background, in: RoundedRectangle(cornerRadius: DS.Radius.card))
+            .padding(.top, header ? DS.Spacing.sm : 0)
+        case .event(let message, let identity, let style):
+            AgentEventRow(identity: identity, text: message.text, style: style)
+        case .question(let message, let identity):
+            AgentQuestionCard(identity: identity, text: message.text)
         }
-    }
-
-    private var icon: String {
-        switch message.kind {
-        case .reply, .user: return "bubble.left"
-        case .progress: return "ellipsis.circle"
-        case .done: return "checkmark.circle"
-        case .needsInput: return "questionmark.circle"
-        case .error: return "exclamationmark.triangle"
-        case .file: return "paperclip"
-        }
-    }
-
-    private var tint: Color {
-        switch message.kind {
-        case .done: return DS.Color.success
-        case .needsInput: return DS.Color.warning
-        case .error: return DS.Color.error
-        default: return DS.Color.textTertiary
-        }
-    }
-
-    private var background: Color {
-        message.kind == .progress ? DS.Color.surface0 : DS.Color.surface2
     }
 }
+
 private struct AgentAttachmentView: View {
     let message: AgentChatMessage
     let attachment: AgentAttachment

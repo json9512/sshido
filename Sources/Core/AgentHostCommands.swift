@@ -109,6 +109,21 @@ public enum AgentHostCommands {
             .first { $0 > 0 && $0 < 65536 }
     }
 
+    public static func listLocalModels(podman: String, endpoint: String) -> String {
+        let base = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = (base.hasSuffix("/") ? String(base.dropLast()) : base) + "/models"
+        return "\(q(podman)) run --rm --entrypoint curl \(agentImage) -fsS -m 8 \(q(url))"
+    }
+
+    public static func parseModelList(_ output: String) -> [String] {
+        struct Listing: Decodable {
+            struct Model: Decodable { let id: String }
+            let data: [Model]
+        }
+        guard let listing = try? JSONDecoder().decode(Listing.self, from: Data(output.utf8)) else { return [] }
+        return Array(Set(listing.data.map(\.id).filter { !$0.isEmpty })).sorted()
+    }
+
     public static func peek(podman: String, container: String) -> String {
         "\(q(podman)) exec -it \(q(container)) bash"
     }

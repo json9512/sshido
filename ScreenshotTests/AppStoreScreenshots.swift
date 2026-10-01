@@ -183,6 +183,33 @@ final class AppStoreScreenshots: XCTestCase {
         try capture("agent-desktop")
     }
 
+    func test5ReviewChat() throws {
+        tap(button(startingWith: "Agents"))
+        let chat = button(startingWith: try setting("SSHIDO_SCREENSHOT_CHAT"))
+        XCTAssertTrue(chat.waitForExistence(timeout: 60))
+        chat.tap()
+        XCTAssertTrue(app.textFields["Message"].waitForExistence(timeout: 30))
+        sleep(5)
+        try capture("review-bottom")
+        for step in 1...6 {
+            app.swipeDown(velocity: .slow)
+            sleep(1)
+            try capture("review-up-\(step)")
+        }
+    }
+
+    func test6ReviewModelPicker() throws {
+        openSettings("Agents")
+        let picker = button(startingWith: "Model")
+        XCTAssertTrue(picker.waitForExistence(timeout: 60), "the model list did not load")
+        sleep(1)
+        try capture("review-models")
+        picker.tap()
+        sleep(2)
+        try capture("review-models-menu")
+        app.swipeDown()
+    }
+
     func test4CaptureTerminal() throws {
         tap(app.staticTexts["MacBook"].firstMatch)
         sleep(2)
