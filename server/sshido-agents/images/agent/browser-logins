@@ -1,0 +1,38 @@
+#!/bin/bash
+set -euo pipefail
+
+logins="${HOME}/.logins/browser.json"
+
+if [ "${1:-}" != "save" ] || [ $# -ne 1 ]; then
+	echo "usage: browser-logins save    keep the open browser's sign-ins for every agent" >&2
+	exit 2
+fi
+
+fresh="$(mktemp)"
+trap 'rm -f "$fresh"' EXIT
+agent-browser state save "$fresh" >/dev/null
+python3 - "$logins" "$fresh" <<'PY'
+import json
+import os
+import sys
+
+target, fresh = sys.argv[1], sys.argv[2]
+
+
+def load(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"cookies": [], "origins": []}
+
+
+old, new = load(target), load(fresh)
+cookies = {(c.get("name"), c.get("domain"), c.get("path")): c for c in old.get("cookies", []) + new.get("cookies", [])}
+origins = {o.get("origin"): o for o in old.get("origins", []) + new.get("origins", [])}
+tmp = target + ".tmp"
+with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+    json.dump({"cookies": list(cookies.values()), "origins": list(origins.values())}, f)
+os.replace(tmp, target)
+print(f"kept {len(cookies)} cookies and {len(origins)} sites' storage")
+PY

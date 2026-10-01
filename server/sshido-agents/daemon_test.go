@@ -14,14 +14,16 @@ import (
 )
 
 type fakePods struct {
-	mu      sync.Mutex
-	created []ContainerSpec
-	started map[string]int
-	stopped map[string]bool
-	prompts map[string][]string
-	replies map[string][]string
-	missing map[string]bool
-	removed []string
+	mu        sync.Mutex
+	created   []ContainerSpec
+	started   map[string]int
+	stopped   map[string]bool
+	prompts   map[string][]string
+	replies   map[string][]string
+	missing   map[string]bool
+	removed   []string
+	logins    []string
+	loginsErr string
 }
 
 func newFakePods() *fakePods {
@@ -77,6 +79,13 @@ func (f *fakePods) Exec(_ context.Context, name string, spec ExecSpec) (ExecResu
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if spec.Cmd[0] == "browser-logins" {
+		f.logins = append(f.logins, name+" "+spec.User+" "+strings.Join(spec.Cmd[1:], " "))
+		if f.loginsErr != "" {
+			return ExecResult{Stderr: []byte(f.loginsErr), ExitCode: 1}, nil
+		}
+		return ExecResult{}, nil
+	}
 	f.prompts[name] = append(f.prompts[name], spec.Cmd[2])
 	queue := f.replies[name]
 	if len(queue) == 0 {
@@ -315,6 +324,92 @@ func TestNeedsInputReportPushesHigh(t *testing.T) {
 	}
 	if got := push.all(); len(got) != 1 || !strings.Contains(got[0], "|true|which database?") {
 		t.Fatalf("want one high push, got %v", got)
+	}
+}
+
+func TestSignInReportPushesHigh(t *testing.T) {
+	d, pods, push := testDaemon(t)
+	if _, err := d.orchestrator(context.Background(), firstChat(t, d)); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := tokenOf(t, pods, RoleOrchestrator)
+	resp := d.handleBus(context.Background(), mustJSON(t, BusRequest{Token: token, Op: BusReport, Kind: KindSignIn, Text: "Slack, to read the thread"}))
+	if !resp.OK {
+		t.Fatalf("report failed: %+v", resp)
+	}
+	if got := messagesOfKind(t, d, KindSignIn); len(got) != 1 || got[0].Text != "Slack, to read the thread" || got[0].AgentID == "" {
+		t.Fatalf("want one sign-in message from the orchestrator, got %+v", got)
+	}
+	if got := push.all(); len(got) != 1 || got[0] != "orchestrator needs you to sign in|true|Slack, to read the thread" {
+		t.Fatalf("want one high push, got %v", got)
+	}
+}
+
+func TestSignedInKeepsLoginsAndResumesTheAgent(t *testing.T) {
+	d, pods, _ := testDaemon(t)
+	orch, err := d.orchestrator(context.Background(), firstChat(t, d))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SignedIn(context.Background(), orch.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitIdleDaemon(t, d)
+	pods.mu.Lock()
+	logins, prompts := append([]string{}, pods.logins...), append([]string{}, pods.prompts[orch.Container]...)
+	pods.mu.Unlock()
+	if len(logins) != 1 || logins[0] != orch.Container+" agent save" {
+		t.Fatalf("want one browser-logins save as agent in %s, got %v", orch.Container, logins)
+	}
+	if len(prompts) != 1 || !strings.Contains(prompts[0], signedInPrompt) || strings.Contains(prompts[0], "could not be kept") {
+		t.Fatalf("want the signed-in prompt, got %q", prompts)
+	}
+	if got := messagesOfKind(t, d, KindUser); len(got) != 1 || got[0].Text != "Signed in on orchestrator's desktop." {
+		t.Fatalf("want the sign-in shown in the chat, got %+v", got)
+	}
+	if got := messagesOfKind(t, d, KindError); len(got) != 0 {
+		t.Fatalf("no error expected, got %+v", got)
+	}
+}
+
+func TestSignedInStillResumesWhenLoginsCannotBeKept(t *testing.T) {
+	d, pods, _ := testDaemon(t)
+	orch, err := d.orchestrator(context.Background(), firstChat(t, d))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pods.mu.Lock()
+	pods.loginsErr = "agent-browser: no browser is open"
+	pods.mu.Unlock()
+	if err := d.SignedIn(context.Background(), orch.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitIdleDaemon(t, d)
+	pods.mu.Lock()
+	prompts := append([]string{}, pods.prompts[orch.Container]...)
+	pods.mu.Unlock()
+	if len(prompts) != 1 || !strings.Contains(prompts[0], "could not be kept for other agents: exit 1: agent-browser: no browser is open") {
+		t.Fatalf("want the failure in the prompt, got %q", prompts)
+	}
+	if got := messagesOfKind(t, d, KindError); len(got) != 1 || !strings.Contains(got[0].Text, "no browser is open") {
+		t.Fatalf("want the failure shown in the chat, got %+v", got)
+	}
+}
+
+func TestSignedInRejectsUnknownAndStoppedAgents(t *testing.T) {
+	d, _, _ := testDaemon(t)
+	if err := d.SignedIn(context.Background(), "nope"); err == nil {
+		t.Fatal("an unknown agent must be rejected")
+	}
+	orch, err := d.orchestrator(context.Background(), firstChat(t, d))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.StopAgent(context.Background(), orch.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SignedIn(context.Background(), orch.ID); err == nil {
+		t.Fatal("a stopped agent must be rejected")
 	}
 }
 

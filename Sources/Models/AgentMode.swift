@@ -217,6 +217,7 @@ public struct AgentModeSettings: Codable, Equatable, Sendable {
 public enum AgentMessageKind: String, Codable, Sendable {
     case user, reply, progress, done
     case needsInput = "needs_input"
+    case signIn = "sign_in"
     case error
     case file
 }
@@ -352,6 +353,10 @@ public struct AgentRequest: Codable, Equatable, Sendable {
 
     public static func stop(agentID: String) -> AgentRequest {
         AgentRequest(op: "stop", agentId: agentID)
+    }
+
+    public static func signedIn(agentID: String) -> AgentRequest {
+        AgentRequest(op: "signedIn", agentId: agentID)
     }
 
     public static func createChat(title: String) -> AgentRequest {

@@ -120,8 +120,13 @@ func (d *Daemon) busReport(ctx context.Context, caller Agent, req BusRequest) Bu
 		d.logEntry(caller, "Asked the person: "+req.Text)
 		d.notify(ctx, caller.Name+" needs input", req.Text, true)
 		return BusResponse{OK: true}
+	case KindSignIn:
+		d.post(caller.ChatID, caller.ID, caller.Name, KindSignIn, req.Text)
+		d.logEntry(caller, "Asked the person to sign in: "+req.Text)
+		d.notify(ctx, caller.Name+" needs you to sign in", req.Text, true)
+		return BusResponse{OK: true}
 	}
-	return busDeny("agent %s: report kind %q is not progress or needs_input", caller.ID, req.Kind)
+	return busDeny("agent %s: report kind %q is not progress, needs_input or sign_in", caller.ID, req.Kind)
 }
 
 func (d *Daemon) busList(caller Agent) BusResponse {
@@ -434,6 +439,10 @@ func (d *Daemon) handleApp(ctx context.Context, line []byte, out chan AppEvent) 
 	case OpStop:
 		if err := d.StopAgent(ctx, req.AgentID); err != nil {
 			appDeny(out, "stop %s: %v", req.AgentID, err)
+		}
+	case OpSignedIn:
+		if err := d.SignedIn(ctx, req.AgentID); err != nil {
+			appDeny(out, "signed in %s: %v", req.AgentID, err)
 		}
 	default:
 		appDeny(out, "unknown op %q", req.Op)

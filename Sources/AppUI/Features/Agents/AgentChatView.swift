@@ -23,6 +23,7 @@ struct AgentChatView: View {
     @State private var dictationLocaleID = ""
     @State private var notice: String?
     @State private var selectedAgent: AgentInfo?
+    @State private var signIn: SignInDesktop?
 
     private var chat: AgentChat? { agents.chat(chatID) }
     private var chatAgents: [AgentInfo] { agents.agents(in: chatID) }
@@ -52,6 +53,7 @@ struct AgentChatView: View {
             dictator.cancel()
             agents.release()
         }
+        .signInDesktop($signIn) { id in Task { await openSignIn(agentID: id) } }
         .sheet(item: $selectedAgent) { agent in
             NavigationStack {
                 AgentRecordView(agentID: agent.id)
@@ -96,7 +98,8 @@ struct AgentChatView: View {
                             .padding(.top, DS.Spacing.xxl)
                     }
                     ForEach(ChatItem.build(chatMessages, agents: chatAgents)) { item in
-                        ChatItemView(item: item, retry: retryAction(for: item), signIn: signInAction(for: item)).id(item.id)
+                        ChatItemView(item: item, retry: retryAction(for: item), signIn: signInAction(for: item),
+                                     signInStatus: signInStatus(for: item), openSignIn: openSignIn).id(item.id)
                     }
                     ForEach(agents.pending(in: chatID)) { entry in
                         UserMessageBubble(text: entry.text, sending: true)
@@ -189,6 +192,33 @@ struct AgentChatView: View {
         return { Task { await agents.signIn(harness, router: router) } }
     }
 
+    private func signInStatus(for item: ChatItem) -> AgentSignInCard.Status {
+        guard case .signIn(let message, _) = item else { return .ready }
+        if chatMessages.contains(where: { $0.id > message.id && $0.kind == .user }) { return .done }
+        switch signIn {
+        case .opening(let id) where id == message.agentId: return .opening
+        case .failed(let id, let reason) where id == message.agentId: return .failed(reason)
+        default: return .ready
+        }
+    }
+
+    private func openSignIn(agentID: String?) async {
+        guard let agentID else {
+            notice = "This sign-in request has no agent attached."
+            return
+        }
+        guard let agent = chatAgents.first(where: { $0.id == agentID }) else {
+            signIn = .failed(agentID: agentID, reason: "This agent is gone.")
+            return
+        }
+        signIn = .opening(agentID: agentID)
+        do {
+            signIn = .open(agentID: agentID, url: try await agents.openDesktop(of: agent))
+        } catch {
+            signIn = .failed(agentID: agentID, reason: AgentModeController.message(for: error))
+        }
+    }
+
     private func send() async {
         dictator.cancel()
         let text = draft
@@ -276,6 +306,8 @@ private struct ChatItemView: View {
     let item: ChatItem
     let retry: (() -> Void)?
     let signIn: (() -> Void)?
+    let signInStatus: AgentSignInCard.Status
+    let openSignIn: (String?) async -> Void
 
     var body: some View {
         switch item {
@@ -301,6 +333,10 @@ private struct ChatItemView: View {
             AgentEventRow(identity: identity, text: message.text, style: style, onRetry: style == .error ? retry : nil, onSignIn: signIn)
         case .question(let message, let identity):
             AgentQuestionCard(identity: identity, text: message.text)
+        case .signIn(let message, let identity):
+            AgentSignInCard(identity: identity, text: message.text, status: signInStatus) {
+                Task { await openSignIn(message.agentId) }
+            }
         }
     }
 }

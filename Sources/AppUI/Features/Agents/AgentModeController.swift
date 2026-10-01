@@ -379,6 +379,18 @@ final class AgentModeController: ObservableObject {
         }
     }
 
+    func signedIn(agentID: String) async {
+        guard let bridge, connection == .connected else {
+            notice = "Not connected to the agents, so the agent was not told you signed in. Reconnect and send it a message."
+            return
+        }
+        do {
+            try await bridge.send(.signedIn(agentID: agentID))
+        } catch {
+            connection = .failed(Self.message(for: error))
+        }
+    }
+
     func attachmentURL(for message: AgentChatMessage) async throws -> URL {
         if let url = attachmentFiles[message.id] { return url }
         if let running = attachmentLoads[message.id] { return try await running.value }

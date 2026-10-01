@@ -310,6 +310,9 @@ func TestParseCtlRecordCommands(t *testing.T) {
 		{[]string{"verdict", "--to", "ab12", "--fail", "no tests"}, BusRequest{Op: BusVerdict, To: "ab12", Kind: VerdictFail, Text: "no tests"}},
 		{[]string{"verdict", "--pass", "--to", "self", "met"}, BusRequest{Op: BusVerdict, To: "self", Kind: VerdictPass, Text: "met"}},
 		{[]string{"spawn", "--name", "w", "--goal", "g", "--task", "t", "--harness", "local"}, BusRequest{Op: BusSpawn, Name: "w", Goal: "g", Task: "t", Harness: "local"}},
+		{[]string{"report", "--sign-in", "Slack, to read the thread"}, BusRequest{Op: BusReport, Kind: KindSignIn, Text: "Slack, to read the thread"}},
+		{[]string{"report", "--needs-input", "which db?"}, BusRequest{Op: BusReport, Kind: KindNeedsInput, Text: "which db?"}},
+		{[]string{"report", "--progress", "half way"}, BusRequest{Op: BusReport, Kind: KindProgress, Text: "half way"}},
 	}
 	for _, c := range cases {
 		got, err := parseCtl(c.args)
@@ -317,7 +320,7 @@ func TestParseCtlRecordCommands(t *testing.T) {
 			t.Fatalf("%v: got %+v %v, want %+v", c.args, got, err, c.want)
 		}
 	}
-	for _, bad := range [][]string{{"status"}, {"verdict", "--to", "x", "why"}, {"verdict", "--pass", "--fail", "why"}} {
+	for _, bad := range [][]string{{"status"}, {"verdict", "--to", "x", "why"}, {"verdict", "--pass", "--fail", "why"}, {"report"}, {"report", "--sign-in", "a", "--progress", "b"}} {
 		if _, err := parseCtl(bad); err == nil {
 			t.Fatalf("%v must fail", bad)
 		}

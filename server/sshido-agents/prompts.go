@@ -52,8 +52,9 @@ chat.`
 
 const computerBrief = `What you can use in your container:
 - The internet: you have network access, including the web.
-- A real web browser through the agent-browser command. One browser session
-  stays open between commands:
+- A real web browser through the agent-browser command. It shows on your
+  desktop, so the person can watch it. One browser session stays open between
+  commands:
     agent-browser open <url>             open a page
     agent-browser snapshot               list what is on the page, with refs like @e3
     agent-browser click @e3              click an element by ref
@@ -63,6 +64,12 @@ const computerBrief = `What you can use in your container:
     agent-browser read <url>             fetch a page's text without opening the browser
     agent-browser close                  close the browser
   After open or click, take a snapshot before choosing the next ref.
+- Signing in: when a site needs the person to sign in (a login page, a
+  verification code, a captcha), leave that page open in agent-browser, run
+    agentctl report --sign-in "<the site, and what you need from it>"
+  and end your turn. The person signs in on your desktop from the phone and you
+  get a message when they are done. Their sign-ins are kept for every agent, so
+  try the site first before asking. Never ask the person for a password in chat.
 - A desktop computer: a virtual screen you control with the desktop command.
   It starts on first use, and the person can watch it from the phone.
     desktop run <program> [args]         open a program on the screen, e.g. desktop run chromium --no-sandbox --start-maximized https://example.com
@@ -160,3 +167,6 @@ func recordBrief(a Agent, logTail string) string {
 	return fmt.Sprintf("Your work record (kept in %s/):\n%s\n\nTrack record, latest entries:\n%s",
 		agentRecordPath(a.ID), recordSummary(a), orNotSet(logTail))
 }
+
+const signedInPrompt = "The person signed in on your desktop. The browser is still open on that " +
+	"session; take a snapshot and continue where you left off."
