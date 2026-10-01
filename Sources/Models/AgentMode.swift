@@ -45,6 +45,13 @@ public enum AgentHarness: String, Codable, CaseIterable, Sendable, Identifiable 
 
     public var isFrontier: Bool { self != .local }
 
+    public static func signInNeeded(by agent: AgentInfo?, error text: String) -> AgentHarness? {
+        guard text.contains("Not logged in"),
+              let harness = agent.flatMap({ AgentHarness(rawValue: $0.harness) }),
+              harness.loginCommand != nil else { return nil }
+        return harness
+    }
+
     public static let frontier: [AgentHarness] = allCases.filter(\.isFrontier)
 }
 

@@ -158,6 +158,7 @@ struct AgentEventRow: View {
     let text: String
     let style: Style
     var onRetry: (() -> Void)?
+    var onSignIn: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: DS.Spacing.sm) {
@@ -179,6 +180,9 @@ struct AgentEventRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 3)
             .accessibilityElement(children: .combine)
+            if let onSignIn {
+                IconButton(systemName: "person.badge.key", label: "Sign in", kind: .plain, size: 32, action: onSignIn)
+            }
             if let onRetry {
                 IconButton(systemName: "arrow.clockwise", label: "Retry", kind: .plain, size: 32, action: onRetry)
             }

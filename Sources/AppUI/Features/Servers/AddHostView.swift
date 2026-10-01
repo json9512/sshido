@@ -72,15 +72,13 @@ struct AddHostView: View {
             .navigationTitle(existing == nil ? "New server" : "Edit server")
             .navigationBarTitleDisplayMode(.inline)
             .sheetActions(cancel: { dismiss() }, confirm: { Task { await save() } },
-                          confirmEnabled: isValid, working: phase == .testing)
-            .coachTarget(.save)
+                          confirmEnabled: isValid, working: phase == .testing, confirmCoach: .save)
             .keyboardDismissButton()
             .task {
                 identities = await services.identities.all()
                 hydrate()
                 OnboardingCoach.shared.advance(past: .addHost)
             }
-            .coachmarks()
             .sheet(isPresented: $addingKey) {
                 AddIdentityView { added in
                     identities = identities + [added]
@@ -91,6 +89,7 @@ struct AddHostView: View {
                 KeysSheet()
             }
         }
+        .coachmarks()
         .presentingHostKeyChallenge()
     }
 
