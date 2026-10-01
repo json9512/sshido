@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -82,6 +83,9 @@ func (f *fakePods) Exec(_ context.Context, name string, spec ExecSpec) (ExecResu
 		return ExecResult{Stdout: claudeReply("default reply", name)}, nil
 	}
 	f.replies[name] = queue[1:]
+	if queue[0] == "!drop" {
+		return ExecResult{Stdout: []byte(`{"type":"result","subtype":"error_during_execution","is_error":true,"result":"stream disconnected before completion: stream closed before response.completed"}`), ExitCode: 1}, nil
+	}
 	if queue[0] == "!fail" {
 		return ExecResult{Stdout: []byte(`{"type":"result","subtype":"error_during_execution","is_error":true,"result":"boom"}`), ExitCode: 1}, nil
 	}
@@ -388,4 +392,65 @@ func mustJSON(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return out
+}
+
+func TestDroppedStreamRetriesOnce(t *testing.T) {
+	d, pods, _ := testDaemon(t)
+	orch, err := d.orchestrator(context.Background(), firstChat(t, d))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pods.script(orch.Container, "!drop", "recovered")
+	if err := d.HandleUserMessage(context.Background(), firstChat(t, d), "go"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "reply after retry", func() bool { return len(messagesOfKind(t, d, KindReply)) == 1 })
+	if got := messagesOfKind(t, d, KindReply)[0].Text; got != "recovered" {
+		t.Fatalf("reply %q", got)
+	}
+	if errs := messagesOfKind(t, d, KindError); len(errs) != 0 {
+		t.Fatalf("a recovered drop must not post an error: %+v", errs)
+	}
+	pods.mu.Lock()
+	prompts := pods.prompts[orch.Container]
+	pods.mu.Unlock()
+	if len(prompts) != 2 || !strings.HasSuffix(prompts[1], retryPrompt) {
+		t.Fatalf("want one retry with the continue prompt, got %d prompts: %q", len(prompts), prompts)
+	}
+}
+
+func TestSecondDropAndOtherFailuresAreReported(t *testing.T) {
+	d, pods, _ := testDaemon(t)
+	orch, err := d.orchestrator(context.Background(), firstChat(t, d))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pods.script(orch.Container, "!drop", "!drop", "!fail")
+	if err := d.HandleUserMessage(context.Background(), firstChat(t, d), "go"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "error after two drops", func() bool { return len(messagesOfKind(t, d, KindError)) == 1 })
+	if err := d.HandleUserMessage(context.Background(), firstChat(t, d), "again"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "error for a non-transient failure", func() bool { return len(messagesOfKind(t, d, KindError)) == 2 })
+	pods.mu.Lock()
+	prompts := len(pods.prompts[orch.Container])
+	pods.mu.Unlock()
+	if prompts != 3 {
+		t.Fatalf("two drops then one plain failure should be 3 attempts, got %d", prompts)
+	}
+}
+
+func TestIsTransient(t *testing.T) {
+	for _, msg := range []string{"codex: stream disconnected before completion", "read: connection reset by peer", "dial tcp: i/o timeout: timed out"} {
+		if !isTransient(errors.New(msg)) {
+			t.Fatalf("%q should be transient", msg)
+		}
+	}
+	for _, msg := range []string{"claude error_during_execution: boom", "context deadline exceeded", "unknown harness"} {
+		if isTransient(errors.New(msg)) {
+			t.Fatalf("%q should not be transient", msg)
+		}
+	}
 }

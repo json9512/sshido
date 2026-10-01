@@ -96,7 +96,7 @@ struct AgentChatView: View {
                             .padding(.top, DS.Spacing.xxl)
                     }
                     ForEach(ChatItem.build(chatMessages, agents: chatAgents)) { item in
-                        ChatItemView(item: item).id(item.id)
+                        ChatItemView(item: item, retry: retryAction(for: item)).id(item.id)
                     }
                     ForEach(agents.pending(in: chatID)) { entry in
                         UserMessageBubble(text: entry.text, sending: true)
@@ -169,6 +169,17 @@ struct AgentChatView: View {
                 if case .unavailable(let reason) = dictator.state { notice = reason }
             }
         }
+    }
+
+    static let continuePrompt = "Continue where you left off."
+
+    private func retryAction(for item: ChatItem) -> (() -> Void)? {
+        guard case .event(let message, _, .error) = item,
+              message.id == chatMessages.last?.id,
+              agents.pending(in: chatID).isEmpty,
+              !chatAgents.contains(where: { $0.status == .working || $0.status == .starting }),
+              agents.connection == .connected else { return nil }
+        return { Task { _ = await agents.send(Self.continuePrompt, to: chatID) } }
     }
 
     private func send() async {
@@ -256,6 +267,7 @@ private struct AgentStatusChip: View {
 
 private struct ChatItemView: View {
     let item: ChatItem
+    let retry: (() -> Void)?
 
     var body: some View {
         switch item {
@@ -278,7 +290,7 @@ private struct ChatItemView: View {
             }
             .padding(.top, header ? DS.Spacing.sm : 0)
         case .event(let message, let identity, let style):
-            AgentEventRow(identity: identity, text: message.text, style: style)
+            AgentEventRow(identity: identity, text: message.text, style: style, onRetry: style == .error ? retry : nil)
         case .question(let message, let identity):
             AgentQuestionCard(identity: identity, text: message.text)
         }
