@@ -157,6 +157,7 @@ struct AgentEventRow: View {
     let identity: AgentIdentity?
     let text: String
     let style: Style
+    var onRetry: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: DS.Spacing.sm) {
@@ -177,8 +178,12 @@ struct AgentEventRow: View {
             .lineLimit(3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 3)
+            .accessibilityElement(children: .combine)
+            if let onRetry {
+                IconButton(systemName: "arrow.clockwise", label: "Retry", kind: .plain, size: 32, action: onRetry)
+            }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private var icon: String {

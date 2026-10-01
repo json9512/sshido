@@ -321,12 +321,41 @@ func (d *Daemon) runTurn(id, prompt string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.TurnTimeout)
 	defer cancel()
-	text, err := d.turn(ctx, a, prompt)
+	text, err := d.turnWithRetry(ctx, a, prompt)
 	if err != nil {
 		d.turnFailed(ctx, a, err)
 		return
 	}
 	d.turnDone(ctx, a, text)
+}
+
+const retryPrompt = "Your previous turn was cut off by a connection error before it finished. " +
+	"Read your work record and continue where you left off."
+
+var transientMarkers = []string{
+	"stream disconnected", "stream closed", "connection reset", "connection refused",
+	"broken pipe", "timed out", "unexpected eof",
+}
+
+func isTransient(err error) bool {
+	msg := strings.ToLower(err.Error())
+	for _, marker := range transientMarkers {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *Daemon) turnWithRetry(ctx context.Context, a Agent, prompt string) (string, error) {
+	text, err := d.turn(ctx, a, prompt)
+	if err == nil || !isTransient(err) || ctx.Err() != nil {
+		return text, err
+	}
+	log.Printf("turn for %s (%s) dropped; retrying once: %v", a.Name, a.ID, err)
+	d.logEntry(a, "Turn dropped by a connection error; retrying once: "+err.Error())
+	d.post(a.ChatID, a.ID, a.Name, KindProgress, "The connection to the model dropped. Retrying.")
+	return d.turn(ctx, d.fresh(a), retryPrompt)
 }
 
 func (d *Daemon) turn(ctx context.Context, a Agent, prompt string) (string, error) {
@@ -371,12 +400,22 @@ func (d *Daemon) execTurn(ctx context.Context, a Agent, prompt string) (TurnResu
 	}
 	parsed, err := spec.parse(res.Stdout)
 	if err != nil {
+		log.Printf("turn output for %s (%s), exit %d\nstderr:\n%s\nstdout tail:\n%s",
+			a.Name, a.ID, res.ExitCode, tail(string(res.Stderr), 4000), tail(string(res.Stdout), 2000))
 		return TurnResult{}, fmt.Errorf("%w (exit %d, stderr: %s)", err, res.ExitCode, truncate(strings.TrimSpace(string(res.Stderr)), 300))
 	}
 	return parsed, nil
 }
 
 const promptSeparator = "\n\n---\n\n"
+
+func tail(s string, n int) string {
+	trimmed := strings.TrimSpace(s)
+	if len(trimmed) <= n {
+		return trimmed
+	}
+	return "…" + strings.ToValidUTF8(trimmed[len(trimmed)-n:], "")
+}
 
 func (d *Daemon) promptFor(a Agent, prompt string) (string, error) {
 	withRecord := d.recordPrompt(a) + promptSeparator + prompt
