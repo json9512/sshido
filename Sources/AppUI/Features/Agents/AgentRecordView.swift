@@ -118,7 +118,7 @@ struct AgentRecordView: View {
                 ForEach(Array(AgentTrackEntry.parse(text).reversed().enumerated()), id: \.offset) { _, entry in
                     VStack(alignment: .leading, spacing: DS.Spacing.xxs) {
                         Text(entry.date.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? entry.heading).font(DS.Font.monoSmall).foregroundStyle(DS.Color.textTertiary)
-                        Text(entry.body).font(DS.Font.caption).foregroundStyle(DS.Color.textPrimary).textSelection(.enabled)
+                        Text(ChatMarkdown.attributed(entry.body)).font(DS.Font.caption).foregroundStyle(DS.Color.textPrimary).textSelection(.enabled)
                     }
                     .tideRow()
                 }

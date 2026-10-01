@@ -272,4 +272,12 @@ final class AgentModeTests: XCTestCase {
         XCTAssertEqual(AgentTrackEntry.parse(""), [])
         XCTAssertEqual(AgentTrackEntry.parse("## x\n\nkeeps ## inside a line\n"), [AgentTrackEntry(heading: "x", date: nil, body: "keeps ## inside a line")])
     }
+
+    func testListsLocalModelsThroughTheAgentImage() {
+        XCTAssertEqual(AgentHostCommands.listLocalModels(podman: "podman", endpoint: "http://host.containers.internal:8083/v1/"),
+                       "'podman' run --rm --entrypoint curl localhost/sshido-agent:latest -fsS -m 8 'http://host.containers.internal:8083/v1/models'")
+        let output = #"{"object":"list","data":[{"id":"qwen3.6:35b-instruct","object":"model"},{"id":"gemma4:31b-instruct"},{"id":"qwen3.6:35b-instruct"},{"id":""}]}"#
+        XCTAssertEqual(AgentHostCommands.parseModelList(output), ["gemma4:31b-instruct", "qwen3.6:35b-instruct"])
+        XCTAssertEqual(AgentHostCommands.parseModelList("curl: (7) Failed to connect"), [])
+    }
 }
