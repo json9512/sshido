@@ -257,10 +257,11 @@ enum ChatItem: Identifiable {
     case agent(AgentChatMessage, identity: AgentIdentity, header: Bool, collapsible: Bool)
     case event(AgentChatMessage, identity: AgentIdentity?, style: AgentEventRow.Style)
     case question(AgentChatMessage, identity: AgentIdentity)
+    case signIn(AgentChatMessage, identity: AgentIdentity)
 
     var id: Int64 {
         switch self {
-        case .user(let m), .agent(let m, _, _, _), .event(let m, _, _), .question(let m, _): return m.id
+        case .user(let m), .agent(let m, _, _, _), .event(let m, _, _), .question(let m, _), .signIn(let m, _): return m.id
         }
     }
 
@@ -293,6 +294,8 @@ enum ChatItem: Identifiable {
             return .user(message)
         case .needsInput:
             return .question(message, identity: identity)
+        case .signIn:
+            return .signIn(message, identity: identity)
         case .error:
             return .event(message, identity: message.author == "sshido" ? nil : identity, style: .error)
         case .progress:

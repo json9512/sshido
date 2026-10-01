@@ -6,6 +6,7 @@ const (
 	KindProgress   = "progress"
 	KindDone       = "done"
 	KindNeedsInput = "needs_input"
+	KindSignIn     = "sign_in"
 	KindError      = "error"
 	KindFile       = "file"
 )
@@ -104,6 +105,7 @@ const (
 	OpStop       = "stop"
 	OpCreateChat = "createChat"
 	OpDeleteChat = "deleteChat"
+	OpSignedIn   = "signedIn"
 )
 
 type AppEvent struct {

@@ -1,0 +1,17 @@
+#!/bin/bash
+set -euo pipefail
+
+logins="${HOME}/.logins/browser.json"
+
+desktop start
+export DISPLAY=:1
+export AGENT_BROWSER_HEADED=1
+export AGENT_BROWSER_ARGS="--start-maximized"
+
+browser_running() { pgrep -u "$(id -u)" -f -- '--user-data-dir=/tmp/agent-browser-chrome-' >/dev/null; }
+
+if [ "${1:-}" = "open" ] && [ -s "$logins" ] && ! browser_running; then
+	agent-browser-real open about:blank >/dev/null
+	agent-browser-real state load "$logins" >/dev/null
+fi
+exec agent-browser-real "$@"

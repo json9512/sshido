@@ -11,11 +11,14 @@ RUN apt-get update \
     chromium fonts-noto-cjk \
     xvfb openbox x11vnc xdotool scrot x11-utils xterm novnc python3-websockify \
  && rm -rf /var/lib/apt/lists/*
-RUN npm install -g @openai/codex @google/gemini-cli agent-browser && npm cache clean --force
+RUN npm install -g @openai/codex @google/gemini-cli agent-browser && npm cache clean --force \
+ && mv /usr/local/bin/agent-browser /usr/local/bin/agent-browser-real
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 RUN useradd --create-home --uid 1001 --shell /bin/bash agent
 COPY --from=build /out/agentctl /usr/local/bin/agentctl
 COPY --chmod=755 images/agent/desktop /usr/local/bin/desktop
+COPY --chmod=755 images/agent/agent-browser /usr/local/bin/agent-browser
+COPY --chmod=755 images/agent/browser-logins /usr/local/bin/browser-logins
 USER agent
 ENV PATH=/home/agent/.local/bin:/opt/grok/bin:$PATH
 RUN curl -fsSL https://claude.ai/install.sh | bash

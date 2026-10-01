@@ -8,6 +8,7 @@ geometry="${DESKTOP_GEOMETRY:-1280x800x24}"
 usage() {
 	cat >&2 <<'USAGE'
 usage:
+  desktop start                        start the screen if it is not running
   desktop run <program> [args]         open a program on the screen
   desktop screenshot <file.png>        save what is on the screen
   desktop click <x> <y> [right|middle|double]
@@ -87,6 +88,9 @@ button() {
 command="$1"
 shift
 case "$command" in
+start)
+	start
+	;;
 run)
 	[ $# -ge 1 ] || usage
 	start

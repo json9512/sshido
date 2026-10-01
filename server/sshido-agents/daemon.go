@@ -153,6 +153,7 @@ func (d *Daemon) containerSpec(id, role, token string, spec harnessSpec) Contain
 			d.cfg.BusVolume:       "/bus",
 			d.cfg.WorkspaceVolume: "/workspace",
 			"sshido-auth-" + strings.TrimPrefix(spec.stateDir, "."): "/home/agent/" + spec.stateDir,
+			loginsVolume: loginsDir,
 		},
 		Binds:   d.cfg.HostDirs,
 		Ports:   []int{desktopPort},
@@ -169,7 +170,7 @@ func (d *Daemon) startContainer(ctx context.Context, name string, cspec Containe
 		return fmt.Errorf("start container for %s: %w", name, err)
 	}
 	chown, err := d.pods.Exec(ctx, cspec.Name, ExecSpec{
-		Cmd: []string{"chown", "agent:agent", "/workspace", "/home/agent/" + spec.stateDir}, User: "0",
+		Cmd: []string{"chown", "agent:agent", "/workspace", "/home/agent/" + spec.stateDir, loginsDir}, User: "0",
 	})
 	if err != nil || chown.ExitCode != 0 {
 		return fmt.Errorf("prepare volumes for %s: %v %s", name, err, truncate(string(chown.Stderr), 200))
@@ -543,6 +544,43 @@ func (d *Daemon) DeleteChat(ctx context.Context, id string) error {
 	}
 	d.hub.Publish(AppEvent{Type: EventChatRemoved, ChatID: id})
 	return nil
+}
+
+func (d *Daemon) SignedIn(ctx context.Context, id string) error {
+	a, err := d.store.Agent(id)
+	if err != nil {
+		return err
+	}
+	if a.Status == StatusStopped {
+		return fmt.Errorf("%s is stopped", a.Name)
+	}
+	d.post(a.ChatID, "", "you", KindUser, "Signed in on "+a.Name+"'s desktop.")
+	note := d.keepLogins(ctx, a)
+	updated, err := d.saveRecord(a, newWork(a), "The person signed in on the desktop.")
+	if err != nil {
+		log.Printf("record the sign-in for %s: %v", a.ID, err)
+		updated = a
+	}
+	d.enqueue(updated, signedInPrompt+note)
+	return nil
+}
+
+func (d *Daemon) keepLogins(ctx context.Context, a Agent) string {
+	res, err := d.pods.Exec(ctx, a.Container, ExecSpec{Cmd: []string{"browser-logins", "save"}, User: "agent", WorkDir: "/workspace"})
+	if err == nil && res.ExitCode == 0 {
+		return ""
+	}
+	detail := truncate(execFailure(res, err), 300)
+	log.Printf("keep the browser sign-ins of %s: %s", a.ID, detail)
+	d.post(a.ChatID, a.ID, a.Name, KindError, "The sign-in works in this browser, but could not be kept for other agents: "+detail)
+	return "\n\nThe sign-in could not be kept for other agents: " + detail
+}
+
+func execFailure(res ExecResult, err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	return fmt.Sprintf("exit %d: %s", res.ExitCode, strings.TrimSpace(string(res.Stderr)))
 }
 
 func (d *Daemon) StopAgent(ctx context.Context, id string) error {

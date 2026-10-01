@@ -25,8 +25,9 @@ podman build -f images/agent/Containerfile  -t localhost/sshido-agent:latest .
 ```
 
 The agent image carries Claude Code, Codex, Gemini CLI, Grok, `agentctl`, a
-headless browser (`agent-browser`) and a virtual desktop driven by the
-`desktop` command (Xvfb, Openbox, x11vnc, noVNC).
+browser (`agent-browser`) and a virtual desktop driven by the `desktop` command
+(Xvfb, Openbox, x11vnc, noVNC). The `agent-browser` in the image is a wrapper:
+the browser opens on the desktop, so the person can watch it.
 Then open **Settings → Agent mode** in the app, pick the host, and tap
 **Set up host**; the app creates the notify secret and starts the daemon.
 
@@ -65,6 +66,14 @@ Agents share one workspace volume (`sshido-agents-workspace` at `/workspace`).
 Each harness keeps its login in its own volume (`sshido-auth-claude`,
 `sshido-auth-codex`, `sshido-auth-gemini`, `sshido-auth-grok`); the app's
 **Sign in** buttons open a terminal that runs the harness's own sign-in.
+
+Website sign-ins live in the volume `sshido-browser-logins` at
+`/home/agent/.logins`. An agent that hits a login page runs
+`agentctl report --sign-in "<site and why>"`; the app shows a card that opens
+the agent's desktop, and when the person taps Done the daemon runs
+`browser-logins save` in that container (merging its cookies and storage into
+`browser.json`) and tells the agent to continue. Every agent's browser loads
+`browser.json` when it starts. Remove agents keeps this volume.
 
 ## Try it without the app
 

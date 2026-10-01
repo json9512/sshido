@@ -68,5 +68,5 @@ func setupFingerprint(dirs []HostDir) string {
 	for _, d := range dirs {
 		parts = append(parts, d.Target()+"="+d.Source)
 	}
-	return strings.Join(append(parts, fmt.Sprintf("desktop=%d", desktopPort)), "\n")
+	return strings.Join(append(parts, fmt.Sprintf("desktop=%d", desktopPort), "logins="+loginsVolume), "\n")
 }
