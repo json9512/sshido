@@ -72,13 +72,25 @@ struct AgentMessageHeader: View {
 enum ChatMarkdown {
     static func attributed(_ source: String) -> AttributedString {
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+            .filter { !isTableSeparator($0) }
         return lines.enumerated().reduce(AttributedString()) { acc, pair in
             acc + (pair.offset == 0 ? AttributedString() : AttributedString("\n")) + line(pair.element)
         }
     }
 
+    static func isTableSeparator(_ raw: String) -> Bool {
+        raw.range(of: #"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$"#, options: .regularExpression) != nil
+    }
+
     private static func line(_ raw: String) -> AttributedString {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("|") && trimmed.hasSuffix("|") && trimmed.count > 1 {
+            let cells = trimmed.dropFirst().dropLast().split(separator: "|", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            return cells.enumerated().reduce(AttributedString()) { acc, pair in
+                acc + (pair.offset == 0 ? AttributedString() : AttributedString("  ·  ")) + inline(pair.element)
+            }
+        }
         if let heading = trimmed.firstMatch(of: /^#{1,6}\s+(.*)$/) {
             return inline(String(heading.1)).mergingAttributes(AttributeContainer().font(DS.Font.sans(16, .semibold)))
         }

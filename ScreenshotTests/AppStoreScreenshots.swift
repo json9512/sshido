@@ -132,9 +132,7 @@ final class AppStoreScreenshots: XCTestCase {
         if claude.waitForExistence(timeout: 5), claude.value as? String != "1" { claude.switches.firstMatch.tap() }
         let local = app.switches["Local model"].firstMatch
         if local.waitForExistence(timeout: 5), local.value as? String != "1" { local.switches.firstMatch.tap() }
-        let fields = localModelFields()
-        replace(fields.element(boundBy: max(fields.count - 1, 0)), with: try setting("SSHIDO_SCREENSHOT_MODEL"))
-        dismissKeyboard()
+        _ = button(startingWith: "qwen").waitForExistence(timeout: 30)
         app.swipeDown()
         sleep(1)
         try capture("settings-models")
