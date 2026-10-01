@@ -54,8 +54,11 @@ final class AgentModeController: ObservableObject {
     @Published private(set) var creation: Creation = .idle
     @Published var notice: String?
     @Published private(set) var attachmentFiles: [Int64: URL] = [:]
+    @Published private(set) var localModels: [String] = []
+    @Published private(set) var loadingLocalModels = false
     private var attachmentLoads: [Int64: Task<URL, Error>] = [:]
     private var desktopTunnel: OAuthTunnel?
+    private let downloads = SerialGate()
 
     private let store = AgentModeSettingsStore()
     private var bridge: AgentBridge?
@@ -395,7 +398,8 @@ final class AgentModeController: ObservableObject {
         if FileManager.default.fileExists(atPath: file.path) { return file }
         let bridge = try await makeBridge()
         let podman = try await podman(using: bridge)
-        let data = try await bridge.runData(AgentHostCommands.file(podman: podman, messageID: message.id))
+        let command = AgentHostCommands.file(podman: podman, messageID: message.id)
+        let data = try await downloads.run { try await bridge.runData(command) }
         guard Int64(data.count) == attachment.size else {
             throw AgentModeError.incompleteFile(expected: attachment.size, got: Int64(data.count))
         }
@@ -408,6 +412,22 @@ final class AgentModeController: ObservableObject {
         let dir = caches.appendingPathComponent("agent-files/\(settings.hostID?.uuidString ?? "none")", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    func refreshLocalModels() async {
+        guard settings.hostID != nil, !loadingLocalModels else { return }
+        loadingLocalModels = true
+        defer { loadingLocalModels = false }
+        do {
+            let bridge = try await makeBridge()
+            let podman = try await podman(using: bridge)
+            let output = try await bridge.run(AgentHostCommands.listLocalModels(podman: podman, endpoint: settings.localURL))
+            localModels = AgentHostCommands.parseModelList(output)
+            if localModels.isEmpty { log("The local endpoint listed no models.") }
+        } catch {
+            localModels = []
+            log("Could not list local models: \(Self.message(for: error))")
+        }
     }
 
     func trackRecord(of agent: AgentInfo) async throws -> String {

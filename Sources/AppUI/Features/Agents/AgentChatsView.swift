@@ -56,10 +56,7 @@ struct AgentChatsView: View {
 
     private var list: some View {
         List {
-            AgentConnectionBanner()
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-            if !agents.historyLoaded {
+            if !agents.historyLoaded && agents.chats.isEmpty {
                 ForEach(0..<3, id: \.self) { _ in AgentChatRowSkeleton().tideRow() }
             }
             ForEach(agents.chats.reversed()) { chat in
@@ -74,6 +71,7 @@ struct AgentChatsView: View {
             }
         }
         .tideList()
+        .safeAreaInset(edge: .top, spacing: 0) { AgentConnectionBanner() }
     }
 
     private func busy(_ chat: AgentChat) -> Bool {
@@ -146,6 +144,7 @@ struct AgentConnectionBanner: View {
             }
             .frame(maxWidth: .infinity)
             .padding(DS.Spacing.sm)
+            .background(DS.Color.surface0)
         case .failed(let reason):
             banner(icon: "exclamationmark.triangle.fill", text: reason, actionIcon: "arrow.clockwise", actionLabel: "Retry") { agents.startChat() }
         }
