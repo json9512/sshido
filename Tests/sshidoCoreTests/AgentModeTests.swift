@@ -46,6 +46,16 @@ final class AgentModeTests: XCTestCase {
         XCTAssertNil(AgentHarness.signInNeeded(by: try agent(harness: "claude"), error: "turn failed: claude error_max_turns: stopped"))
     }
 
+    func testDecodesSignInRequestAndEncodesSignedIn() throws {
+        let line = #"{"type":"message","message":{"id":7,"chatId":"c1","agentId":"3fe75dd1","author":"orchestrator","kind":"sign_in","text":"Slack, to read the thread","createdAt":1}}"#
+        guard case .event(.message(let m)) = feed([line + "\n"]).first else { return XCTFail("want a message") }
+        XCTAssertEqual(m.kind, .signIn)
+        XCTAssertEqual(m.agentId, "3fe75dd1")
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(AgentRequest.signedIn(agentID: "3fe75dd1"))) as? [String: Any]
+        XCTAssertEqual(encoded?["op"] as? String, "signedIn")
+        XCTAssertEqual(encoded?["agentId"] as? String, "3fe75dd1")
+    }
+
     func testDecodesAttachmentMessage() {
         let line = #"{"type":"message","message":{"id":9,"chatId":"c1","agentId":"a1","author":"orchestrator","kind":"file","text":"front page","createdAt":1,"attachment":{"name":"hn.png","mime":"image/png","size":138405}}}"#
         guard case .event(.message(let m)) = feed([line + "\n"]).first else { return XCTFail("want message") }

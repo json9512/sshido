@@ -59,7 +59,7 @@ func TestAgentsGetHostDirsAndRecreateWhenTheyChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pods.created[0].Binds) != 1 || orch.Mounts != "/host/code=/Users/me/code\ndesktop=6080" {
+	if len(pods.created[0].Binds) != 1 || orch.Mounts != "/host/code=/Users/me/code\ndesktop=6080\nlogins=sshido-browser-logins" {
 		t.Fatalf("binds %+v mounts %q", pods.created[0].Binds, orch.Mounts)
 	}
 	oldToken := pods.created[0].Env["SSHIDO_AGENT_TOKEN"]

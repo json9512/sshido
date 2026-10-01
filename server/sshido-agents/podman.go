@@ -16,6 +16,11 @@ import (
 
 const desktopPort = 6080
 
+const (
+	loginsVolume = "sshido-browser-logins"
+	loginsDir    = "/home/agent/.logins"
+)
+
 type ContainerSpec struct {
 	Name    string
 	Image   string

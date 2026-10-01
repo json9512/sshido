@@ -40,7 +40,7 @@ const ctlUsage = `usage:
   agentctl verify "<what you checked and what you saw>"
   agentctl status in_progress|blocked|done ["<note>"]
   agentctl record [--to <agent-id>]
-  agentctl report --progress "<text>" | --needs-input "<question>"
+  agentctl report --progress "<text>" | --needs-input "<question>" | --sign-in "<site and why>"
   agentctl attach <path> [--caption "<text>"]
 orchestrator only:
   agentctl spawn --name <name> --goal "<what done looks like>" --task "<task>" [--harness <harness>] [--model <model>]
@@ -89,6 +89,7 @@ func parseCtl(args []string) (BusRequest, error) {
 	to := fs.String("to", "", "")
 	progress := fs.String("progress", "", "")
 	needsInput := fs.String("needs-input", "", "")
+	signIn := fs.String("sign-in", "", "")
 	caption := fs.String("caption", "", "")
 	positional, err := parseInterleaved(fs, rest)
 	if err != nil {
@@ -111,7 +112,7 @@ func parseCtl(args []string) (BusRequest, error) {
 	case BusVerdict:
 		return parseVerdict(*to, *pass, *fail, text)
 	case BusReport:
-		return parseReport(*progress, *needsInput)
+		return parseReport(*progress, *needsInput, *signIn)
 	case BusAttach:
 		if len(positional) != 1 {
 			return BusRequest{}, errors.New("attach needs exactly one file path")
@@ -154,14 +155,23 @@ func parseVerdict(to string, pass, fail bool, reason string) (BusRequest, error)
 	return BusRequest{Op: BusVerdict, To: to, Kind: VerdictFail, Text: reason}, nil
 }
 
-func parseReport(progress, needsInput string) (BusRequest, error) {
-	if (progress == "") == (needsInput == "") {
-		return BusRequest{}, errors.New("report needs exactly one of --progress or --needs-input")
+func parseReport(progress, needsInput, signIn string) (BusRequest, error) {
+	given := []BusRequest{
+		{Op: BusReport, Kind: KindProgress, Text: progress},
+		{Op: BusReport, Kind: KindNeedsInput, Text: needsInput},
+		{Op: BusReport, Kind: KindSignIn, Text: signIn},
 	}
-	if progress != "" {
-		return BusRequest{Op: BusReport, Kind: KindProgress, Text: progress}, nil
+	reports := []BusRequest{}
+	for _, r := range given {
+		if r.Text == "" {
+			continue
+		}
+		reports = append(reports, r)
 	}
-	return BusRequest{Op: BusReport, Kind: KindNeedsInput, Text: needsInput}, nil
+	if len(reports) != 1 {
+		return BusRequest{}, errors.New("report needs exactly one of --progress, --needs-input or --sign-in")
+	}
+	return reports[0], nil
 }
 
 func callBus(path string, req BusRequest) (BusResponse, error) {
