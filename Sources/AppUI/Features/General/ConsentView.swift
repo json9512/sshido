@@ -51,8 +51,8 @@ public struct ConsentView: View {
                     bulletPoint(
                         icon: "bell.badge",
                         text: isKorean
-                            ? "푸시 알림은 선택 사항이며 자체 호스팅 가능합니다"
-                            : "Push notifications are optional and self-hostable"
+                            ? "푸시 알림은 선택 사항이며 릴레이 소스는 공개되어 있습니다"
+                            : "Push notifications are optional, and the relay's source is public"
                     )
                     bulletPoint(
                         icon: "ladybug",

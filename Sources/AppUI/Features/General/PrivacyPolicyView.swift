@@ -40,7 +40,7 @@ public struct PrivacyPolicyView: View {
                 "SSH credentials are encrypted at rest in the iOS Keychain and accessible only while your device is unlocked. Host configs, sessions, and preferences are stored locally in the app sandbox. None of this is uploaded.")
 
             policySection("Push notifications (optional)",
-                "If enabled, your APNs device token is sent to push.sshido.com over HTTPS. The relay stores only a random subscriber ID, the token, a notification count, and a mute flag. When your server or an agent sends an alert, its title and text pass through the relay to Apple's push service so they can appear on your device; the relay does not store them. No credentials or personal info is stored. You may self-host the relay.")
+                "If enabled, your APNs device token is sent to push.sshido.com over HTTPS. The relay stores only a random subscriber ID, the token, a notification count, and a mute flag. When your server or an agent sends an alert, its title and text pass through the relay to Apple's push service so they can appear on your device; the relay does not store them. No credentials or personal info is stored. The relay's source is public; a relay you run yourself works only with your own build of sshido.")
 
             policySection("Agent mode (optional)",
                 "Agent mode runs on a server you choose, reached over SSH. Chats, agents, and their files are stored on that server, not by sshido. Agents use the model providers you sign in to (such as Anthropic, OpenAI, Google, or xAI) or a model you host yourself. Prompts and files go from your server to those providers under their terms, never through sshido. On Linux servers, Claude agents use that server's own Claude Code setup, including its connectors and MCP servers.")
@@ -73,7 +73,7 @@ public struct PrivacyPolicyView: View {
                 "SSH 자격 증명은 iOS 키체인에 암호화되어 저장되며, 기기 잠금이 해제된 상태에서만 접근할 수 있습니다. 호스트 설정, 세션, 환경설정은 앱 샌드박스에 로컬 저장됩니다. 서버에 업로드되지 않습니다.")
 
             policySection("푸시 알림 (선택 사항)",
-                "활성화 시 APNs 기기 토큰이 HTTPS로 push.sshido.com에 전송됩니다. 릴레이는 무작위 구독자 ID, 토큰, 알림 횟수, 알림 끄기 여부만 저장합니다. 서버나 에이전트가 알림을 보내면 그 제목과 내용이 기기에 표시되도록 릴레이를 거쳐 Apple 푸시 서비스로 전달되며, 릴레이는 이를 저장하지 않습니다. 자격 증명과 개인정보는 저장하지 않습니다. 자체 릴레이 호스팅이 가능합니다.")
+                "활성화 시 APNs 기기 토큰이 HTTPS로 push.sshido.com에 전송됩니다. 릴레이는 무작위 구독자 ID, 토큰, 알림 횟수, 알림 끄기 여부만 저장합니다. 서버나 에이전트가 알림을 보내면 그 제목과 내용이 기기에 표시되도록 릴레이를 거쳐 Apple 푸시 서비스로 전달되며, 릴레이는 이를 저장하지 않습니다. 자격 증명과 개인정보는 저장하지 않습니다. 릴레이 소스는 공개되어 있으며, 직접 운영하는 릴레이는 직접 빌드한 sshido에서만 동작합니다.")
 
             policySection("에이전트 모드 (선택 사항)",
                 "에이전트 모드는 사용자가 고른 서버에서 SSH로 실행됩니다. 채팅, 에이전트, 작업 파일은 sshido가 아니라 그 서버에 저장됩니다. 에이전트는 사용자가 로그인한 모델 제공자(Anthropic, OpenAI, Google, xAI 등)나 직접 운영하는 모델을 사용합니다. 프롬프트와 파일은 서버에서 해당 제공자로 직접 전송되며 각 제공자의 약관을 따르고, sshido를 거치지 않습니다. Linux 서버에서는 Claude 에이전트가 그 서버의 Claude Code 설정(커넥터와 MCP 서버 포함)을 사용합니다.")

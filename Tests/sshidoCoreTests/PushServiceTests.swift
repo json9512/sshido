@@ -1,7 +1,15 @@
 import XCTest
 @testable import sshidoCore
+import sshidoModels
 
 final class PushServiceTests: XCTestCase {
+    func testOnlyTheAppStoreBundleIsLockedToTheHostedRelay() {
+        XCTAssertTrue(PushSettings.usesHostedRelayOnly(bundleID: "com.sshido.app"))
+        XCTAssertFalse(PushSettings.usesHostedRelayOnly(bundleID: "com.example.sshido"))
+        XCTAssertFalse(PushSettings.usesHostedRelayOnly(bundleID: nil))
+        XCTAssertEqual(PushSettings.default.serverURL, "https://push.sshido.com")
+    }
+
     func testValidNotifyURLIsAccepted() {
         XCTAssertTrue(PushService.isValidNotifyURL("https://push.sshido.com/n/abcdef0123456789abcdef0123456789"))
         XCTAssertTrue(PushService.isValidNotifyURL("http://192.168.1.50:8787/n/xyz123"))
