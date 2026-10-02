@@ -79,7 +79,7 @@ struct PrivacySettingsView: View {
                 Toggle(isOn: $crashReports) { TideRow(icon: "ant", title: "Crash reports") }
                     .tideRow()
             } footer: {
-                Text("Anonymous. No credentials or terminal content. Applies on next launch.")
+                Text("A random install ID only. No name, email, credentials or terminal content. Applies on next launch.")
                     .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
             }
             Section {

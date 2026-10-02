@@ -97,6 +97,7 @@ func main() {
 	mux.HandleFunc("/n/", limiter.middleware(s.notify))
 	mux.HandleFunc("/privacy", s.privacy)
 	mux.HandleFunc("/self-host", s.selfHost)
+	mux.Handle("/site/", s.siteAsset())
 	mux.HandleFunc("/", s.landing)
 
 	log.Printf("sshido push server on %s (storage=%s apns=%v)", cfg.addr, cfg.storage, s.apns != nil)

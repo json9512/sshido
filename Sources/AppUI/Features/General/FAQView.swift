@@ -39,6 +39,32 @@ public struct FAQView: View {
                     a: "No. Your normal login shell and rc files run as usual."
                 )
             }
+            Section(header: SectionLabel("Agents")) {
+                FAQItem(
+                    q: "What is agent mode?",
+                    a: "A chat with coding agents that run on your own server. An orchestrator plans each request, starts subagents in Podman containers on your host when the work calls for it, checks their evidence, and replies with the result. Tap an agent in the chat to see its goal, verdict and desktop."
+                )
+                FAQItem(
+                    q: "What does the agent host need?",
+                    a: """
+                    A Mac or Linux machine you reach over SSH, with Podman and the two sshido images built on it. About & help › Agent host guide has the commands.
+
+                    Then turn agents on in Settings › Agents, pick the host, and tap the box button under Host. The app starts the agents daemon over SSH.
+                    """
+                )
+                FAQItem(
+                    q: "Which models can agents use?",
+                    a: "Claude Code, Codex, Gemini CLI and Grok with your own subscriptions (tap Sign in in Settings › Agents), or a local model behind an OpenAI-compatible endpoint with the Responses API. sshido never sits between your server and the model provider."
+                )
+                FAQItem(
+                    q: "Can agents use my MCP servers and connectors?",
+                    a: """
+                    On a Linux host, yes. Claude agents use that host's own Claude Code setup in ~/.claude and ~/.claude.json: your claude.ai sign-in, connectors, plugins and MCP servers. They use them without asking.
+
+                    On a Mac host, agents keep their own sign-in and get none of these, because macOS keeps Claude Code's sign-ins in the Keychain. Codex, Gemini, Grok and local-model agents do not get MCP servers from the host.
+                    """
+                )
+            }
             Section(header: SectionLabel("Connectivity")) {
                 FAQItem(
                     q: "Connecting from LTE or another network?",
@@ -67,6 +93,7 @@ public struct FAQView: View {
                     • Citadel — SSH protocol (github.com/orlandos-nl/Citadel)
                     • SwiftTerm — terminal emulator (github.com/migueldeicaza/SwiftTerm)
                     • Sentry Cocoa — crash reporting (github.com/getsentry/sentry-cocoa)
+                    • Lottie — animations (github.com/airbnb/lottie-ios)
 
                     Transitive (pulled in by the above):
                     • SwiftNIO, SwiftNIO SSH, SwiftCrypto
