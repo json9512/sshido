@@ -15,6 +15,13 @@ public actor AgentBridge {
         self.channel = channel
     }
 
+    public var isUsable: Bool {
+        get async {
+            guard connected else { return true }
+            return await channel.isAlive
+        }
+    }
+
     private func ensureConnected() async throws {
         if connected { return }
         try await channel.connect()

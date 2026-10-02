@@ -150,6 +150,32 @@ final class AgentModeTests: XCTestCase {
         XCTAssertTrue(claude.contains("runuser -u agent"))
         let grok = AgentHostCommands.login(podman: "podman", harness: .grok) ?? ""
         XCTAssertTrue(grok.contains("grok login --device-auth"))
+        XCTAssertFalse(grok.contains("$H"))
+    }
+
+    func testClaudeLoginWritesTheHostConfigOnLinuxHosts() throws {
+        let claude = try XCTUnwrap(AgentHostCommands.login(podman: "podman", harness: .claude))
+        XCTAssertTrue(claude.hasPrefix(#"H="$([ "$(uname -s)" = Linux ]"#), claude)
+        XCTAssertTrue(claude.contains("--userns keep-id:uid=1001,gid=1001"), claude)
+        XCTAssertTrue(claude.contains(#"-v "$H/.claude.json:$H/.claude/.claude.json""#), claude)
+        XCTAssertTrue(claude.contains(#"-e "CLAUDE_CONFIG_DIR=$H/.claude""#), claude)
+        XCTAssertTrue(claude.contains("else 'podman' run -it --rm --user 0 -v sshido-auth-claude:/home/agent/.claude"), claude)
+        try assertShellParses(claude)
+    }
+
+    func testDaemonLearnsTheHostClaudeHomeFromTheHost() throws {
+        let cmd = AgentHostCommands.startDaemon(podman: "podman", socketPath: "/s", settings: .default, hostName: "h", notify: false)
+        XCTAssertTrue(cmd.contains(#"-e "SSHIDO_HOST_CLAUDE_HOME=$([ "$(uname -s)" = Linux ] && [ -d "$HOME/.claude" ] && [ -f "$HOME/.claude.json" ] && printf %s "$HOME")""#), cmd)
+        try assertShellParses(cmd)
+    }
+
+    private func assertShellParses(_ command: String, file: StaticString = #filePath, line: UInt = #line) throws {
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+        shell.arguments = ["-n", "-c", command]
+        try shell.run()
+        shell.waitUntilExit()
+        XCTAssertEqual(shell.terminationStatus, 0, "sh -n rejected: \(command)", file: file, line: line)
     }
 
     func testSettingsRoundTrip() throws {

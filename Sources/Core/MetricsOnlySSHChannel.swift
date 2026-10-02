@@ -33,6 +33,7 @@ public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
 
     public var isConnected: Bool { get async { connected } }
     public var isClosed: Bool { get async { closed } }
+    public var isAlive: Bool { get async { connected && client?.isConnected == true } }
 
     public func setOutputHandler(onData: @escaping @Sendable (Data) async -> Void,
                                  onClose: @escaping @Sendable () -> Void) {
