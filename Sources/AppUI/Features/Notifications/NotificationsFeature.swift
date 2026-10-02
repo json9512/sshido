@@ -68,6 +68,7 @@ struct NotificationsSettingsView: View {
     @State private var toast: String?
     @State private var confirmClear = false
     @State private var feedbackID = FeedbackPreferences.shared.themeID
+    private let hostedOnly = PushSettings.usesHostedRelayOnly(bundleID: Bundle.main.bundleIdentifier)
 
     var body: some View {
         List {
@@ -81,11 +82,7 @@ struct NotificationsSettingsView: View {
             }
             Section {
                 HStack(spacing: DS.Spacing.sm) {
-                    TextField("https://push.sshido.com", text: $serverURL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .font(DS.Font.monoBody)
+                    relayAddress
                     if working {
                         ProgressView().tint(DS.Color.accent).frame(width: 40)
                     } else {
@@ -104,6 +101,11 @@ struct NotificationsSettingsView: View {
                 subscriptionRow.tideRow()
             } header: {
                 SectionLabel("Relay")
+            } footer: {
+                if hostedOnly {
+                    Text("The App Store build can only receive pushes through push.sshido.com. A relay you run yourself needs your own build of sshido.")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                }
             }
             Section {
                 NavigationLink { PushGuideView() } label: {
@@ -170,7 +172,26 @@ struct NotificationsSettingsView: View {
         }
     }
 
-    private var trimmedURL: String { serverURL.trimmingCharacters(in: .whitespacesAndNewlines) }
+    @ViewBuilder
+    private var relayAddress: some View {
+        if hostedOnly {
+            Text(PushSettings.default.serverURL)
+                .font(DS.Font.monoBody)
+                .foregroundStyle(DS.Color.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            TextField("https://push.sshido.com", text: $serverURL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .font(DS.Font.monoBody)
+        }
+    }
+
+    private var trimmedURL: String {
+        guard !hostedOnly else { return PushSettings.default.serverURL }
+        return serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     private func reload() async {
         settings = await services.push.settings
@@ -215,11 +236,11 @@ struct PushGuideView: View {
 
     var body: some View {
         GuideView(title: "Push notifications", steps: [
-            GuideStep(icon: "antenna.radiowaves.left.and.right", title: "Pick a relay",
-                      text: "The relay passes messages from your servers to Apple's push service. The hosted relay at push.sshido.com works out of the box. Running your own needs an Apple Developer account and your own build of sshido, because Apple only accepts pushes signed with the key of the team that ships the app.",
+            GuideStep(icon: "antenna.radiowaves.left.and.right", title: "The relay",
+                      text: "The relay passes messages from your servers to Apple's push service. The App Store build uses the hosted relay at push.sshido.com, whose source is public. Running your own needs an Apple Developer account and your own build of sshido, because Apple only accepts pushes signed with the key of the team that ships the app.",
                       code: "cd server/sshido-relay && go build -o sshido-relay .\n./sshido-relay -public-url https://relay.example.com \\\n  -bundle-id <your bundle id> -key AuthKey_XXXX.p8 \\\n  -key-id XXXXXXXXXX -team-id XXXXXXXXXX -production"),
             GuideStep(icon: "paperplane", title: "Subscribe this phone",
-                      text: "Enter the relay's address in Notifications and send. The relay returns a private notify URL for this phone. Anyone with it can send you a push, so keep it secret.",
+                      text: "In Notifications, tap the send button. The relay returns a private notify URL for this phone. Anyone with it can send you a push, so keep it secret.",
                       code: notifyURL),
             GuideStep(icon: "terminal", title: "Connect each server",
                       text: "Copy the host setup prompt from Notifications, open Claude Code on the server through sshido, and paste it. It installs a hook that pushes when Claude needs you, finishes, or fails. Only sessions opened from sshido push.",
@@ -230,7 +251,7 @@ struct PushGuideView: View {
             GuideStep(icon: "text.badge.checkmark", title: "Plain text",
                       text: "Markdown in a message is turned into plain text before it reaches your lock screen.",
                       code: nil),
-        ], link: ("Self-hosting guide on GitHub", "https://github.com/json9512/sshido/tree/main/server/sshido-relay"))
+        ], link: ("Relay source on GitHub", "https://github.com/json9512/sshido/tree/main/server/sshido-relay"))
         .task { notifyURL = await services.push.subscription?.notifyURL }
     }
 }

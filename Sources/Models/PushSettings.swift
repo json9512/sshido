@@ -16,4 +16,10 @@ public struct PushSettings: Codable, Hashable, Sendable {
     }
 
     public static let `default` = PushSettings(serverURL: "https://push.sshido.com")
+
+    public static let hostedRelayBundleID = "com.sshido.app"
+
+    public static func usesHostedRelayOnly(bundleID: String?) -> Bool {
+        bundleID == hostedRelayBundleID
+    }
 }

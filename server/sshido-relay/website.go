@@ -209,8 +209,8 @@ footer a:hover{color:var(--text)}
   <div class="wrap split flip">
     <div class="copy">
       <h2>Put the phone down. It will tell you when an agent needs you.</h2>
-      <p>A push arrives the moment an agent finishes or waits for your input, and hosts turn amber while Claude is waiting. Alerts go through a small relay that is open source and free to run yourself.</p>
-      <p class="note"><a href="/self-host">Run your own relay</a></p>
+      <p>A push arrives the moment an agent finishes or waits for your input, and hosts turn amber while Claude is waiting. Alerts go through a small relay at push.sshido.com. Its source is public, so you can check that it keeps only what it needs to reach your phone and never the alert text.</p>
+      <p class="note"><a href="https://github.com/json9512/sshido/tree/main/server/sshido-relay">Read the relay's source</a></p>
     </div>
     <img class="screen" src="/site/notifications.jpg" width="660" height="1434" loading="lazy" alt="Notification settings in sshido: notifications on, subscribed to the push.sshido.com relay, and a choice of haptics.">
   </div>
