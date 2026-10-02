@@ -48,6 +48,7 @@ Then open **Settings → Agent mode** in the app, pick the host, and tap
 | `SSHIDO_WORKER_HARNESSES`, `SSHIDO_WORKER_LOCAL_MODEL` | comma-separated harnesses the orchestrator may pick, and the model for `local` among them |
 | `SSHIDO_LOCAL_URL` | OpenAI-compatible endpoint with the Responses API, as seen from a container, e.g. `http://host.containers.internal:8083/v1` |
 | `SSHIDO_HOST_DIRS` | JSON array of absolute host paths, e.g. `["/Users/me/code"]`. Every agent gets each one read-only at `/host/<folder name>`. On macOS the Podman VM only sees `/Users`, `/private` and `/var/folders` |
+| `SSHIDO_HOST_CLAUDE_HOME` | the host user's home directory, e.g. `/home/me`, to give Claude agents the host's Claude Code config (see below). The app sets it only on Linux hosts that have both `~/.claude` and `~/.claude.json`; empty turns it off |
 
 Every chat has its own orchestrator, subagents and history. The orchestrator
 plans from the person's request, starts subagents when the work calls for them
@@ -66,6 +67,63 @@ Agents share one workspace volume (`sshido-agents-workspace` at `/workspace`).
 Each harness keeps its login in its own volume (`sshido-auth-claude`,
 `sshido-auth-codex`, `sshido-auth-gemini`, `sshido-auth-grok`); the app's
 **Sign in** buttons open a terminal that runs the harness's own sign-in.
+On a Linux host with its own Claude Code config, Claude agents use that
+config instead of `sshido-auth-claude`.
+
+## Host Claude Code config: MCP servers and plugins (Linux hosts)
+
+On a Linux host, Claude agents (orchestrator and subagents) run on the host
+user's own Claude Code config. Each Claude agent mounts, read-write:
+
+| Host path | In the agent |
+| --- | --- |
+| `~/.claude` | the same absolute path, as `CLAUDE_CONFIG_DIR` |
+| `~/.claude.json` | `~/.claude/.claude.json`, where Claude Code reads it when `CLAUDE_CONFIG_DIR` is set |
+
+So agents get the host's claude.ai sign-in, claude.ai connectors, plugins,
+user-scoped MCP servers and the MCP sign-ins in `~/.claude/.credentials.json`,
+and token refreshes land in the same file the host uses. Plugins need the same
+absolute path because `~/.claude/plugins/installed_plugins.json` records them
+that way. Agents run with `--dangerously-skip-permissions`, so they use every
+connector and MCP server in that config without asking.
+
+What to know before you rely on it:
+
+- **macOS hosts get none of this.** Claude Code on macOS keeps its live
+  sign-ins in the Keychain, which containers cannot read; the
+  `~/.claude/.credentials.json` there can be stale, and refreshing from it can
+  sign the Mac out of claude.ai or a connector. On a Mac, Claude agents keep
+  their own sign-in in `sshido-auth-claude` and get no host plugins or MCP
+  servers.
+- **Only Claude agents.** Codex, Gemini, Grok and local-model agents keep their
+  own login volumes and get no MCP servers from the host.
+- **Every agent maps to your user.** With the config shared, every agent
+  container on the host runs with `--userns keep-id:uid=1001,gid=1001`, so the
+  agent user is your host user and files agents write in `~/.claude` stay
+  yours. On the first start in this mode, each agent takes ownership of
+  `/workspace` and its login volume (`find … ! -user agent -exec chown …`).
+- **`127.0.0.1` is the container, not the host.** An MCP server the host
+  reaches at `http://127.0.0.1:<port>` fails inside agents. Point it at
+  `host.containers.internal`, or listen on an address the container network
+  reaches.
+- **Environment variables do not travel.** A plugin that reads a token from
+  the host shell (for example the GitHub plugin's
+  `GITHUB_PERSONAL_ACCESS_TOKEN`) fails inside agents. Put the variable under
+  `"env"` in `~/.claude/settings.json` if agents should have it.
+- **Hooks run inside agents too.** Hooks in `~/.claude/settings.json` that call
+  host-only paths fail in agents; the turn still runs.
+- **A placeholder file appears.** Podman creates an empty `~/.claude/.claude.json`
+  on the host as the mount point for `~/.claude.json`. Host Claude Code ignores
+  it unless you set `CLAUDE_CONFIG_DIR` yourself.
+- **Sign in on the host.** The app's Claude **Sign in** button runs
+  `claude auth login --claudeai` against the shared config on Linux hosts,
+  which signs in the host's Claude Code too.
+
+To turn it on for an existing host, update the images, update the app, then
+tap the box button under **Settings › Agents › Host** again: the daemon
+restarts with `SSHIDO_HOST_CLAUDE_HOME` set and recreates existing agents with
+the new mounts. The app has no switch for it; a daemon started by hand with
+`SSHIDO_HOST_CLAUDE_HOME` empty runs without it.
 
 Website sign-ins live in the volume `sshido-browser-logins` at
 `/home/agent/.logins`. An agent that hits a login page runs

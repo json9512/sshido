@@ -5,6 +5,11 @@ import sshidoModels
 @available(macOS 15.0, *)
 final class AgentBridgeIntegrationTests: XCTestCase {
     private func bridge() throws -> (AgentBridge, String) {
+        let (bridge, podman, _) = try connection()
+        return (bridge, podman)
+    }
+
+    private func connection() throws -> (AgentBridge, String, MetricsOnlySSHChannel) {
         let env = ProcessInfo.processInfo.environment
         guard let host = env["SSHIDO_AGENT_E2E_HOST"] else {
             throw XCTSkip("set SSHIDO_AGENT_E2E_HOST to run against a real host")
@@ -15,7 +20,23 @@ final class AgentBridgeIntegrationTests: XCTestCase {
         let channel = MetricsOnlySSHChannel(
             host: host, port: 22, user: env["SSHIDO_AGENT_E2E_USER"] ?? NSUserName(),
             auth: .privateKeyPEM(pem, passphrase: nil), hostKeyConfirm: { _ in .trust })
-        return (AgentBridge(channel: channel), env["SSHIDO_AGENT_E2E_PODMAN"] ?? "podman")
+        return (AgentBridge(channel: channel), env["SSHIDO_AGENT_E2E_PODMAN"] ?? "podman", channel)
+    }
+
+    func testUnconnectedBridgeIsUsable() async {
+        let channel = MetricsOnlySSHChannel(host: "203.0.113.1", port: 22, user: "nobody", auth: .password("unused"))
+        let usable = await AgentBridge(channel: channel).isUsable
+        XCTAssertTrue(usable)
+    }
+
+    func testBridgeIsUnusableAfterItsConnectionDiesUnderneath() async throws {
+        let (bridge, _, channel) = try connection()
+        _ = try await bridge.run("true")
+        let usableWhileOpen = await bridge.isUsable
+        XCTAssertTrue(usableWhileOpen)
+        await channel.disconnect()
+        let usableAfterDeath = await bridge.isUsable
+        XCTAssertFalse(usableAfterDeath)
     }
 
     func testAttachmentsDownloadIntact() async throws {

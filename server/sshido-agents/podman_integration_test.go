@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -85,5 +86,52 @@ func TestPodmanDesktopOnLoopbackPort(t *testing.T) {
 	bound := inspect.NetworkSettings.Ports["6080/tcp"]
 	if len(bound) != 1 || bound[0].HostIp != "127.0.0.1" || bound[0].HostPort == "" || bound[0].HostPort == "0" {
 		t.Fatalf("desktop port must be published on a random loopback port, got %+v", bound)
+	}
+}
+
+func TestPodmanAgentWritesSharedHostConfigAsTheHostUser(t *testing.T) {
+	socket, image := os.Getenv("SSHIDO_TEST_PODMAN_SOCKET"), os.Getenv("SSHIDO_TEST_AGENT_IMAGE")
+	if socket == "" || image == "" {
+		t.Skip("set SSHIDO_TEST_PODMAN_SOCKET and SSHIDO_TEST_AGENT_IMAGE to run against a real Podman")
+	}
+	home, err := os.MkdirTemp(os.Getenv("HOME"), "sshido-claudehome-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(home)
+	if err := os.Mkdir(filepath.Join(home, ".claude"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	pods := newPodmanAPI(socket)
+	name := "sshido-claudehome-test-" + randomHex(4)
+	defer pods.Remove(context.Background(), name)
+	claude := harnessSpec{stateDir: ".claude"}
+	spec := ContainerSpec{Name: name, Image: image, Writable: hostClaudeBinds(home, claude), KeepID: true, User: "agent", WorkDir: "/tmp"}
+	if err := pods.Create(ctx, spec); err != nil {
+		t.Fatal(err)
+	}
+	if err := pods.Start(ctx, name); err != nil {
+		t.Fatal(err)
+	}
+	script := "cat " + home + "/.claude/.claude.json && echo '{\"written\":true}' > " + home + "/.claude/.claude.json && touch " + home + "/.claude/fromagent"
+	run, err := pods.Exec(ctx, name, ExecSpec{Cmd: []string{"sh", "-c", script}, User: "agent"})
+	if err != nil || run.ExitCode != 0 || !strings.Contains(string(run.Stdout), "mcpServers") {
+		t.Fatalf("agent read/write: %v exit %d out %q err %q", err, run.ExitCode, run.Stdout, run.Stderr)
+	}
+	written, err := os.ReadFile(filepath.Join(home, ".claude.json"))
+	if err != nil || strings.TrimSpace(string(written)) != `{"written":true}` {
+		t.Fatalf("host .claude.json after the agent wrote it: %q %v", written, err)
+	}
+	info, err := os.Stat(filepath.Join(home, ".claude", "fromagent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owner := info.Sys().(*syscall.Stat_t).Uid; int(owner) != os.Getuid() {
+		t.Fatalf("file the agent created is owned by uid %d, want the host user %d", owner, os.Getuid())
 	}
 }

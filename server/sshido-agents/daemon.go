@@ -30,6 +30,7 @@ type Config struct {
 	BusVolume           string
 	HostName            string
 	HostDirs            []HostDir
+	HostClaudeHome      string
 	TurnTimeout         time.Duration
 }
 
@@ -58,6 +59,10 @@ func loadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	claudeHome, err := parseHostClaudeHome(os.Getenv("SSHIDO_HOST_CLAUDE_HOME"))
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
 		DataDir:             env("SSHIDO_DATA_DIR", "/data"),
 		BusDir:              env("SSHIDO_BUS_DIR", "/bus"),
@@ -73,6 +78,7 @@ func loadConfig() (Config, error) {
 		BusVolume:           env("SSHIDO_BUS_VOLUME", "sshido-agents-bus"),
 		HostName:            env("SSHIDO_HOST_NAME", "agents"),
 		HostDirs:            hostDirs,
+		HostClaudeHome:      claudeHome,
 		TurnTimeout:         time.Duration(minutes) * time.Minute,
 	}
 	return cfg, nil
@@ -139,6 +145,7 @@ func (d *Daemon) setStatus(id, status string) {
 }
 
 func (d *Daemon) containerSpec(id, role, token string, spec harnessSpec) ContainerSpec {
+	home := d.cfg.HostClaudeHome
 	return ContainerSpec{
 		Name:  "sshido-agent-" + id,
 		Image: d.cfg.AgentImage,
@@ -146,32 +153,47 @@ func (d *Daemon) containerSpec(id, role, token string, spec harnessSpec) Contain
 			"SSHIDO_AGENT_ID":    id,
 			"SSHIDO_AGENT_TOKEN": token,
 			"SSHIDO_BUS":         "/bus/bus.sock",
-			"CLAUDE_CONFIG_DIR":  "/home/agent/.claude",
+			"CLAUDE_CONFIG_DIR":  claudeConfigDir(home, spec),
 		},
-		Labels: map[string]string{"sshido.agents": "1", "sshido.agent.id": id, "sshido.agent.role": role},
-		Volumes: map[string]string{
-			d.cfg.BusVolume:       "/bus",
-			d.cfg.WorkspaceVolume: "/workspace",
-			"sshido-auth-" + strings.TrimPrefix(spec.stateDir, "."): "/home/agent/" + spec.stateDir,
-			loginsVolume: loginsDir,
-		},
-		Binds:   d.cfg.HostDirs,
-		Ports:   []int{desktopPort},
-		User:    "agent",
-		WorkDir: "/workspace",
+		Labels:   map[string]string{"sshido.agents": "1", "sshido.agent.id": id, "sshido.agent.role": role},
+		Volumes:  d.agentVolumes(spec),
+		Binds:    d.cfg.HostDirs,
+		Writable: hostClaudeBinds(home, spec),
+		KeepID:   home != "",
+		Owned:    d.ownedDirs(spec),
+		Ports:    []int{desktopPort},
+		User:     "agent",
+		WorkDir:  "/workspace",
 	}
 }
 
-func (d *Daemon) startContainer(ctx context.Context, name string, cspec ContainerSpec, spec harnessSpec) error {
+func (d *Daemon) agentVolumes(spec harnessSpec) map[string]string {
+	if sharesHostClaude(d.cfg.HostClaudeHome, spec) {
+		return map[string]string{d.cfg.BusVolume: "/bus", d.cfg.WorkspaceVolume: "/workspace", loginsVolume: loginsDir}
+	}
+	return map[string]string{
+		d.cfg.BusVolume:       "/bus",
+		d.cfg.WorkspaceVolume: "/workspace",
+		"sshido-auth-" + strings.TrimPrefix(spec.stateDir, "."): "/home/agent/" + spec.stateDir,
+		loginsVolume: loginsDir,
+	}
+}
+
+func (d *Daemon) ownedDirs(spec harnessSpec) []string {
+	if sharesHostClaude(d.cfg.HostClaudeHome, spec) {
+		return []string{"/workspace", loginsDir}
+	}
+	return []string{"/workspace", "/home/agent/" + spec.stateDir, loginsDir}
+}
+
+func (d *Daemon) startContainer(ctx context.Context, name string, cspec ContainerSpec) error {
 	if err := d.pods.Create(ctx, cspec); err != nil {
 		return fmt.Errorf("create container for %s: %w", name, err)
 	}
 	if err := d.pods.Start(ctx, cspec.Name); err != nil {
 		return fmt.Errorf("start container for %s: %w", name, err)
 	}
-	chown, err := d.pods.Exec(ctx, cspec.Name, ExecSpec{
-		Cmd: []string{"chown", "agent:agent", "/workspace", "/home/agent/" + spec.stateDir, loginsDir}, User: "0",
-	})
+	chown, err := d.pods.Exec(ctx, cspec.Name, ExecSpec{Cmd: ownershipCommand(cspec), User: "0"})
 	if err != nil || chown.ExitCode != 0 {
 		return fmt.Errorf("prepare volumes for %s: %v %s", name, err, truncate(string(chown.Stderr), 200))
 	}
@@ -186,13 +208,13 @@ func (d *Daemon) createAgent(ctx context.Context, draft Agent) (Agent, error) {
 	id := randomHex(4)
 	token := randomHex(24)
 	cspec := d.containerSpec(id, draft.Role, token, spec)
-	if err := d.startContainer(ctx, draft.Name, cspec, spec); err != nil {
+	if err := d.startContainer(ctx, draft.Name, cspec); err != nil {
 		return Agent{}, err
 	}
 	a, err := d.store.AddAgent(Agent{
 		ID: id, ChatID: draft.ChatID, Name: draft.Name, Role: draft.Role, Harness: draft.Harness, Model: draft.Model,
 		Status: StatusIdle, Task: draft.Task, Goal: draft.Goal, WorkStatus: draft.WorkStatus,
-		Mounts: setupFingerprint(d.cfg.HostDirs), Container: cspec.Name,
+		Mounts: setupFingerprint(d.cfg.HostDirs, d.cfg.HostClaudeHome), Container: cspec.Name,
 	}, token)
 	if err != nil {
 		return Agent{}, err
@@ -211,10 +233,10 @@ func (d *Daemon) recontain(ctx context.Context, a Agent) error {
 		return fmt.Errorf("remove old container for %s: %w", a.Name, err)
 	}
 	token := randomHex(24)
-	if err := d.startContainer(ctx, a.Name, d.containerSpec(a.ID, a.Role, token, spec), spec); err != nil {
+	if err := d.startContainer(ctx, a.Name, d.containerSpec(a.ID, a.Role, token, spec)); err != nil {
 		return err
 	}
-	_, err = d.store.Recontain(a.ID, token, setupFingerprint(d.cfg.HostDirs))
+	_, err = d.store.Recontain(a.ID, token, setupFingerprint(d.cfg.HostDirs, d.cfg.HostClaudeHome))
 	return err
 }
 
@@ -420,7 +442,7 @@ func tail(s string, n int) string {
 
 func (d *Daemon) promptFor(a Agent, prompt string) (string, error) {
 	withRecord := d.recordPrompt(a) + promptSeparator + prompt
-	current := setupFingerprint(d.cfg.HostDirs)
+	current := setupFingerprint(d.cfg.HostDirs, d.cfg.HostClaudeHome)
 	if a.Session != "" && a.Briefed == current {
 		return withRecord, nil
 	}
@@ -630,7 +652,7 @@ func (d *Daemon) recoverAgent(ctx context.Context, a Agent) {
 }
 
 func (d *Daemon) restartAgent(ctx context.Context, a Agent) {
-	if a.Mounts == setupFingerprint(d.cfg.HostDirs) {
+	if a.Mounts == setupFingerprint(d.cfg.HostDirs, d.cfg.HostClaudeHome) {
 		if err := d.pods.Start(ctx, a.Container); err != nil {
 			log.Printf("restart agent %s container: %v", a.ID, err)
 		}

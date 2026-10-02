@@ -22,15 +22,18 @@ const (
 )
 
 type ContainerSpec struct {
-	Name    string
-	Image   string
-	Env     map[string]string
-	Labels  map[string]string
-	Volumes map[string]string
-	Binds   []HostDir
-	Ports   []int
-	User    string
-	WorkDir string
+	Name     string
+	Image    string
+	Env      map[string]string
+	Labels   map[string]string
+	Volumes  map[string]string
+	Binds    []HostDir
+	Writable []WritableBind
+	KeepID   bool
+	Owned    []string
+	Ports    []int
+	User     string
+	WorkDir  string
 }
 
 type ExecSpec struct {
@@ -116,8 +119,8 @@ type bindMount struct {
 	Options     []string `json:"options"`
 }
 
-func selinuxFor(binds []HostDir) []string {
-	if len(binds) == 0 {
+func selinuxFor(mounts []bindMount) []string {
+	if len(mounts) == 0 {
 		return nil
 	}
 	return []string{"disable"}
@@ -129,6 +132,26 @@ func readOnlyBinds(dirs []HostDir) []bindMount {
 		out = append(out, bindMount{Destination: d.Target(), Source: d.Source, Type: "bind", Options: []string{"ro", "rbind"}})
 	}
 	return out
+}
+
+func writableBinds(binds []WritableBind) []bindMount {
+	out := make([]bindMount, 0, len(binds))
+	for _, b := range binds {
+		out = append(out, bindMount{Destination: b.Target, Source: b.Source, Type: "bind", Options: []string{"rbind"}})
+	}
+	return out
+}
+
+type userNamespace struct {
+	Mode  string `json:"nsmode"`
+	Value string `json:"value"`
+}
+
+func usernsFor(keepID bool) *userNamespace {
+	if !keepID {
+		return nil
+	}
+	return &userNamespace{Mode: "keep-id", Value: "uid=1001,gid=1001"}
 }
 
 type portMapping struct {
@@ -150,6 +173,7 @@ func (p *podmanAPI) Create(ctx context.Context, spec ContainerSpec) error {
 	for name, dest := range spec.Volumes {
 		volumes = append(volumes, namedVolume{Name: name, Dest: dest})
 	}
+	mounts := append(readOnlyBinds(spec.Binds), writableBinds(spec.Writable)...)
 	body := map[string]any{
 		"name":         spec.Name,
 		"image":        spec.Image,
@@ -160,9 +184,10 @@ func (p *podmanAPI) Create(ctx context.Context, spec ContainerSpec) error {
 		"user":         spec.User,
 		"work_dir":     spec.WorkDir,
 		"init":         true,
-		"mounts":       readOnlyBinds(spec.Binds),
+		"mounts":       mounts,
 		"portmappings": loopbackPorts(spec.Ports),
-		"selinux_opts": selinuxFor(spec.Binds),
+		"selinux_opts": selinuxFor(mounts),
+		"userns":       usernsFor(spec.KeepID),
 	}
 	_, err := p.expect(ctx, http.MethodPost, "/containers/create", body, http.StatusCreated)
 	return err

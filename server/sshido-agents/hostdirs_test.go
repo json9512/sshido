@@ -47,7 +47,7 @@ func TestCreateBodyMountsHostDirsReadOnly(t *testing.T) {
 	if string(out) != `[{"destination":"/host/code","source":"/Users/me/code","type":"bind","options":["ro","rbind"]}]` {
 		t.Fatalf("mounts %s", out)
 	}
-	if selinuxFor(nil) != nil || strings.Join(selinuxFor([]HostDir{{}}), ",") != "disable" {
+	if selinuxFor(nil) != nil || strings.Join(selinuxFor([]bindMount{{}}), ",") != "disable" {
 		t.Fatal("label=disable only when host folders are mounted")
 	}
 }

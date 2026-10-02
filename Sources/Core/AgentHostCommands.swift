@@ -18,6 +18,8 @@ public enum AgentHostCommands {
 
     public static let findPodman = "\(pathPrefix); command -v podman || true"
 
+    static let hostClaudeHome = #"$([ "$(uname -s)" = Linux ] && [ -d "$HOME/.claude" ] && [ -f "$HOME/.claude.json" ] && printf %s "$HOME")"#
+
     public static func status(podman: String) -> String {
         let p = q(podman)
         let checks = [
@@ -55,7 +57,7 @@ public enum AgentHostCommands {
             "-v \(q("\(socket):/run/podman.sock"))",
             "-v \(busVolume):/bus -v \(dataVolume):/data -v \(workspaceVolume):/workspace",
             notify ? "--secret \(notifySecret),type=env,target=SSHIDO_NOTIFY_URL" : nil,
-            envFlags, daemonImage, "daemon",
+            envFlags, "-e \"SSHIDO_HOST_CLAUDE_HOME=\(hostClaudeHome)\"", daemonImage, "daemon",
         ].compactMap { $0 }.joined(separator: " ")
     }
 
@@ -133,7 +135,12 @@ public enum AgentHostCommands {
         let dir = harness.loginDirectory
         let inner = "chown agent:agent \(dir) && exec runuser -u agent -- env HOME=/home/agent "
             + "CLAUDE_CONFIG_DIR=/home/agent/.claude \(command)"
-        return "\(q(podman)) run -it --rm --user 0 -v \(harness.loginVolume):\(dir) \(agentImage) sh -c \(q(inner))"
+        let ownVolume = "\(q(podman)) run -it --rm --user 0 -v \(harness.loginVolume):\(dir) \(agentImage) sh -c \(q(inner))"
+        guard harness == .claude else { return ownVolume }
+        let hostConfig = "\(q(podman)) run -it --rm --user agent --userns keep-id:uid=1001,gid=1001 --security-opt label=disable "
+            + #"-v "$H/.claude:$H/.claude" -v "$H/.claude.json:$H/.claude/.claude.json" -e "CLAUDE_CONFIG_DIR=$H/.claude" "#
+            + "\(agentImage) \(command)"
+        return "H=\"\(hostClaudeHome)\"; if [ -n \"$H\" ]; then \(hostConfig); else \(ownVolume); fi"
     }
 }
 

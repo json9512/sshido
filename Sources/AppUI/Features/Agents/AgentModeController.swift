@@ -92,7 +92,8 @@ final class AgentModeController: ObservableObject {
     }
 
     private func makeBridge() async throws -> AgentBridge {
-        if let bridge { return bridge }
+        if let bridge, await bridge.isUsable { return bridge }
+        await dropBridge()
         guard let host = await host() else { throw AgentModeError.noHost }
         let auth = try await HostAuth.resolve(for: host)
         let channel = await SessionStore.shared.metricsChannel(for: host, auth: auth)
@@ -260,25 +261,45 @@ final class AgentModeController: ObservableObject {
     }
 
     private func runChat() async {
-        do {
-            let bridge = try await makeBridge()
-            let podman = try await podman(using: bridge)
-            let before = AgentHostStatus.parse(try await bridge.run(AgentHostCommands.status(podman: podman)))
-            if case .stopped = before.daemon {
-                _ = try await bridge.run(AgentHostCommands.restartDaemon(podman: podman))
-            }
-            guard before.daemon != .missing else { throw AgentModeError.notSetUp }
-            for try await output in await bridge.events(podman: podman, since: lastMessageID) {
-                apply(output)
-            }
-            connection = .failed("The connection to the agents ended. Pull to reconnect.")
-        } catch is CancellationError {
-            connection = .disconnected
-        } catch {
-            connection = .failed(Self.message(for: error))
-            await dropBridge()
-        }
+        let failure = await connectAndStream(retriesLeft: 1)
+        guard !Task.isCancelled else { return }
+        connection = .failed(failure)
         streamTask = nil
+    }
+
+    private func connectAndStream(retriesLeft: Int) async -> String {
+        do {
+            try await streamEvents()
+            await dropBridge()
+            return "The connection to the agents ended. Pull to reconnect."
+        } catch {
+            guard !Task.isCancelled else { return Self.message(for: error) }
+            await dropBridge()
+            guard retriesLeft > 0, Self.isConnectionLoss(error) else { return Self.message(for: error) }
+            log("Lost the SSH connection (\(Self.message(for: error))). Reconnecting.")
+            return await connectAndStream(retriesLeft: retriesLeft - 1)
+        }
+    }
+
+    private func streamEvents() async throws {
+        let bridge = try await makeBridge()
+        let podman = try await podman(using: bridge)
+        let before = AgentHostStatus.parse(try await bridge.run(AgentHostCommands.status(podman: podman)))
+        if case .stopped = before.daemon {
+            _ = try await bridge.run(AgentHostCommands.restartDaemon(podman: podman))
+        }
+        guard before.daemon != .missing else { throw AgentModeError.notSetUp }
+        for try await output in await bridge.events(podman: podman, since: lastMessageID) {
+            apply(output)
+        }
+    }
+
+    static func isConnectionLoss(_ error: Error) -> Bool {
+        switch error {
+        case SSHError.notConnected, SSHError.transport: return true
+        case is SSHError, is AgentModeError, is CancellationError: return false
+        default: return true
+        }
     }
 
     private func apply(_ output: AgentLineDecoder.Output) {
