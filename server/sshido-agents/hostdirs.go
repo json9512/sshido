@@ -63,10 +63,14 @@ func uniqueName(base string, taken []HostDir, n int) string {
 	return name
 }
 
-func setupFingerprint(dirs []HostDir) string {
-	parts := make([]string, 0, len(dirs)+1)
+func setupFingerprint(dirs []HostDir, claudeHome string) string {
+	parts := make([]string, 0, len(dirs)+3)
 	for _, d := range dirs {
 		parts = append(parts, d.Target()+"="+d.Source)
 	}
-	return strings.Join(append(parts, fmt.Sprintf("desktop=%d", desktopPort), "logins="+loginsVolume), "\n")
+	base := append(parts, fmt.Sprintf("desktop=%d", desktopPort), "logins="+loginsVolume)
+	if claudeHome == "" {
+		return strings.Join(base, "\n")
+	}
+	return strings.Join(append(base, "claude-home="+claudeHome), "\n")
 }

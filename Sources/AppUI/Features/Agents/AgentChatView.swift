@@ -17,10 +17,6 @@ struct AgentChatView: View {
 
     @EnvironmentObject private var router: AppRouter
     @ObservedObject private var agents = AgentModeController.shared
-    @State private var draft = ""
-    @State private var dictator = SpeechDictator()
-    @State private var voiceEnabled = false
-    @State private var dictationLocaleID = ""
     @State private var notice: String?
     @State private var selectedAgent: AgentInfo?
     @State private var signIn: SignInDesktop?
@@ -37,22 +33,15 @@ struct AgentChatView: View {
                 ContentUnavailableView("Chat removed", systemImage: "bubble.left.and.exclamationmark.bubble.right")
             } else {
                 messageList
-                composer
+                AgentChatComposer(chatID: chatID, notice: $notice)
             }
         }
         .background(DS.Color.surface0)
         .navigationTitle(chat?.title ?? "Agents")
         .toolbarTitleDisplayMode(.inline)
-        .task {
-            let appearance = await AppearanceStore.shared.appearance
-            voiceEnabled = appearance.voiceDictationEnabled
-            dictationLocaleID = appearance.dictationLocaleID
-        }
+        .keyboardDismissButton()
         .onAppear { agents.hold() }
-        .onDisappear {
-            dictator.cancel()
-            agents.release()
-        }
+        .onDisappear { agents.release() }
         .signInDesktop($signIn) { id in Task { await openSignIn(agentID: id) } }
         .sheet(item: $selectedAgent) { agent in
             NavigationStack {
@@ -109,10 +98,11 @@ struct AgentChatView: View {
                 }
                 .padding(DS.Spacing.md)
             }
+            .defaultScrollAnchor(.bottom)
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: bottomID) { _, _ in
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                withAnimation(agents.historyLoaded ? .easeOut(duration: 0.2) : nil) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
-            .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
         }
     }
 
@@ -121,6 +111,72 @@ struct AgentChatView: View {
         ForEach(working) { agent in
             ActivityRow(text: "\(agent.name) is working", since: Date(timeIntervalSince1970: TimeInterval(agent.updatedAt) / 1000))
         }
+    }
+
+    static let continuePrompt = "Continue where you left off."
+
+    private func retryAction(for item: ChatItem) -> (() -> Void)? {
+        guard case .event(let message, _, .error) = item,
+              message.id == chatMessages.last?.id,
+              agents.pending(in: chatID).isEmpty,
+              !chatAgents.contains(where: { $0.status == .working || $0.status == .starting }),
+              agents.connection == .connected else { return nil }
+        return { Task { _ = await agents.send(Self.continuePrompt, to: chatID) } }
+    }
+
+    private func signInAction(for item: ChatItem) -> (() -> Void)? {
+        guard case .event(let message, _, .error) = item,
+              let harness = AgentHarness.signInNeeded(by: chatAgents.first { $0.id == message.agentId }, error: message.text)
+        else { return nil }
+        return { Task { await agents.signIn(harness, router: router) } }
+    }
+
+    private func signInStatus(for item: ChatItem) -> AgentSignInCard.Status {
+        guard case .signIn(let message, _) = item else { return .ready }
+        if chatMessages.contains(where: { $0.id > message.id && $0.kind == .user }) { return .done }
+        switch signIn {
+        case .opening(let id) where id == message.agentId: return .opening
+        case .failed(let id, let reason) where id == message.agentId: return .failed(reason)
+        default: return .ready
+        }
+    }
+
+    private func openSignIn(agentID: String?) async {
+        guard let agentID else {
+            notice = "This sign-in request has no agent attached."
+            return
+        }
+        guard let agent = chatAgents.first(where: { $0.id == agentID }) else {
+            signIn = .failed(agentID: agentID, reason: "This agent is gone.")
+            return
+        }
+        signIn = .opening(agentID: agentID)
+        do {
+            signIn = .open(agentID: agentID, url: try await agents.openDesktop(of: agent))
+        } catch {
+            signIn = .failed(agentID: agentID, reason: AgentModeController.message(for: error))
+        }
+    }
+}
+
+private struct AgentChatComposer: View {
+    let chatID: String
+    @Binding var notice: String?
+
+    @ObservedObject private var agents = AgentModeController.shared
+    @State private var draft = ""
+    @State private var dictator = SpeechDictator()
+    @State private var voiceEnabled = false
+    @State private var dictationLocaleID = ""
+
+    var body: some View {
+        composer
+            .task {
+                let appearance = await AppearanceStore.shared.appearance
+                voiceEnabled = appearance.voiceDictationEnabled
+                dictationLocaleID = appearance.dictationLocaleID
+            }
+            .onDisappear { dictator.cancel() }
     }
 
     private var composer: some View {
@@ -171,51 +227,6 @@ struct AgentChatView: View {
                 }
                 if case .unavailable(let reason) = dictator.state { notice = reason }
             }
-        }
-    }
-
-    static let continuePrompt = "Continue where you left off."
-
-    private func retryAction(for item: ChatItem) -> (() -> Void)? {
-        guard case .event(let message, _, .error) = item,
-              message.id == chatMessages.last?.id,
-              agents.pending(in: chatID).isEmpty,
-              !chatAgents.contains(where: { $0.status == .working || $0.status == .starting }),
-              agents.connection == .connected else { return nil }
-        return { Task { _ = await agents.send(Self.continuePrompt, to: chatID) } }
-    }
-
-    private func signInAction(for item: ChatItem) -> (() -> Void)? {
-        guard case .event(let message, _, .error) = item,
-              let harness = AgentHarness.signInNeeded(by: chatAgents.first { $0.id == message.agentId }, error: message.text)
-        else { return nil }
-        return { Task { await agents.signIn(harness, router: router) } }
-    }
-
-    private func signInStatus(for item: ChatItem) -> AgentSignInCard.Status {
-        guard case .signIn(let message, _) = item else { return .ready }
-        if chatMessages.contains(where: { $0.id > message.id && $0.kind == .user }) { return .done }
-        switch signIn {
-        case .opening(let id) where id == message.agentId: return .opening
-        case .failed(let id, let reason) where id == message.agentId: return .failed(reason)
-        default: return .ready
-        }
-    }
-
-    private func openSignIn(agentID: String?) async {
-        guard let agentID else {
-            notice = "This sign-in request has no agent attached."
-            return
-        }
-        guard let agent = chatAgents.first(where: { $0.id == agentID }) else {
-            signIn = .failed(agentID: agentID, reason: "This agent is gone.")
-            return
-        }
-        signIn = .opening(agentID: agentID)
-        do {
-            signIn = .open(agentID: agentID, url: try await agents.openDesktop(of: agent))
-        } catch {
-            signIn = .failed(agentID: agentID, reason: AgentModeController.message(for: error))
         }
     }
 

@@ -83,6 +83,8 @@ struct AgentSetupGuideView: View {
             GuideStep(icon: "cpu", title: "Choose models",
                       text: "Frontier harnesses use your own subscriptions: tap Sign in and finish the login in the terminal that opens. Local models need an OpenAI-compatible endpoint with the Responses API (llama-swap, Ollama, LM Studio), as seen from inside a container.",
                       code: "http://host.containers.internal:8083/v1"),
+            GuideStep(icon: "puzzlepiece.extension", title: "Connectors and plugins (Linux hosts)",
+                      text: "On a Linux host, Claude agents use the host's own Claude Code setup in ~/.claude and ~/.claude.json: your claude.ai sign-in, connectors, plugins and MCP servers. They use them without asking. On a Mac host, agents keep their own sign-in and get no host plugins or MCP servers, because macOS keeps those sign-ins in the Keychain. An MCP server at 127.0.0.1 on the host is not reachable from agents; use host.containers.internal instead."),
             GuideStep(icon: "folder", title: "Share folders (optional)",
                       text: "Host folders are mounted read-only at /host/<name>. Agents copy what they change into their shared /workspace. On a Mac, only folders under /Users are visible to Podman."),
             GuideStep(icon: "bubble.left.and.bubble.right", title: "Start a chat",

@@ -74,7 +74,7 @@ func (f *fakePods) script(container string, replies ...string) {
 }
 
 func (f *fakePods) Exec(_ context.Context, name string, spec ExecSpec) (ExecResult, error) {
-	if spec.Cmd[0] == "chown" {
+	if spec.Cmd[0] == "chown" || spec.Cmd[0] == "find" {
 		return ExecResult{}, nil
 	}
 	f.mu.Lock()
