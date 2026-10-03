@@ -35,11 +35,12 @@ itself up on the remote host.
 
 ### 1. Subscribe from the iPhone
 
-Open sshido → **Settings › Notifications**, enter a push server URL and tap
-the send button.
+Open sshido → **Settings › Notifications** and tap the send button.
 
-- Default hosted relay: `https://push.sshido.com` (free, runs on Cloud Run).
-- Or self-hosted — see [Self-hosting the relay](#self-hosting-the-relay) below.
+The App Store build always uses the hosted relay at `https://push.sshido.com`
+(free, runs on Cloud Run), and the address can't be changed there. A build you
+sign yourself can point at a relay you run — see
+[Running your own relay](#running-your-own-relay) below.
 
 After subscribing, the app holds a **Notify URL** (e.g.
 `https://push.sshido.com/n/<capability-token>`). That URL is your personal push
@@ -78,25 +79,23 @@ If nothing arrives after a real task:
 - run `curl -fsS -X POST -H 'content-type: application/json' -d '{"title":"x","body":"y"}' "$(cat ~/.sshido/notify.url)"` and expect HTTP 204,
 - check **Settings → Notifications → sshido** on the iPhone is enabled.
 
-## Our promise
+## The hosted relay
 
-The relay is open source at [`server/sshido-relay/`](server/sshido-relay/).
-If the hosted service ever goes away, changes pricing in a way you don't
-like, or you simply want control of your own push pipeline, you can stand up
-the exact same binary with one deploy script. **Self-hosting is free and
-will always be free.** The paid `sshido Cloud` tier (when it exists) adds
-features like multiple endpoints, webhook forwarding, and a published SLA
-on top of the hosted relay — it never gates the self-host path.
+The relay's source is public at [`server/sshido-relay/`](server/sshido-relay/),
+so you can check what `push.sshido.com` does with your data: it keeps a random
+subscriber ID, your APNs device token, a notification count and a mute flag.
+Alert titles and text pass through to Apple's push service and are not stored.
 
 Public status: [status.sshido.com](https://status.sshido.com) (uptime probe
 against `push.sshido.com/health`).
 
-## Self-hosting the relay
+## Running your own relay
 
 `push.sshido.com` is a single Cloud Run service built from
 `server/sshido-relay/`. Apple only accepts pushes for an app signed with the
 key of the team that ships it, so a relay you run yourself can reach **your
-own build** of sshido, not the App Store build. To self-host you need:
+own build** of sshido, not the App Store build, which is locked to
+`push.sshido.com`. To run your own you need:
 
 - an Apple Developer account and an APNs `.p8` key,
 - sshido built with your own bundle id (`XcodeProject/Signing.local.xcconfig`),
