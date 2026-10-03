@@ -174,16 +174,16 @@ final class TerminalURLExtractorTests: XCTestCase {
     func testHardWrapNarrowerThanClientCols() {
         let wrapped = [
             "https://0a1b2c3d4e5f60718293a4b5c6d7e8f9.r2.clo",
-            "udflarestorage.com/yojeong/households/6d87135f-",
-            "1d11-4321-b8cf-de59d51ff5f3/devices/621c186f-57",
-            "47-405e-8cd2-44f45733b44c/2026/08/06/clip-17860",
+            "udflarestorage.com/example/households/11111111-",
+            "2222-4333-8444-555555555555/devices/66666666-77",
+            "77-4888-9999-aaaaaaaaaaaa/2026/08/06/clip-17860",
             "03488600.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X",
-            "-Amz-Credential=f6b1b967740f58980a0b9cdf65c1c82",
-            "5%2F20260806%2Fauto%2Fs3%2Faws4_request&X-Amz-D",
+            "-Amz-Credential=0123456789abcdef0123456789abcde",
+            "f%2F20260806%2Fauto%2Fs3%2Faws4_request&X-Amz-D",
             "ate=20260806T080530Z&X-Amz-Expires=14400&X-Amz-",
-            "SignedHeaders=host&X-Amz-Signature=a94428767b34",
-            "5c8474b01ace8a1ae33c297aeb41dd10d20aaa07ba24502",
-            "87f17",
+            "SignedHeaders=host&X-Amz-Signature=deadbeefdead",
+            "beefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdea",
+            "dbeef",
         ]
         for w in wrapped.dropLast() { XCTAssertEqual(w.count, 47) }
         let rows = ["클립 링크 (폰에서 바로 열립니다)", ""] + wrapped + ["", "오늘 21:05 KST까지 유효합니다"]
@@ -247,12 +247,12 @@ final class TerminalURLExtractorTests: XCTestCase {
     func testURLStartingTheRowAfterFullWidthProse() {
         let rows = [
             "  /sites should now render with data. Please open",
-            "  https://research.yojeong.kr/sites, because I",
+            "  https://reports.example.com/sites, because I",
             "  can't get past the Access login and still",
         ]
         XCTAssertEqual(rows[0].count, 49)
         XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
-                       ["https://research.yojeong.kr/sites"])
+                       ["https://reports.example.com/sites"])
     }
 
     func testParenthesisedURLClosedAtFullWidthRowEnd() {
@@ -372,11 +372,11 @@ final class TerminalURLExtractorTests: XCTestCase {
     func testUnindentedURLAfterFullWidthProse() {
         let rows = [
             "the page should now render with data, please open",
-            "https://research.yojeong.kr/sites and check it",
+            "https://reports.example.com/sites and check it",
         ]
         XCTAssertEqual(rows[0].count, 49)
         XCTAssertEqual(TerminalURLExtractor.extract(from: rows, cols: 49).map(\.raw),
-                       ["https://research.yojeong.kr/sites"])
+                       ["https://reports.example.com/sites"])
     }
 
     /// Captured from a live 49-col window: the indented URL row fills the
