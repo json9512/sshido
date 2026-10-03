@@ -61,14 +61,15 @@ driving AI coding agents — Claude Code, Codex, aider — from anywhere.
 • SSH & tmux — real xterm-256color terminal, Metal-rendered for speed, with
   persistent tmux sessions that survive reconnects and network drops.
 • Push notifications — get an APNs alert the instant your agent finishes a task
-  or needs input, via a free open-source relay you can self-host.
+  or needs input, via a free relay whose source is public.
 • Private by design — Ed25519/RSA keys stored in the iOS Keychain, host-key
   TOFU verification, and no terminal data sent to any third party.
 • Built for developers — customizable hotkey bar (Esc, Ctrl-C, arrows, newline,
   word-delete), one-tap OAuth sign-in helper, image upload, and smart copy of
   URLs and output.
 
-Self-hosting the push relay is free and always will be.
+The push relay's source is public, so you can check that it keeps only what it
+needs to reach your phone and never the alert text.
 ```
 
 ## Non-metadata levers (metadata gets you eligible; these get you ranked)
