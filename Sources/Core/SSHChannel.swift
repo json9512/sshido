@@ -1,4 +1,5 @@
 import Foundation
+import NIOPosix
 #if canImport(sshidoModels)
 import sshidoModels
 #endif
@@ -16,6 +17,7 @@ public protocol SSHChannel: AnyObject, Sendable {
                           onClose: @escaping @Sendable () -> Void)
     var isConnected: Bool { get async }
     var isClosed: Bool { get async }
+    var connectFailure: SSHError? { get async }
 }
 
 public extension SSHChannel {
@@ -34,6 +36,8 @@ public extension SSHChannel {
     func enqueueInput(_ bytes: [UInt8]) {
         Task { try? await self.send(bytes) }
     }
+
+    var connectFailure: SSHError? { get async { nil } }
 }
 
 public struct ShellBootstrap: Sendable {
@@ -59,6 +63,7 @@ public enum SSHError: Error, CustomStringConvertible, Sendable {
     case invalidKey(String)
     case hostKeyChanged(host: String, port: Int, expected: String, presented: String)
     case hostKeyRejected(host: String, port: Int)
+    case hostNotFound(host: String, port: Int)
 
     public var description: String {
         switch self {
@@ -70,6 +75,13 @@ public enum SSHError: Error, CustomStringConvertible, Sendable {
             return "host key for \(h):\(p) has changed — connection blocked"
         case .hostKeyRejected(let h, let p):
             return "host key for \(h):\(p) was not trusted — connection cancelled"
+        case .hostNotFound(let h, _):
+            return "Can't find \(h). If it's a Tailscale or VPN address, open Tailscale (or your VPN app) on this device and check it's connected and signed in."
         }
+    }
+
+    static func hostLookupFailure(_ error: Error) -> SSHError? {
+        guard let e = error as? NIOConnectionError, e.dnsAError != nil || e.dnsAAAAError != nil else { return nil }
+        return .hostNotFound(host: e.host, port: e.port)
     }
 }

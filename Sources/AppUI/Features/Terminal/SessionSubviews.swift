@@ -11,6 +11,8 @@ struct SessionLoadingScreen: View {
         VStack(spacing: DS.Spacing.lg) {
             AnimatedGlyph(animation: .connecting, size: CGSize(width: 84, height: 84))
             Text(label).font(DS.Font.callout).foregroundStyle(DS.Color.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, DS.Spacing.xl)
             if showStuckRecovery {
                 HStack(spacing: DS.Spacing.xl) {
                     IconButton(systemName: "chevron.left", label: "Back", action: onBack)
