@@ -31,6 +31,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
     private var ttyTask: Task<Void, Error>?
     private var connected = false
     private var connectTask: Task<Void, Error>?
+    private var lastConnectFailure: SSHError?
     private var inputGateOpen = false
     private(set) var heldInput: [[UInt8]] = []
     private var pendingResize: (cols: Int, rows: Int)?
@@ -57,6 +58,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
 
     public var isConnected: Bool { get async { connected } }
     public var isClosed: Bool { get async { didClose } }
+    public var connectFailure: SSHError? { get async { lastConnectFailure } }
 
     public func setOutputHandler(onData: @escaping @Sendable (Data) async -> Void,
                                  onClose: @escaping @Sendable () -> Void) {
@@ -74,10 +76,12 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
         if let connectTask { return try await connectTask.value }
         let task = Task { try await self.openShell() }
         connectTask = task
+        lastConnectFailure = nil
         do {
             try await task.value
         } catch {
             connectTask = nil
+            lastConnectFailure = error as? SSHError
             throw error
         }
     }
@@ -112,6 +116,7 @@ public final class CitadelSSHChannel: SSHChannel, @unchecked Sendable {
                 throw SSHError.hostKeyRejected(host: h, port: p)
             }
         } catch {
+            if let notFound = SSHError.hostLookupFailure(error) { throw notFound }
             let msg = String(describing: error)
             if msg.contains("authentication") || msg.contains("Auth") {
                 throw SSHError.authFailed(msg)

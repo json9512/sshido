@@ -28,6 +28,7 @@ public struct SessionView: View {
     @State private var stuckTimer: Task<Void, Never>?
     @State private var disconnectWatcher: Task<Void, Never>?
     @State private var isReconnecting = false
+    @State private var lookupHint: String?
     @State private var lastReconnectAt: Date?
     @State private var urlPickerURLs: [DetectedURL]?
     @State private var browserTarget: BrowserSheetTarget?
@@ -327,18 +328,27 @@ public struct SessionView: View {
                 let ch = await SessionStore.shared.ensureChannel(for: session, host: host, auth: auth)
                 NSLog("[sshido] SessionView.load got channel, awaiting first connect…")
                 channel = ch
-                if await waitForFirstConnection(ch) {
+                let outcome = await waitForFirstConnection(ch)
+                if case .connected = outcome {
                     NSLog("[sshido] SessionView.load: channel connected")
                     isReconnecting = false
                     showStuckRecovery = false
+                    lookupHint = nil
                     startDisconnectWatcher()
                     return
                 }
-                NSLog("[sshido] SessionView.load: first-connect timed out, tearing down and retrying")
-                await ch.disconnect()
-                BridgeStore.shared.remove(sessionID: session.id)
-                bridge = nil
-                channel = nil
+                if case .hostNotFound(let failure) = outcome, !isReconnecting {
+                    NSLog("[sshido] SessionView.load: \(failure.description)")
+                    await tearDown(ch)
+                    self.error = failure.description
+                    return
+                }
+                if case .hostNotFound(let failure) = outcome {
+                    NSLog("[sshido] SessionView.load: \(failure.description), retrying")
+                    lookupHint = failure.description
+                }
+                NSLog("[sshido] SessionView.load: first-connect did not finish, tearing down and retrying")
+                await tearDown(ch)
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 continue
             } catch {
@@ -363,17 +373,29 @@ public struct SessionView: View {
         }
     }
 
-    private func waitForFirstConnection(_ ch: SSHChannel, timeout: TimeInterval = 15) async -> Bool {
+    private enum FirstConnect {
+        case connected, timedOut, hostNotFound(SSHError)
+    }
+
+    private func waitForFirstConnection(_ ch: SSHChannel, timeout: TimeInterval = 15) async -> FirstConnect {
         let start = Date()
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 300_000_000)
             if await ch.isConnected {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
-                if await ch.isConnected { return true }
+                if await ch.isConnected { return .connected }
             }
-            if Date().timeIntervalSince(start) > timeout { return false }
+            if let failure = await ch.connectFailure, case .hostNotFound = failure { return .hostNotFound(failure) }
+            if Date().timeIntervalSince(start) > timeout { return .timedOut }
         }
-        return false
+        return .timedOut
+    }
+
+    private func tearDown(_ ch: SSHChannel) async {
+        await ch.disconnect()
+        BridgeStore.shared.remove(sessionID: session.id)
+        bridge = nil
+        channel = nil
     }
 
     @ViewBuilder
@@ -429,6 +451,7 @@ public struct SessionView: View {
 
     private var loadingLabel: String {
         let name = sessionName
+        if isReconnecting, let lookupHint { return "Reconnecting to \(name)… \(lookupHint)" }
         return isReconnecting ? "Reconnecting to \(name)…" : "Opening \(name)…"
     }
 

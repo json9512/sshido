@@ -252,6 +252,8 @@ struct AddHostView: View {
             return "The host key for \(host):\(port) changed since you trusted it. Check it in Settings › Servers & keys › Trusted hosts."
         case .hostKeyRejected(let host, let port):
             return "Cancelled: the key for \(host):\(port) wasn't trusted."
+        case .hostNotFound:
+            return e.description
         }
     }
 }

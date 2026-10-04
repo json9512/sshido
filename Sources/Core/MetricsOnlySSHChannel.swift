@@ -69,6 +69,7 @@ public final class MetricsOnlySSHChannel: SSHChannel, @unchecked Sendable {
                 throw SSHError.hostKeyRejected(host: h, port: p)
             }
         } catch {
+            if let notFound = SSHError.hostLookupFailure(error) { throw notFound }
             let msg = String(describing: error)
             if msg.lowercased().contains("auth") {
                 throw SSHError.authFailed(msg)
